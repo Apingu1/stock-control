@@ -1,0 +1,8 @@
+{
+  "name": "stock-control",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": { "ghcr.io/devcontainers/features/docker-in-docker:2": {} },
+  "postCreateCommand": "sudo service docker start || true",
+  "forwardPorts": [8080, 8000, 5432],
+  "remoteUser": "vscode"
+}

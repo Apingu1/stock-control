@@ -1,0 +1,49 @@
+# 1) Material master
+curl -s -X POST "http://localhost:8080/materials/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "material_code": "MAT0327",
+    "name": "RAMIPRIL 10MG",
+    "category_code": "TABLETS_CAPSULES",
+    "type_code": "API",
+    "base_uom_code": "TAB",
+    "manufacturer": "zentiva",
+    "supplier": "MEDI HEALTH",
+    "complies_es_criteria": true,
+    "status": "ACTIVE",
+    "created_by": "suzanne"
+  }'
+
+# 2) Receipt (Purchased)
+curl -s -X POST "http://localhost:8080/receipts/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "material_code": "MAT0327",
+    "lot_number": "4P3611A",
+    "expiry_date": "2025-10-20",
+    "qty": 280,
+    "uom_code": "TAB",
+    "unit_price": 0.025,
+    "target_ref": "GRN-001",
+    "supplier": "MEDI HEALTH",
+    "manufacturer": "zentiva",
+    "created_by": "suzanne.b",
+    "comment": "Initial import from Excel"
+  }'
+
+# 3) Issue (Used)
+curl -s -X POST "http://localhost:8080/issues/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "material_code": "MAT0327",
+    "lot_number": "4P3611A",
+    "qty": 36,
+    "uom_code": "TAB",
+    "product_batch_no": "ES174424",
+    "product_manufacture_date": "2025-10-17T00:00:00",
+    "created_by": "suzanne",
+    "comment": "Usage from ES174424"
+  }'
+
+
+curl -s "http://localhost:8080/lot-balances/"

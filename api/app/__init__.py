@@ -1,0 +1,1 @@
+# Stock Control app package
