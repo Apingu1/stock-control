@@ -1,0 +1,8 @@
+cd /workspaces/stock-control/web
+
+# start dev server and bind to all interfaces (better for Codespaces)
+npm run dev -- --host 0.0.0.0 --port 5173
+
+
+cd /workspaces/stock-control/web
+npm run dev
