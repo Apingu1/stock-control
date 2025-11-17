@@ -43,12 +43,14 @@ INSERT INTO material_categories (code, name) VALUES
     ('TABLETS_CAPSULES',   'Tablets/Capsules'),
     ('CREAMS_OINTMENTS',   'Creams/Ointments'),
     ('AMPOULES',           'Ampoules'),
-    ('NA',                 'Not Applicable')
+    ('PACKAGING',          'Packaging Materials'),
+    ('OTHER',              'OTHER')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO material_types (code, name) VALUES
     ('API',       'Active Pharmaceutical Ingredient'),
     ('EXCIPIENT', 'Excipient'),
+    ('PACKAGING', 'Packaging'),
     ('OTHER',     'Other')
 ON CONFLICT (code) DO NOTHING;
 
@@ -56,7 +58,6 @@ INSERT INTO uoms (code, description) VALUES
     ('G',    'Gram'),
     ('MG',   'Milligram'),
     ('ML',   'Millilitre'),
-    ('L',    'Litre'),
     ('TAB',  'Tablet'),
     ('CAP',  'Capsule'),
     ('NA',   'Not Applicable')

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import Material
-from ..schemas import MaterialCreate, MaterialOut
+from ..schemas import MaterialCreate, MaterialOut, MaterialUpdate
 
 router = APIRouter(prefix="/materials", tags=["materials"])
 
@@ -83,11 +83,7 @@ def list_materials(
             (Material.material_code.ilike(ilike)) | (Material.name.ilike(ilike))
         )
 
-    stmt = (
-        stmt.order_by(Material.material_code)
-        .offset(offset)
-        .limit(limit)
-    )
+    stmt = stmt.order_by(Material.material_code).offset(offset).limit(limit)
 
     rows = db.execute(stmt).scalars().all()
     return rows
@@ -107,4 +103,38 @@ def get_material(material_code: str, db: Session = Depends(get_db)):
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
 
+    return m
+
+
+@router.put("/{material_code}", response_model=MaterialOut)
+def update_material(
+    material_code: str,
+    body: MaterialUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update an existing material's master data.
+
+    We do not allow material_code changes via this endpoint – use the path
+    material_code as the stable identifier.
+    """
+    m = db.execute(
+        select(Material).where(Material.material_code == material_code)
+    ).scalar_one_or_none()
+
+    if not m:
+        raise HTTPException(status_code=404, detail="Material not found")
+
+    m.name = body.name
+    m.category_code = body.category_code
+    m.type_code = body.type_code
+    m.base_uom_code = body.base_uom_code
+    m.manufacturer = body.manufacturer
+    m.supplier = body.supplier
+    m.complies_es_criteria = body.complies_es_criteria
+    m.status = body.status
+
+    db.add(m)
+    db.commit()
+    db.refresh(m)
     return m

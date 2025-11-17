@@ -23,7 +23,10 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
-      // later we can add materials/receipts/issues here too
+      "/issues": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
   },
 });
