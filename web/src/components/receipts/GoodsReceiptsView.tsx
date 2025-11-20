@@ -1,5 +1,3 @@
-// src/components/receipts/GoodsReceiptsView.tsx
-
 import React, { useMemo, useState } from "react";
 import type { Receipt } from "../../types";
 import { formatDate } from "../../utils/format";
@@ -24,15 +22,14 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
     const sorted = [...receipts].sort((a, b) => {
-      const da = new Date(a.receipt_date || a.created_at || 0).getTime();
-      const db = new Date(b.receipt_date || b.created_at || 0).getTime();
-      return db - da; // descending
+      const da = new Date(a.created_at).getTime();
+      const db = new Date(b.created_at).getTime();
+      return db - da; // newest first
     });
 
     return sorted.filter((r) => {
-      // date filter
       if (dateFilter === "LAST_30") {
-        const t = new Date(r.receipt_date || r.created_at || 0).getTime();
+        const t = new Date(r.created_at).getTime();
         if (Number.isFinite(t) && now - t > thirtyDaysMs) return false;
       }
 
@@ -41,7 +38,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
       const fields = [
         r.material_code,
         r.material_name || "",
-        r.lot_number || "",
+        r.lot_number,
         r.supplier || "",
         r.manufacturer || "",
         r.comment || "",
@@ -58,7 +55,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           <div>
             <div className="card-title">Goods Receipts</div>
             <div className="card-subtitle">
-              Historic purchases and receipts into ES stock, newest first.
+              Historic receipts into ES stock, newest first.
             </div>
           </div>
           <div className="card-actions">
@@ -74,7 +71,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             <input
               className="input"
               style={{ width: 260 }}
-              placeholder="Search by material, lot, supplier, comment…"
+              placeholder="Search by material, lot, supplier, manufacturer…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -92,11 +89,14 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           <table>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Material</th>
+                <th>Receipt date</th>
+                <th>Material code</th>
+                <th>Material name</th>
                 <th>Lot</th>
+                <th>Expiry</th>
                 <th>Qty</th>
                 <th>Unit price</th>
+                <th>Total price</th>
                 <th>Supplier</th>
                 <th>Manufacturer</th>
                 <th>Comment</th>
@@ -105,29 +105,32 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             <tbody>
               {filteredReceipts.length === 0 && (
                 <tr>
-                  <td colSpan={8}>No goods receipts found.</td>
+                  <td colSpan={11}>No goods receipts found.</td>
                 </tr>
               )}
               {filteredReceipts.map((r) => {
-                const dateStr = formatDate(
-                  r.receipt_date || r.created_at || null
-                );
+                const total =
+                  r.total_value != null
+                    ? r.total_value
+                    : r.unit_price != null
+                    ? r.unit_price * r.qty
+                    : null;
+
                 return (
                   <tr key={r.id}>
-                    <td>{dateStr}</td>
-                    <td>
-                      <strong>{r.material_code}</strong>
-                      <br />
-                      <span className="alert-meta">
-                        {r.material_name || "—"}
-                      </span>
-                    </td>
-                    <td>{r.lot_number || "—"}</td>
+                    <td>{formatDate(r.created_at)}</td>
+                    <td>{r.material_code}</td>
+                    <td>{r.material_name}</td>
+                    <td>{r.lot_number}</td>
+                    <td>{formatDate(r.expiry_date)}</td>
                     <td>
                       {r.qty} {r.uom_code}
                     </td>
                     <td>
                       {r.unit_price != null ? `£${r.unit_price.toFixed(4)}` : "—"}
+                    </td>
+                    <td>
+                      {total != null ? `£${total.toFixed(2)}` : "—"}
                     </td>
                     <td>{r.supplier || "—"}</td>
                     <td>{r.manufacturer || "—"}</td>

@@ -1,5 +1,3 @@
-// src/App.tsx
-
 import React, { useEffect, useState } from "react";
 import type {
   LotBalance,
@@ -38,7 +36,7 @@ const App: React.FC = () => {
 
   const [view, setView] = useState<ViewMode>("dashboard");
 
-  // ---- Data loaders --------------------------------------------------------
+  // --- Data loaders ----------------------------------------------------------
 
   const loadLotBalances = async () => {
     try {
@@ -72,6 +70,7 @@ const App: React.FC = () => {
       setReceipts(data);
     } catch (e) {
       console.error("Failed to load receipts", e);
+      setReceipts([]);
     }
   };
 
@@ -82,6 +81,7 @@ const App: React.FC = () => {
       setIssues(data);
     } catch (e) {
       console.error("Failed to load issues", e);
+      setIssues([]);
     }
   };
 
@@ -104,7 +104,7 @@ const App: React.FC = () => {
     await Promise.all([loadLotBalances(), loadIssues()]);
   };
 
-  // ---- Render --------------------------------------------------------------
+  // --- Render ---------------------------------------------------------------
 
   return (
     <div className="app-shell">
@@ -302,7 +302,6 @@ const App: React.FC = () => {
 
         {/* PAGE BODY */}
         {view === "dashboard" && <DashboardView materials={materials} />}
-
 
         {view === "materials" && (
           <MaterialsLibraryView

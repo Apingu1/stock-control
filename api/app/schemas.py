@@ -56,6 +56,7 @@ class ReceiptCreate(BaseModel):
   material_code: str
   lot_number: str
   expiry_date: Optional[datetime] = None
+  receipt_date: date
   qty: float
   uom_code: str
   unit_price: Optional[float] = None
@@ -68,15 +69,24 @@ class ReceiptCreate(BaseModel):
   comment: Optional[str] = None
 
 
+# ... keep ReceiptCreate as-is above ...
+
 class ReceiptOut(BaseModel):
   id: int
   material_code: str
+  material_name: str
   lot_number: str
+  expiry_date: Optional[datetime] = None
   qty: float
   uom_code: str
-  target_ref: Optional[str]
+  unit_price: Optional[float] = None
+  total_value: Optional[float] = None
+  target_ref: Optional[str] = None  # GRN / invoice ref
+  supplier: Optional[str] = None
+  manufacturer: Optional[str] = None
   created_at: datetime
   created_by: str
+  comment: Optional[str] = None
 
   class Config:
     from_attributes = True
@@ -101,12 +111,19 @@ class IssueCreate(BaseModel):
 class IssueOut(BaseModel):
   id: int
   material_code: str
+  material_name: str
   lot_number: str
+  expiry_date: Optional[datetime] = None
   qty: float
   uom_code: str
   product_batch_no: str
+  manufacturer: Optional[str] = None
+  supplier: Optional[str] = None
+  # ⭐ New: ES batch manufacture date for display on Consumption page
+  product_manufacture_date: Optional[datetime] = None
   created_at: datetime
   created_by: str
+  comment: Optional[str] = None
 
   class Config:
     from_attributes = True

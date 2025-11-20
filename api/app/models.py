@@ -17,6 +17,7 @@ Base = declarative_base()
 
 # --- Lookups ----------------------------------------------------
 
+
 class MaterialCategory(Base):
     __tablename__ = "material_categories"
 
@@ -49,7 +50,9 @@ class Uom(Base):
         back_populates="uom"
     )
 
+
 # --- Materials master -------------------------------------------
+
 
 class Material(Base):
     __tablename__ = "materials"
@@ -88,6 +91,7 @@ class Material(Base):
     category: Mapped[MaterialCategory] = relationship(back_populates="materials")
     type: Mapped[MaterialType] = relationship(back_populates="materials")
     uom: Mapped[Uom] = relationship(back_populates="materials")
+
 
 # --- Material lots & stock transactions -------------------------
 
@@ -132,6 +136,12 @@ class StockTransaction(Base):
     total_value: Mapped[Optional[float]] = mapped_column()
     target_ref: Mapped[Optional[str]] = mapped_column(Text)  # ES batch / GRN no.
     comment: Mapped[Optional[str]] = mapped_column(Text)
+
+    # ⭐ New: ES batch manufacture date for ISSUE transactions
+    product_manufacture_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )

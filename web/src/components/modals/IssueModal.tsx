@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { LotBalance, Material } from "../../types";
 import { apiFetch } from "../../utils/api";
-import { formatDate } from "../../utils/format";
 
 type IssueModalProps = {
   open: boolean;
@@ -22,11 +21,14 @@ const IssueModal: React.FC<IssueModalProps> = ({
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
     null
   );
-  const [selectedLotNumber, setSelectedLotNumber] = useState("");
+  const [selectedLot, setSelectedLot] = useState<LotBalance | null>(null);
+
   const [qty, setQty] = useState("");
   const [productBatchNo, setProductBatchNo] = useState("");
   const [productManufactureDate, setProductManufactureDate] = useState("");
   const [comment, setComment] = useState("");
+  const [manufacturer, setManufacturer] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -34,11 +36,12 @@ const IssueModal: React.FC<IssueModalProps> = ({
     if (open) {
       setMaterialSearch("");
       setSelectedMaterial(null);
-      setSelectedLotNumber("");
+      setSelectedLot(null);
       setQty("");
       setProductBatchNo("");
       setProductManufactureDate("");
       setComment("");
+      setManufacturer("");
       setSubmitting(false);
       setSubmitError(null);
     }
@@ -56,74 +59,64 @@ const IssueModal: React.FC<IssueModalProps> = ({
       .slice(0, 15);
   }, [materialSearch, materials]);
 
-  const handleSelectMaterial = (m: Material) => {
-    setSelectedMaterial(m);
-    setMaterialSearch(`${m.name} (${m.material_code})`);
-    setSelectedLotNumber("");
-  };
-
-  const availableLots = useMemo(() => {
+  const lotsForMaterial = useMemo(() => {
     if (!selectedMaterial) return [];
     return lotBalances.filter(
       (lot) =>
         lot.material_code === selectedMaterial.material_code &&
         lot.balance_qty > 0
     );
-  }, [lotBalances, selectedMaterial]);
+  }, [selectedMaterial, lotBalances]);
 
-  const selectedLot = useMemo(
-    () =>
-      availableLots.find((l) => l.lot_number === selectedLotNumber) || null,
-    [availableLots, selectedLotNumber]
-  );
+  const handleSelectMaterial = (m: Material) => {
+    setSelectedMaterial(m);
+    setMaterialSearch(`${m.name} (${m.material_code})`);
+    setSelectedLot(null);
+    setManufacturer(m.manufacturer || "");
+  };
+
+  const handleSelectLot = (lotId: string) => {
+    const lot = lotsForMaterial.find(
+      (l) => `${l.material_code}-${l.lot_number}` === lotId
+    );
+    setSelectedLot(lot || null);
+    // manufacturer stays tied to the selected material
+    if (selectedMaterial) {
+      setManufacturer(selectedMaterial.manufacturer || "");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitError(null);
-
     if (!selectedMaterial) {
       setSubmitError("Please select a material.");
       return;
     }
     if (!selectedLot) {
-      setSubmitError("Please select a lot to issue from.");
+      setSubmitError("Please select a lot for this material.");
       return;
     }
     if (!qty) {
-      setSubmitError("Please enter a quantity to issue.");
+      setSubmitError("Please enter a quantity.");
       return;
     }
-
-    const numericQty = Number(qty);
-    if (!numericQty || numericQty <= 0) {
-      setSubmitError("Quantity must be a positive number.");
-      return;
-    }
-    if (numericQty > selectedLot.balance_qty) {
-      setSubmitError(
-        `You cannot issue more than the available balance (${selectedLot.balance_qty} ${selectedLot.uom_code}).`
-      );
-      return;
-    }
-
-    if (!productBatchNo.trim()) {
-      setSubmitError("Please enter the ES product batch number.");
+    if (!productBatchNo) {
+      setSubmitError("Please enter the ES batch number.");
       return;
     }
 
     setSubmitting(true);
+    setSubmitError(null);
 
     try {
       const payload = {
         material_code: selectedMaterial.material_code,
         lot_number: selectedLot.lot_number,
-        qty: numericQty,
+        qty: Number(qty),
         uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
-        product_batch_no: productBatchNo.trim(),
-        product_manufacture_date: productManufactureDate
-          ? new Date(productManufactureDate).toISOString()
-          : null,
-        created_by: "apingu",
+        product_batch_no: productBatchNo,
+        product_manufacture_date: productManufactureDate || null,
+        created_by: "apingu", // placeholder until auth wired
         comment: comment || null,
       };
 
@@ -145,14 +138,20 @@ const IssueModal: React.FC<IssueModalProps> = ({
 
   if (!open) return null;
 
+  // Decide which UOM to show in the Quantity label
+  const quantityUom =
+    selectedLot?.uom_code ||
+    selectedMaterial?.base_uom_code ||
+    "";
+
   return (
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
           <div>
-            <div className="modal-title">Issues &amp; Consumption</div>
+            <div className="modal-title">New Consumption</div>
             <div className="modal-subtitle">
-              Draw stock from a specific lot and capture ES batch usage.
+              Issue material from a specific lot into an ES product batch.
             </div>
           </div>
           <button className="icon-btn" type="button" onClick={onClose}>
@@ -162,20 +161,22 @@ const IssueModal: React.FC<IssueModalProps> = ({
 
         <form className="modal-body" onSubmit={handleSubmit}>
           <div className="form-grid">
+            {/* MATERIAL */}
             <div className="form-group">
               <label className="label">Material</label>
               <div className="typeahead-wrap">
                 <input
                   className="input"
-                  placeholder="Search by name or code..."
+                  placeholder="Start typing material or code…"
                   value={materialSearch}
                   onChange={(e) => {
                     setMaterialSearch(e.target.value);
                     setSelectedMaterial(null);
-                    setSelectedLotNumber("");
+                    setSelectedLot(null);
+                    setManufacturer("");
                   }}
                 />
-                {filteredMaterials.length > 0 && (
+                {filteredMaterials.length > 0 && !selectedMaterial && (
                   <div className="typeahead-dropdown">
                     {filteredMaterials.map((m) => (
                       <button
@@ -196,68 +197,96 @@ const IssueModal: React.FC<IssueModalProps> = ({
               </div>
             </div>
 
+            {/* LOT SELECTION */}
             <div className="form-group">
-              <label className="label">Issue from lot</label>
+              <label className="label">Lot number (released)</label>
               <select
                 className="input"
-                value={selectedLotNumber}
-                onChange={(e) => setSelectedLotNumber(e.target.value)}
-                disabled={!selectedMaterial || availableLots.length === 0}
+                value={
+                  selectedLot
+                    ? `${selectedLot.material_code}-${selectedLot.lot_number}`
+                    : ""
+                }
+                onChange={(e) => handleSelectLot(e.target.value)}
+                disabled={!selectedMaterial || lotsForMaterial.length === 0}
               >
                 <option value="">
                   {selectedMaterial
-                    ? availableLots.length > 0
-                      ? "Select a lot…"
-                      : "No lots with available balance"
+                    ? lotsForMaterial.length > 0
+                      ? "Select lot…"
+                      : "No live lots for this material"
                     : "Select a material first"}
                 </option>
-                {availableLots.map((lot) => (
-                  <option key={lot.lot_number} value={lot.lot_number}>
-                    {lot.lot_number} • {formatDate(lot.expiry_date)} •{" "}
-                    {lot.balance_qty} {lot.uom_code}
+                {lotsForMaterial.map((lot) => (
+                  <option
+                    key={`${lot.material_code}-${lot.lot_number}`}
+                    value={`${lot.material_code}-${lot.lot_number}`}
+                  >
+                    {lot.lot_number} • {lot.balance_qty} {lot.uom_code} • exp{" "}
+                    {lot.expiry_date
+                      ? new Date(lot.expiry_date).toLocaleDateString("en-GB")
+                      : "—"}
                   </option>
                 ))}
               </select>
             </div>
 
+            {/* MANUFACTURER (auto) */}
+            <div className="form-group">
+              <label className="label">Manufacturer (from GRN)</label>
+              <input
+                className="input"
+                value={manufacturer}
+                readOnly
+                placeholder="Auto from material / GRN"
+              />
+            </div>
+
+            {/* LOT EXPIRY (read-only display) */}
+            <div className="form-group">
+              <label className="label">Lot expiry</label>
+              <input
+                className="input"
+                value={
+                  selectedLot && selectedLot.expiry_date
+                    ? new Date(
+                        selectedLot.expiry_date
+                      ).toLocaleDateString("en-GB")
+                    : ""
+                }
+                readOnly
+                placeholder="Auto from lot"
+              />
+            </div>
+
+            {/* QTY */}
             <div className="form-group">
               <label className="label">
-                Quantity to issue{" "}
-                {selectedLot
-                  ? `(${selectedLot.uom_code})`
-                  : selectedMaterial
-                  ? `(${selectedMaterial.base_uom_code})`
-                  : ""}
+                Quantity {quantityUom ? `(${quantityUom})` : ""}
               </label>
               <input
                 className="input"
                 type="number"
                 min={0}
                 step="0.001"
+                placeholder="e.g. 120"
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
-                placeholder="e.g. 150"
               />
-              {selectedLot && (
-                <div className="alert-meta" style={{ marginTop: 4 }}>
-                  Available:{" "}
-                  <strong>
-                    {selectedLot.balance_qty} {selectedLot.uom_code}
-                  </strong>
-                </div>
-              )}
             </div>
 
+            {/* ES BATCH */}
             <div className="form-group">
-              <label className="label">ES product batch no.</label>
+              <label className="label">ES Batch</label>
               <input
                 className="input"
-                placeholder="e.g. ES000123"
+                placeholder="e.g. ES174424"
                 value={productBatchNo}
                 onChange={(e) => setProductBatchNo(e.target.value)}
               />
             </div>
 
+            {/* PRODUCT MANUFACTURE DATE */}
             <div className="form-group">
               <label className="label">Product manufacture date</label>
               <input
@@ -268,11 +297,12 @@ const IssueModal: React.FC<IssueModalProps> = ({
               />
             </div>
 
+            {/* COMMENT */}
             <div className="form-group form-group-full">
               <label className="label">Comment</label>
               <textarea
                 className="input textarea"
-                placeholder="e.g. Weighed into ES000123 during dispensing."
+                placeholder="e.g. Initial issue into ES174424 – pre-weigh"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
               />
@@ -295,7 +325,7 @@ const IssueModal: React.FC<IssueModalProps> = ({
               className="btn btn-primary"
               disabled={submitting}
             >
-              {submitting ? "Posting…" : "Post issue"}
+              {submitting ? "Posting…" : "Post consumption"}
             </button>
           </div>
         </form>

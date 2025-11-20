@@ -23,37 +23,44 @@ export type Material = {
   status: string;
 };
 
-// New: Receipt type (historic goods receipts list)
+// Matches enriched ReceiptOut
 export type Receipt = {
   id: number;
   material_code: string;
-  material_name?: string;
-  lot_number: string | null;
+  material_name: string;
+  lot_number: string;
+  expiry_date: string | null;
   qty: number;
   uom_code: string;
-  unit_price?: number | null;
-  receipt_date?: string | null; // preferred
-  created_at?: string | null;   // fallback
-  supplier?: string | null;
-  manufacturer?: string | null;
-  comment?: string | null;
+  unit_price: number | null;
+  total_value: number | null;
+  target_ref: string | null;
+  supplier: string | null;
+  manufacturer: string | null;
+  created_at: string;
+  created_by: string;
+  comment: string | null;
 };
 
-// New: Issue/consumption type
+// Matches enriched IssueOut
 export type Issue = {
   id: number;
   material_code: string;
-  material_name?: string;
+  material_name: string;
   lot_number: string;
+  expiry_date: string | null;
   qty: number;
   uom_code: string;
-  product_batch_no?: string | null;
-  product_manufacture_date?: string | null;
-  created_at?: string | null;
-  comment?: string | null;
+  product_batch_no: string;
+  manufacturer: string | null;
+  supplier: string | null;
+  // ⭐ ES batch manufacture date (nullable)
+  product_manufacture_date: string | null;
+  created_at: string;
+  created_by: string;
+  comment: string | null;
 };
 
-// New views for menu pages
 export type ViewMode =
   | "dashboard"
   | "materials"
