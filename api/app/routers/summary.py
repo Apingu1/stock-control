@@ -38,7 +38,7 @@ def get_stock_summary(db: Session = Depends(get_db)) -> StockSummary:
         text(
             """
             SELECT COUNT(*)
-            FROM v_lot_balances
+            FROM lot_balances_view
             WHERE expiry_date IS NOT NULL
               AND expiry_date >= CURRENT_DATE
               AND expiry_date < CURRENT_DATE + INTERVAL '30 days'
@@ -46,6 +46,7 @@ def get_stock_summary(db: Session = Depends(get_db)) -> StockSummary:
             """
         )
     ).scalar_one()
+
 
     # 4) Lots in quarantine (any balance)
     quarantine_lots = db.execute(

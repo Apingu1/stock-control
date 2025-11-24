@@ -68,6 +68,11 @@ const IssueModal: React.FC<IssueModalProps> = ({
     );
   }, [selectedMaterial, lotBalances]);
 
+  console.log("IssueModal lotBalances", lotBalances);
+  console.log("Selected material", selectedMaterial);
+  console.log("lotsForMaterial", lotsForMaterial);
+
+
   const handleSelectMaterial = (m: Material) => {
     setSelectedMaterial(m);
     setMaterialSearch(`${m.name} (${m.material_code})`);

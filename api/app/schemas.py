@@ -7,7 +7,10 @@ from pydantic import BaseModel, Field
 # --- Materials ---------------------------------------------------------------
 
 class MaterialBase(BaseModel):
-  material_code: str = Field(..., description="Canonical material code, e.g. MAT0327")
+  material_code: str = Field(
+      ...,
+      description="Canonical material code, e.g. MAT0327",
+  )
   name: str
   category_code: str
   type_code: str
@@ -69,8 +72,6 @@ class ReceiptCreate(BaseModel):
   comment: Optional[str] = None
 
 
-# ... keep ReceiptCreate as-is above ...
-
 class ReceiptOut(BaseModel):
   id: int
   material_code: str
@@ -96,14 +97,17 @@ class ReceiptOut(BaseModel):
 
 class IssueCreate(BaseModel):
   """
-  One row from your 'Used' tab.
+  One row from your 'Used' tab.'
   """
   material_code: str
   lot_number: str
   qty: float
   uom_code: str
-  product_batch_no: str               # ES batch number
+  # ES batch number (display only; not persisted in DB yet)
+  product_batch_no: str
   product_manufacture_date: Optional[datetime] = None
+  # Optional reference (e.g. worksheet ref, internal ref)
+  target_ref: Optional[str] = None
   created_by: str
   comment: Optional[str] = None
 
@@ -116,11 +120,14 @@ class IssueOut(BaseModel):
   expiry_date: Optional[datetime] = None
   qty: float
   uom_code: str
-  product_batch_no: str
+  # Optional, because we don’t store it in stock_transactions
+  product_batch_no: Optional[str] = None
   manufacturer: Optional[str] = None
   supplier: Optional[str] = None
-  # ⭐ New: ES batch manufacture date for display on Consumption page
+  # For display on the Consumption page
   product_manufacture_date: Optional[datetime] = None
+  # Optional reference (e.g. worksheet ref, internal ref)
+  target_ref: Optional[str] = None
   created_at: datetime
   created_by: str
   comment: Optional[str] = None
@@ -132,11 +139,14 @@ class IssueOut(BaseModel):
 # --- Lot balances (view) -----------------------------------------------------
 
 class LotBalanceOut(BaseModel):
+  material_lot_id: int
   material_code: str
   material_name: str
   lot_number: str
   expiry_date: Optional[date]
   status: str
+  manufacturer: Optional[str] = None
+  supplier: Optional[str] = None
   balance_qty: float
   uom_code: str
 

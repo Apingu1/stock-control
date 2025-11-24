@@ -1,57 +1,70 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 from sqlalchemy import (
-    String,
-    Integer,
     Boolean,
+    CheckConstraint,
+    Date,
     DateTime,
+    Float,
     ForeignKey,
-    Text,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
 )
-from sqlalchemy.orm import declarative_base, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-Base = declarative_base()
 
-# --- Lookups ----------------------------------------------------
+# --- Base ---------------------------------------------------------------------
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+# --- Lookup tables -----------------------------------------------------------
 
 
 class MaterialCategory(Base):
     __tablename__ = "material_categories"
 
     code: Mapped[str] = mapped_column(String(50), primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
-    materials: Mapped[list["Material"]] = relationship(
-        back_populates="category"
-    )
+    materials: Mapped[list["Material"]] = relationship(back_populates="category")
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<MaterialCategory code={self.code!r}>"
 
 
 class MaterialType(Base):
     __tablename__ = "material_types"
 
-    code: Mapped[str] = mapped_column(String(20), primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
-    materials: Mapped[list["Material"]] = relationship(
-        back_populates="type"
-    )
+    materials: Mapped[list["Material"]] = relationship(back_populates="type")
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<MaterialType code={self.code!r}>"
 
 
 class Uom(Base):
     __tablename__ = "uoms"
 
-    code: Mapped[str] = mapped_column(String(20), primary_key=True)
-    description: Mapped[str] = mapped_column(String(100), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
-    materials: Mapped[list["Material"]] = relationship(
-        back_populates="uom"
-    )
+    materials: Mapped[list["Material"]] = relationship(back_populates="uom")
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<Uom code={self.code!r}>"
 
 
-# --- Materials master -------------------------------------------
+# --- Materials ---------------------------------------------------------------
 
 
 class Material(Base):
@@ -59,92 +72,152 @@ class Material(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     material_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    name: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     category_code: Mapped[str] = mapped_column(
         String(50), ForeignKey("material_categories.code"), nullable=False
     )
     type_code: Mapped[str] = mapped_column(
-        String(20), ForeignKey("material_types.code"), nullable=False
+        String(50), ForeignKey("material_types.code"), nullable=False
     )
     base_uom_code: Mapped[str] = mapped_column(
-        String(20), ForeignKey("uoms.code"), nullable=False
+        String(50), ForeignKey("uoms.code"), nullable=False
     )
 
-    manufacturer: Mapped[Optional[str]] = mapped_column(Text)
-    supplier: Mapped[Optional[str]] = mapped_column(Text)
+    # These stay as “default” fields for the material, but the true
+    # traceable manufacturer/supplier now live on MaterialLot.
+    manufacturer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    supplier: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    complies_es_criteria: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True
-    )
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    complies_es_criteria: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="ACTIVE"
+    )  # e.g. ACTIVE / RETIRED / QUARANTINE
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    created_by: Mapped[Optional[str]] = mapped_column(String(100))
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     # relationships
-    category: Mapped[MaterialCategory] = relationship(back_populates="materials")
-    type: Mapped[MaterialType] = relationship(back_populates="materials")
-    uom: Mapped[Uom] = relationship(back_populates="materials")
+    category: Mapped["MaterialCategory"] = relationship(back_populates="materials")
+    type: Mapped["MaterialType"] = relationship(back_populates="materials")
+    uom: Mapped["Uom"] = relationship(back_populates="materials")
+
+    # NEW: relationship to lots so MaterialLot.material back_populates works
+    lots: Mapped[list["MaterialLot"]] = relationship(
+        "MaterialLot",
+        back_populates="material",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<Material code={self.material_code!r} name={self.name!r}>"
 
 
-# --- Material lots & stock transactions -------------------------
+# --- Material lots & stock transactions -------------------------------------
 
 
 class MaterialLot(Base):
     __tablename__ = "material_lots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
     material_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("materials.id"), nullable=False
     )
-    lot_number: Mapped[str] = mapped_column(String(100), nullable=False)
-    expiry_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False))
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="QUARANTINE"
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
-    )
-    created_by: Mapped[Optional[str]] = mapped_column(String(100))
 
-    material: Mapped["Material"] = relationship("Material", backref="lots")
+    lot_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # Lot status – QUARANTINE / RELEASED / REJECTED / EXPIRED etc.
+    status: Mapped[str] = mapped_column(String(20), default="QUARANTINE")
+
+    # Manufacturer / supplier at lot level (true traceability)
+    manufacturer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    supplier: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "material_id",
+            "lot_number",
+            name="uq_material_lots_material_lot_number",
+        ),
+    )
+
+    # relationships
+    material: Mapped["Material"] = relationship(
+        "Material", back_populates="lots"
+    )
     transactions: Mapped[list["StockTransaction"]] = relationship(
         "StockTransaction", back_populates="material_lot"
     )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<MaterialLot material_id={self.material_id} lot={self.lot_number!r}>"
 
 
 class StockTransaction(Base):
     __tablename__ = "stock_transactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
     material_lot_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("material_lots.id"), nullable=False
     )
-    txn_type: Mapped[str] = mapped_column(String(20), nullable=False)  # RECEIPT/ISSUE…
-    qty: Mapped[float] = mapped_column()
-    uom_code: Mapped[str] = mapped_column(
-        String(20), ForeignKey("uoms.code"), nullable=False
-    )
-    direction: Mapped[int] = mapped_column()  # +1 for in, -1 for out
-    unit_price: Mapped[Optional[float]] = mapped_column()
-    total_value: Mapped[Optional[float]] = mapped_column()
-    target_ref: Mapped[Optional[str]] = mapped_column(Text)  # ES batch / GRN no.
-    comment: Mapped[Optional[str]] = mapped_column(Text)
 
-    # ⭐ New: ES batch manufacture date for ISSUE transactions
-    product_manufacture_date: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
+    # RECEIPT / ISSUE
+    txn_type: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    uom_code: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # +1 for receipts, -1 for issues
+    direction: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Free-text reference, e.g. GRN number, batch number, order, etc.
+    target_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # NEW: product manufacture date for ISSUES (Batch usage)
+    product_manufacture_date: Mapped[Optional[date]] = mapped_column(
+        Date, nullable=True
     )
+
+    comment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    material_lot: Mapped[MaterialLot] = relationship(back_populates="transactions")
+    __table_args__ = (
+        CheckConstraint(
+            "direction IN (1, -1)",
+            name="ck_stock_transactions_direction_valid",
+        ),
+    )
+
+    # relationships
+    material_lot: Mapped["MaterialLot"] = relationship(
+        "MaterialLot", back_populates="transactions"
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return (
+            f"<StockTransaction id={self.id} "
+            f"lot_id={self.material_lot_id} qty={self.qty} dir={self.direction}>"
+        )

@@ -1,16 +1,15 @@
-// src/components/lots/LiveLotsView.tsx
-
 import React, { useMemo, useState } from "react";
 import type { LotBalance } from "../../types";
 import { formatDate } from "../../utils/format";
 
-type LiveLotsViewProps = {
+// Local filter type (not from types.ts)
+type StatusFilter = "ALL" | "QUARANTINE" | "RELEASED" | "REJECTED" | "EXPIRED";
+
+interface LiveLotsViewProps {
   lotBalances: LotBalance[];
   loadingLots: boolean;
   lotsError: string | null;
-};
-
-type StatusFilter = "ALL" | "RELEASED" | "QUARANTINE" | "OTHER";
+}
 
 const LiveLotsView: React.FC<LiveLotsViewProps> = ({
   lotBalances,
@@ -24,129 +23,115 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
     const q = search.trim().toLowerCase();
 
     return lotBalances.filter((lot) => {
-      if (statusFilter !== "ALL") {
-        if (statusFilter === "OTHER") {
-          if (lot.status === "RELEASED" || lot.status === "QUARANTINE") {
-            return false;
-          }
-        } else if (lot.status !== statusFilter) {
-          return false;
-        }
+      if (statusFilter !== "ALL" && lot.status !== statusFilter) {
+        return false;
       }
 
       if (!q) return true;
 
-      const fields = [
-        lot.material_name,
+      const haystack = [
         lot.material_code,
+        lot.material_name,
         lot.lot_number,
+        lot.uom_code,
         lot.status,
-      ];
+        lot.manufacturer ?? "",
+        lot.supplier ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
 
-      return fields.some((f) => f.toLowerCase().includes(q));
+      return haystack.includes(q);
     });
   }, [lotBalances, search, statusFilter]);
 
   return (
     <section className="content">
+      <header className="content-header">
+        <div>
+          <h1>Live Lot Balances</h1>
+          <p className="content-subtitle">
+            Real-time view of all lots with current balance, manufacturer and
+            supplier.
+          </p>
+        </div>
+      </header>
+
       <section className="card">
         <div className="card-header">
           <div>
-            <div className="card-title">Live Lot Balances</div>
-            <div className="card-subtitle">
-              All current material lots with on-hand quantity and status.
-            </div>
+            <h2 className="card-title">Lots</h2>
+            <p className="card-subtitle">
+              Filter by status or search by material, lot, manufacturer or
+              supplier.
+            </p>
           </div>
           <div className="card-actions">
-            <select
+            <input
               className="input"
-              style={{ width: 160 }}
+              placeholder="Search material / lot / manufacturer / supplier…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              className="select"
               value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as StatusFilter)
-              }
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             >
               <option value="ALL">All statuses</option>
               <option value="RELEASED">Released</option>
               <option value="QUARANTINE">Quarantine</option>
-              <option value="OTHER">Other</option>
+              <option value="REJECTED">Rejected</option>
             </select>
-            <input
-              className="input"
-              style={{ width: 260 }}
-              placeholder="Search by material, lot, status…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
           </div>
         </div>
 
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Material</th>
-                <th>Lot</th>
-                <th>Qty</th>
-                <th>Expiry</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingLots && (
-                <tr>
-                  <td colSpan={5}>Loading lot balances…</td>
-                </tr>
-              )}
-              {lotsError && !loadingLots && (
-                <tr>
-                  <td colSpan={5} style={{ color: "#fecaca" }}>
-                    {lotsError}
-                  </td>
-                </tr>
-              )}
-              {!loadingLots &&
-                !lotsError &&
-                filteredLots.length === 0 && (
+        <div className="card-body">
+          {loadingLots && <div className="info-row">Loading lot balances…</div>}
+          {lotsError && !loadingLots && (
+            <div className="error-row">{lotsError}</div>
+          )}
+          {!loadingLots && !lotsError && (
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
                   <tr>
-                    <td colSpan={5}>No lots match your filters.</td>
+                    <th>Material Code</th>
+                    <th>Material Name</th>
+                    <th>Lot No.</th>
+                    <th>Expiry</th>
+                    <th>Manufacturer</th>
+                    <th>Supplier</th>
+                    <th className="numeric">Balance</th>
+                    <th>UOM</th>
+                    <th>Status</th>
                   </tr>
-                )}
-              {!loadingLots &&
-                !lotsError &&
-                filteredLots.map((lot) => (
-                  <tr
-                    key={`${lot.material_code}-${lot.lot_number}`}
-                  >
-                    <td>
-                      {lot.material_name}
-                      <br />
-                      <span className="alert-meta">
-                        {lot.material_code}
-                      </span>
-                    </td>
-                    <td>{lot.lot_number}</td>
-                    <td>
-                      {lot.balance_qty} {lot.uom_code}
-                    </td>
-                    <td>{formatDate(lot.expiry_date)}</td>
-                    <td>
-                      <span
-                        className={
-                          lot.status === "RELEASED"
-                            ? "tag tag-success"
-                            : lot.status === "QUARANTINE"
-                            ? "tag tag-warning"
-                            : "tag tag-muted"
-                        }
-                      >
-                        {lot.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {filteredLots.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="empty-row">
+                        No lots match your filters.
+                      </td>
+                    </tr>
+                  )}
+                  {filteredLots.map((lot) => (
+                    <tr key={`${lot.material_code}-${lot.lot_number}`}>
+                      <td>{lot.material_code}</td>
+                      <td>{lot.material_name}</td>
+                      <td>{lot.lot_number}</td>
+                      <td>{formatDate(lot.expiry_date)}</td>
+                      <td>{lot.manufacturer || "—"}</td>
+                      <td>{lot.supplier || "—"}</td>
+                      <td className="numeric">{lot.balance_qty}</td>
+                      <td>{lot.uom_code}</td>
+                      <td>{lot.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </section>
     </section>

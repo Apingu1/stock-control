@@ -1,7 +1,5 @@
-# app/routers/receipts.py
-
-from datetime import datetime, time
-from typing import List, Optional
+from datetime import datetime, date, time
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -14,90 +12,94 @@ from ..schemas import ReceiptCreate, ReceiptOut
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
 
+def _normalise_receipt_datetime(value: datetime | date) -> datetime:
+    """
+    ReceiptCreate.receipt_date is declared as datetime, but in practice you
+    often pass a date from the UI. This helper normalises either to a full
+    datetime for created_at on the transaction.
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+    # Fallback – should not really happen if Pydantic is doing its job
+    return datetime.utcnow()
+
+
 @router.post("/", response_model=ReceiptOut, status_code=201)
 def create_receipt(
-    body: ReceiptCreate,
+    payload: ReceiptCreate,
     db: Session = Depends(get_db),
-):
+) -> ReceiptOut:
     """
-    Create a goods receipt:
+    Create a new goods receipt.
 
-    - Find material by material_code (from the dropdown).
-    - Find or create the lot for that material + lot_number.
-    - Insert a stock transaction with txn_type='RECEIPT'.
-    - Force created_at to match the *receipt_date* so the
-      Goods Receipts page shows the true GRN date.
+    Behaviour:
+    - Looks up the Material by material_code.
+    - Finds or creates a MaterialLot for the given lot_number.
+    - Inserts a StockTransaction with txn_type='RECEIPT', direction=+1.
+    - Uses payload.receipt_date as the StockTransaction.created_at, so the UI
+      shows the actual receipt date instead of "record entry" timestamp.
     """
 
-    # 1) Look up the material by material_code
+    # 1. Locate the material
     material = (
-        db.execute(
-            select(Material).where(Material.material_code == body.material_code)
-        )
-        .scalar_one_or_none()
+        db.query(Material)
+        .filter(Material.material_code == payload.material_code)
+        .one_or_none()
     )
+    if material is None:
+        raise HTTPException(status_code=404, detail="Material not found")
 
-    if not material:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown material_code: {body.material_code}",
-        )
-
-    # Keep master details in sync if provided
-    if body.manufacturer:
-        material.manufacturer = body.manufacturer
-    if body.supplier:
-        material.supplier = body.supplier
-    if body.complies_es_criteria is not None:
-        material.complies_es_criteria = body.complies_es_criteria
-
-    # 2) Find or create lot for this material + batch no.
+    # 2. Find or create the lot for this material + lot_number
     lot = (
-        db.execute(
-            select(MaterialLot).where(
-                MaterialLot.material_id == material.id,
-                MaterialLot.lot_number == body.lot_number,
-            )
+        db.query(MaterialLot)
+        .filter(
+            MaterialLot.material_id == material.id,
+            MaterialLot.lot_number == payload.lot_number,
         )
-        .scalar_one_or_none()
+        .one_or_none()
     )
 
-    if not lot:
+    if lot is None:
         lot = MaterialLot(
             material_id=material.id,
-            lot_number=body.lot_number,
-            expiry_date=body.expiry_date,
-            status="QUARANTINE",  # QA can release later
-            created_by=body.created_by,
+            lot_number=payload.lot_number,
+            expiry_date=payload.expiry_date,
+            status="AVAILABLE",
+            created_by=payload.created_by,
         )
         db.add(lot)
-        db.flush()  # assign lot.id
-
-    # 3) Work out the total_value
-    total_value = body.total_value
-    if total_value is None and body.unit_price is not None:
-        total_value = body.unit_price * body.qty
-
-    # 4) Derive created_at from receipt_date
-    #    (so Receipts page shows actual GRN date, not "entry" date)
-    if body.receipt_date is not None:
-        created_at = datetime.combine(body.receipt_date, time.min)
+        db.flush()  # get lot.id
     else:
-        created_at = datetime.utcnow()
+        # If an expiry date is supplied and different, update the lot
+        if payload.expiry_date and lot.expiry_date != payload.expiry_date:
+            lot.expiry_date = payload.expiry_date
 
-    # 5) Insert stock transaction for this receipt
+    # 3. Optional: set "default" manufacturer/supplier on material only if blank
+    # (this avoids overwriting historical suppliers/manufacturers every time)
+    if payload.manufacturer and not material.manufacturer:
+        material.manufacturer = payload.manufacturer
+    if payload.supplier and not material.supplier:
+        material.supplier = payload.supplier
+
+    # 4. Use the provided receipt_date as the transaction timestamp
+    created_at = _normalise_receipt_datetime(payload.receipt_date)
+
     txn = StockTransaction(
         material_lot_id=lot.id,
         txn_type="RECEIPT",
-        qty=body.qty,
-        uom_code=body.uom_code,
-        direction=+1,
-        unit_price=body.unit_price,
-        total_value=total_value,
-        target_ref=body.target_ref,
-        comment=body.comment,
+        qty=payload.qty,
+        uom_code=payload.uom_code,
+        direction=1,
+        unit_price=payload.unit_price,
+        total_value=payload.total_value,
+        target_ref=payload.target_ref,
+        comment=payload.comment,
+        # For raw-material receipts this is not applicable
+        product_manufacture_date=None,
         created_at=created_at,
-        created_by=body.created_by,
+        created_by=payload.created_by,
     )
 
     db.add(txn)
@@ -127,24 +129,16 @@ def create_receipt(
 
 @router.get("/", response_model=List[ReceiptOut])
 def list_receipts(
+    limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db),
-    material_code: Optional[str] = Query(
-        None, description="Filter by material_code, e.g. MAT0327"
-    ),
-    lot_number: Optional[str] = Query(
-        None, description="Filter by exact lot number"
-    ),
-    limit: int = Query(
-        200,
-        ge=1,
-        le=2000,
-        description="Max number of receipts to return (newest first).",
-    ),
-):
+) -> List[ReceiptOut]:
     """
-    List historic goods receipts (stock_transactions with txn_type='RECEIPT'),
-    joined to material + lot, mapped into ReceiptOut.
+    List the most recent goods receipts.
+
+    NOTE: The "Goods Receipt Date" displayed in the UI is taken from
+    StockTransaction.created_at, which we set from ReceiptCreate.receipt_date.
     """
+
     stmt = (
         select(StockTransaction, MaterialLot, Material)
         .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
@@ -154,14 +148,9 @@ def list_receipts(
         .limit(limit)
     )
 
-    if material_code:
-        stmt = stmt.where(Material.material_code == material_code)
-    if lot_number:
-        stmt = stmt.where(MaterialLot.lot_number == lot_number)
-
     rows = db.execute(stmt).all()
 
-    results: list[ReceiptOut] = []
+    results: List[ReceiptOut] = []
     for txn, lot, material in rows:
         results.append(
             ReceiptOut(

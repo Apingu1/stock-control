@@ -1,14 +1,18 @@
 // src/types.ts
 
 export type LotBalance = {
+  material_lot_id: number;
   material_code: string;
   material_name: string;
   lot_number: string;
   expiry_date: string | null;
   status: string;
+  manufacturer: string | null;
+  supplier: string | null;
   balance_qty: number;
   uom_code: string;
 };
+
 
 export type Material = {
   id: number;
