@@ -13,6 +13,13 @@ export type LotBalance = {
   uom_code: string;
 };
 
+export type ApprovedManufacturer = {
+  id: number;
+  manufacturer_name: string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string | null;
+};
 
 export type Material = {
   id: number;
@@ -25,6 +32,8 @@ export type Material = {
   supplier: string | null;
   complies_es_criteria: boolean;
   status: string;
+  // NEW: optional list from backend
+  approved_manufacturers?: ApprovedManufacturer[];
 };
 
 // Matches enriched ReceiptOut
@@ -55,11 +64,11 @@ export type Issue = {
   expiry_date: string | null;
   qty: number;
   uom_code: string;
-  product_batch_no: string;
+  product_batch_no: string | null;
   manufacturer: string | null;
   supplier: string | null;
-  // ⭐ ES batch manufacture date (nullable)
   product_manufacture_date: string | null;
+  target_ref?: string | null;
   created_at: string;
   created_by: string;
   comment: string | null;

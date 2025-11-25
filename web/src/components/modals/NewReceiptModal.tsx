@@ -1,7 +1,7 @@
 // src/components/modals/NewReceiptModal.tsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import type { Material } from "../../types";
+import type { Material, ApprovedManufacturer } from "../../types";
 import { apiFetch } from "../../utils/api";
 
 type NewReceiptModalProps = {
@@ -23,7 +23,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   );
   const [lotNumber, setLotNumber] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
-  const [receiptDate, setReceiptDate] = useState(""); // NEW
+  const [receiptDate, setReceiptDate] = useState("");
   const [qty, setQty] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [supplier, setSupplier] = useState("");
@@ -39,7 +39,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       setSelectedMaterial(null);
       setLotNumber("");
       setExpiryDate("");
-      setReceiptDate(""); // reset
+      setReceiptDate("");
       setQty("");
       setUnitPrice("");
       setSupplier("");
@@ -65,7 +65,20 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const handleSelectMaterial = (m: Material) => {
     setSelectedMaterial(m);
     setMaterialSearch(`${m.name} (${m.material_code})`);
+    setManufacturer(""); // reset so user must choose from list if tablets/caps
   };
+
+  const isTabletsCaps =
+    selectedMaterial?.category_code === "TABLETS_CAPSULES";
+
+  const approvedForMaterial: ApprovedManufacturer[] = useMemo(() => {
+    if (!selectedMaterial?.approved_manufacturers) return [];
+    return selectedMaterial.approved_manufacturers.filter(
+      (am) => am.is_active
+    );
+  }, [selectedMaterial]);
+
+  const hasApproved = isTabletsCaps && approvedForMaterial.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,15 +95,22 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       return;
     }
 
+    if (hasApproved && !manufacturer) {
+      setSubmitError(
+        "Please select a manufacturer from the approved list for this material."
+      );
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
 
     try {
       const payload = {
         material_code: selectedMaterial.material_code,
-        lot_number: lotNumber || null,
+        lot_number: lotNumber || "",
         expiry_date: expiryDate || null,
-        receipt_date: receiptDate || null, // NEW
+        receipt_date: receiptDate || null,
         qty: Number(qty),
         uom_code: selectedMaterial.base_uom_code,
         unit_price: unitPrice ? Number(unitPrice) : null,
@@ -110,7 +130,9 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error(err);
-      setSubmitError(err.message ?? "Failed to post receipt");
+      setSubmitError(
+        err.message ?? "Failed to post receipt. Check manufacturer restrictions."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -123,12 +145,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       <div className="modal">
         <div className="modal-header">
           <div>
-            <div className="modal-title">New Goods Receipt</div>
+            <div className="modal-title">New goods receipt</div>
             <div className="modal-subtitle">
-              Post a new receipt into the stock ledger.
+              Post an incoming delivery into ES stock.
             </div>
           </div>
-          <button className="icon-btn" type="button" onClick={onClose}>
+          <button type="button" className="icon-btn" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -146,6 +168,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                   onChange={(e) => {
                     setMaterialSearch(e.target.value);
                     setSelectedMaterial(null);
+                    setManufacturer("");
                   }}
                 />
                 {filteredMaterials.length > 0 && (
@@ -239,14 +262,42 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                 onChange={(e) => setSupplier(e.target.value)}
               />
             </div>
+
             <div className="form-group">
               <label className="label">Manufacturer</label>
-              <input
-                className="input"
-                placeholder="e.g. Zentiva"
-                value={manufacturer}
-                onChange={(e) => setManufacturer(e.target.value)}
-              />
+              {isTabletsCaps ? (
+                hasApproved ? (
+                  <select
+                    className="input"
+                    value={manufacturer}
+                    onChange={(e) => setManufacturer(e.target.value)}
+                  >
+                    <option value="">Select manufacturer…</option>
+                    {approvedForMaterial.map((am) => (
+                      <option
+                        key={am.id}
+                        value={am.manufacturer_name}
+                      >
+                        {am.manufacturer_name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select className="input" disabled>
+                    <option>
+                      No approved manufacturers set. Configure in Materials
+                      Library.
+                    </option>
+                  </select>
+                )
+              ) : (
+                <input
+                  className="input"
+                  placeholder="e.g. Zentiva"
+                  value={manufacturer}
+                  onChange={(e) => setManufacturer(e.target.value)}
+                />
+              )}
             </div>
 
             {/* COMMENT */}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import type { Material } from "../../types";
+import type { Material, ApprovedManufacturer } from "../../types";
 import {
   MATERIAL_CATEGORY_OPTIONS,
   MATERIAL_TYPE_OPTIONS,
@@ -47,6 +47,37 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Approved manufacturers (TABLETS/CAPS)
+  const [approvedManufacturers, setApprovedManufacturers] = useState<
+    ApprovedManufacturer[]
+  >([]);
+  const [newApprovedName, setNewApprovedName] = useState("");
+  const [loadingApproved, setLoadingApproved] = useState(false);
+  const [approvedError, setApprovedError] = useState<string | null>(null);
+
+  const isEdit = mode === "edit";
+  const isTabletsCaps = categoryCode === "TABLETS_CAPSULES";
+
+  const loadApproved = async (code: string) => {
+    try {
+      setApprovedError(null);
+      setLoadingApproved(true);
+      const res = await apiFetch(
+        `/materials/${encodeURIComponent(code)}/approved-manufacturers`
+      );
+      const data = (await res.json()) as ApprovedManufacturer[];
+      setApprovedManufacturers(data);
+    } catch (err: any) {
+      console.error(err);
+      setApprovedError(
+        err.message ?? "Failed to load approved manufacturers"
+      );
+      setApprovedManufacturers([]);
+    } finally {
+      setLoadingApproved(false);
+    }
+  };
+
   useEffect(() => {
     if (open) {
       setMaterialCode(initial?.material_code ?? "");
@@ -64,6 +95,15 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       setStatus(initial?.status ?? "ACTIVE");
       setSubmitting(false);
       setError(null);
+
+      setNewApprovedName("");
+      setApprovedError(null);
+
+      if (mode === "edit" && initial?.material_code) {
+        void loadApproved(initial.material_code);
+      } else {
+        setApprovedManufacturers([]);
+      }
     }
   }, [open, initial, mode]);
 
@@ -139,7 +179,64 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     }
   };
 
-  const isEdit = mode === "edit";
+  const handleAddApproved = async () => {
+    if (!isEdit || !initial?.material_code) return;
+    const name = newApprovedName.trim();
+    if (!name) {
+      setApprovedError("Manufacturer name is required.");
+      return;
+    }
+
+    try {
+      setApprovedError(null);
+      const payload = {
+        manufacturer_name: name,
+        is_active: true,
+        created_by: "apingu",
+      };
+      const res = await apiFetch(
+        `/materials/${encodeURIComponent(
+          initial.material_code
+        )}/approved-manufacturers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const created = (await res.json()) as ApprovedManufacturer;
+      setApprovedManufacturers((prev) => [...prev, created]);
+      setNewApprovedName("");
+    } catch (err: any) {
+      console.error(err);
+      setApprovedError(
+        err.message ?? "Failed to add approved manufacturer"
+      );
+    }
+  };
+
+  const handleDeleteApproved = async (id: number) => {
+    if (!isEdit || !initial?.material_code) return;
+    try {
+      setApprovedError(null);
+      await apiFetch(
+        `/materials/${encodeURIComponent(
+          initial.material_code
+        )}/approved-manufacturers/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+      setApprovedManufacturers((prev) =>
+        prev.filter((am) => am.id !== id)
+      );
+    } catch (err: any) {
+      console.error(err);
+      setApprovedError(
+        err.message ?? "Failed to remove manufacturer"
+      );
+    }
+  };
 
   return (
     <div className="modal-overlay">
@@ -241,20 +338,20 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">Manufacturer</label>
+              <label className="label">Default manufacturer</label>
               <input
                 className="input"
-                placeholder="e.g. SMS Life Sciences"
+                placeholder="e.g. Zentiva"
                 value={manufacturer}
                 onChange={(e) => setManufacturer(e.target.value)}
               />
             </div>
 
             <div className="form-group">
-              <label className="label">Supplier</label>
+              <label className="label">Default supplier</label>
               <input
                 className="input"
-                placeholder="e.g. APS"
+                placeholder="e.g. MEDI HEALTH"
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
               />
@@ -285,6 +382,82 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 </label>
               </div>
             </div>
+
+            {isEdit && isTabletsCaps && (
+              <div className="form-group form-group-full">
+                <label className="label">
+                  Approved manufacturers (TABLETS/CAPSULES)
+                </label>
+                <p className="content-subtitle" style={{ marginBottom: 8 }}>
+                  Operators will only be able to book goods in against these
+                  manufacturers in the Goods Receipt screen.
+                </p>
+
+                {loadingApproved && (
+                  <div className="info-row">Loading manufacturers…</div>
+                )}
+                {approvedError && (
+                  <div className="error-row">{approvedError}</div>
+                )}
+
+                {!loadingApproved &&
+                  approvedManufacturers.length === 0 && (
+                    <div className="info-row">
+                      No approved manufacturers configured yet.
+                    </div>
+                  )}
+
+                {approvedManufacturers.length > 0 && (
+                  <ul className="pill-list">
+                    {approvedManufacturers.map((am) => (
+                      <li key={am.id} className="pill">
+                        <span>{am.manufacturer_name}</span>
+                        <button
+                          type="button"
+                          className="pill-remove-btn"
+                          onClick={() => handleDeleteApproved(am.id)}
+                          title="Remove manufacturer"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginTop: 8,
+                  }}
+                >
+                  <input
+                    className="input"
+                    placeholder="Add manufacturer name…"
+                    value={newApprovedName}
+                    onChange={(e) => setNewApprovedName(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleAddApproved}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!isEdit && isTabletsCaps && (
+              <div className="form-group form-group-full">
+                <label className="label">Approved manufacturers</label>
+                <p className="content-subtitle">
+                  Save the material first, then edit it to configure the list of
+                  approved manufacturers for TABLETS/CAPSULES.
+                </p>
+              </div>
+            )}
           </div>
 
           {error && <div className="form-error">{error}</div>}
@@ -303,13 +476,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
               className="btn btn-primary"
               disabled={submitting}
             >
-              {submitting
-                ? isEdit
-                  ? "Saving…"
-                  : "Creating…"
-                : isEdit
-                ? "Save changes"
-                : "Create material"}
+              {submitting ? "Saving…" : "Save"}
             </button>
           </div>
         </form>

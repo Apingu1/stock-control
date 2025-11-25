@@ -36,7 +36,7 @@ class MaterialCategory(Base):
 
     materials: Mapped[list["Material"]] = relationship(back_populates="category")
 
-    def __repr__(self) -> str:  # pragma: no cover - debug helper
+    def __repr__(self) -> str:  # pragma: no cover
         return f"<MaterialCategory code={self.code!r}>"
 
 
@@ -48,20 +48,23 @@ class MaterialType(Base):
 
     materials: Mapped[list["Material"]] = relationship(back_populates="type")
 
-    def __repr__(self) -> str:  # pragma: no cover - debug helper
+    def __repr__(self) -> str:  # pragma: no cover
         return f"<MaterialType code={self.code!r}>"
 
 
 class Uom(Base):
     __tablename__ = "uoms"
 
+    # DB: uoms.code VARCHAR(20) PRIMARY KEY
     code: Mapped[str] = mapped_column(String(50), primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    # DB: uoms.description VARCHAR(100) NOT NULL
+    description: Mapped[str] = mapped_column(String(100), nullable=False)
 
     materials: Mapped[list["Material"]] = relationship(back_populates="uom")
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<Uom code={self.code!r}>"
+
 
 
 # --- Materials ---------------------------------------------------------------
@@ -84,15 +87,12 @@ class Material(Base):
         String(50), ForeignKey("uoms.code"), nullable=False
     )
 
-    # These stay as “default” fields for the material, but the true
-    # traceable manufacturer/supplier now live on MaterialLot.
+    # Default manufacturer/supplier; true traceability is on MaterialLot.
     manufacturer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     supplier: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     complies_es_criteria: Mapped[bool] = mapped_column(Boolean, default=False)
-    status: Mapped[str] = mapped_column(
-        String(20), default="ACTIVE"
-    )  # e.g. ACTIVE / RETIRED / QUARANTINE
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -110,15 +110,59 @@ class Material(Base):
     type: Mapped["MaterialType"] = relationship(back_populates="materials")
     uom: Mapped["Uom"] = relationship(back_populates="materials")
 
-    # NEW: relationship to lots so MaterialLot.material back_populates works
     lots: Mapped[list["MaterialLot"]] = relationship(
         "MaterialLot",
         back_populates="material",
         cascade="all, delete-orphan",
     )
 
-    def __repr__(self) -> str:  # pragma: no cover - debug helper
+    # NEW: approved manufacturers for tablets/capsules etc.
+    approved_manufacturers: Mapped[list["MaterialApprovedManufacturer"]] = relationship(
+        "MaterialApprovedManufacturer",
+        back_populates="material",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
         return f"<Material code={self.material_code!r} name={self.name!r}>"
+
+
+# NEW: Approved manufacturers per material ------------------------------------
+
+
+class MaterialApprovedManufacturer(Base):
+    __tablename__ = "material_approved_manufacturers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    material_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("materials.id", ondelete="CASCADE"), nullable=False
+    )
+    manufacturer_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    material: Mapped["Material"] = relationship(
+        "Material", back_populates="approved_manufacturers"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "material_id",
+            "manufacturer_name",
+            name="uq_material_approved_manu_material_name",
+        ),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<MaterialApprovedManufacturer material_id={self.material_id} "
+            f"name={self.manufacturer_name!r}>"
+        )
 
 
 # --- Material lots & stock transactions -------------------------------------
@@ -156,15 +200,12 @@ class MaterialLot(Base):
         ),
     )
 
-    # relationships
-    material: Mapped["Material"] = relationship(
-        "Material", back_populates="lots"
-    )
+    material: Mapped["Material"] = relationship("Material", back_populates="lots")
     transactions: Mapped[list["StockTransaction"]] = relationship(
         "StockTransaction", back_populates="material_lot"
     )
 
-    def __repr__(self) -> str:  # pragma: no cover - debug helper
+    def __repr__(self) -> str:  # pragma: no cover
         return f"<MaterialLot material_id={self.material_id} lot={self.lot_number!r}>"
 
 
@@ -189,10 +230,9 @@ class StockTransaction(Base):
     unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     total_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
-    # Free-text reference, e.g. GRN number, batch number, order, etc.
     target_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    # NEW: product manufacture date for ISSUES (Batch usage)
+    # Product manufacture date for issues (batch usage)
     product_manufacture_date: Mapped[Optional[date]] = mapped_column(
         Date, nullable=True
     )
@@ -211,12 +251,11 @@ class StockTransaction(Base):
         ),
     )
 
-    # relationships
     material_lot: Mapped["MaterialLot"] = relationship(
         "MaterialLot", back_populates="transactions"
     )
 
-    def __repr__(self) -> str:  # pragma: no cover - debug helper
+    def __repr__(self) -> str:  # pragma: no cover
         return (
             f"<StockTransaction id={self.id} "
             f"lot_id={self.material_lot_id} qty={self.qty} dir={self.direction}>"

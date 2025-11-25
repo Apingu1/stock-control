@@ -1,4 +1,5 @@
--- Phase-1 Stock Control schema: Materials, lookups, lots, and stock transactions
+-- Phase-1 Stock Control schema: Materials, lookups, lots, stock transactions,
+-- and approved manufacturers for tablets/capsules.
 
 -- Lookups ---------------------------------------------------------------------
 
@@ -33,6 +34,19 @@ CREATE TABLE IF NOT EXISTS materials (
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by              TEXT,
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- NEW: Approved manufacturers per material -----------------------------------
+
+CREATE TABLE IF NOT EXISTS material_approved_manufacturers (
+    id                  SERIAL PRIMARY KEY,
+    material_id         INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    manufacturer_name   TEXT NOT NULL,
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by          TEXT,
+    CONSTRAINT uq_material_approved_manu_material_name
+        UNIQUE (material_id, manufacturer_name)
 );
 
 -- Seed lookups (idempotent) ---------------------------------------------------
@@ -70,9 +84,9 @@ CREATE TABLE IF NOT EXISTS material_lots (
     material_id     INTEGER NOT NULL REFERENCES materials(id),
     lot_number      VARCHAR(100) NOT NULL,
     expiry_date     DATE,
-    status          VARCHAR(20) NOT NULL DEFAULT 'QUARANTINE',  -- QUARANTINE / RELEASED / REJECTED
-    manufacturer    text,
-    supplier        text,
+    status          VARCHAR(20) NOT NULL DEFAULT 'QUARANTINE',  -- QUARANTINE / RELEASED / REJECTED / EXPIRED
+    manufacturer    TEXT,
+    supplier        TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by      TEXT,
     UNIQUE (material_id, lot_number)
@@ -80,49 +94,49 @@ CREATE TABLE IF NOT EXISTS material_lots (
 
 -- Stock transactions (ledger) -------------------------------------------------
 
-CREATE TABLE stock_transactions (
-    id                      serial PRIMARY KEY,
-    material_lot_id         integer NOT NULL REFERENCES material_lots(id),
-    txn_type                text NOT NULL,
-    qty                     numeric(18, 3) NOT NULL,
-    uom_code                text NOT NULL,
-    direction               smallint NOT NULL,
-    unit_price              numeric(18, 4),
-    total_value             numeric(18, 4),
-    target_ref              text,
-    product_manufacture_date date,          -- <-- NEW COLUMN
-    comment                 text,
-    created_at              timestamptz NOT NULL DEFAULT now(),
-    created_by              text NOT NULL
+CREATE TABLE IF NOT EXISTS stock_transactions (
+    id                      SERIAL PRIMARY KEY,
+    material_lot_id         INTEGER NOT NULL REFERENCES material_lots(id),
+    txn_type                TEXT NOT NULL,
+    qty                     NUMERIC(18, 3) NOT NULL,
+    uom_code                TEXT NOT NULL,
+    direction               SMALLINT NOT NULL,
+    unit_price              NUMERIC(18, 4),
+    total_value             NUMERIC(18, 4),
+    target_ref              TEXT,
+    product_manufacture_date DATE,
+    comment                 TEXT,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by              TEXT NOT NULL
 );
 
 -- View: per-lot balance -------------------------------------------------------
 
-create or replace view lot_balances_view as
-with latest_status as (
-    select distinct on (ml.id)
-        ml.id as material_lot_id,
+CREATE OR REPLACE VIEW lot_balances_view AS
+WITH latest_status AS (
+    SELECT DISTINCT ON (ml.id)
+        ml.id AS material_lot_id,
         ml.status,
-        ml.created_at as updated_at
-    from material_lots ml
-    order by ml.id, ml.created_at desc
+        ml.created_at AS updated_at
+    FROM material_lots ml
+    ORDER BY ml.id, ml.created_at DESC
 )
-select
-    ml.id as material_lot_id,
+SELECT
+    ml.id              AS material_lot_id,
     m.material_code,
-    m.name as material_name,
+    m.name             AS material_name,
     ml.lot_number,
     ml.expiry_date,
     ls.status,
     ml.manufacturer,
     ml.supplier,
-    coalesce(sum(st.qty * st.direction), 0) as balance_qty,
-    m.base_uom_code as uom_code
-from material_lots ml
-join materials m on ml.material_id = m.id
-left join latest_status ls on ls.material_lot_id = ml.id
-left join stock_transactions st on st.material_lot_id = ml.id
-group by
+    COALESCE(SUM(st.qty * st.direction), 0) AS balance_qty,
+    m.base_uom_code    AS uom_code
+FROM material_lots ml
+JOIN materials m ON ml.material_id = m.id
+LEFT JOIN latest_status ls ON ls.material_lot_id = ml.id
+LEFT JOIN stock_transactions st ON st.material_lot_id = ml.id
+GROUP BY
     ml.id,
     m.material_code,
     m.name,
@@ -133,7 +147,22 @@ group by
     ml.supplier,
     m.base_uom_code;
 
--- Backwards-compatibility wrapper: keep old name v_lot_balances working
+-- Approved manufacturers per material
+CREATE TABLE IF NOT EXISTS material_approved_manufacturers (
+    id              SERIAL PRIMARY KEY,
+    material_id     INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    manufacturer_name VARCHAR(255) NOT NULL,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by      VARCHAR(100)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_material_approved_manufacturer_material_name
+ON material_approved_manufacturers (material_id, LOWER(manufacturer_name));
+
+
+-- Backwards-compatibility wrapper: keep old name v_lot_balances working ------
+
 CREATE OR REPLACE VIEW v_lot_balances AS
 SELECT *
 FROM lot_balances_view;

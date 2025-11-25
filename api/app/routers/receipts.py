@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Material, MaterialLot, StockTransaction
+from ..models import Material, MaterialLot, StockTransaction, MaterialApprovedManufacturer
 from ..schemas import ReceiptCreate, ReceiptOut
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -14,15 +14,12 @@ router = APIRouter(prefix="/receipts", tags=["receipts"])
 
 def _normalise_receipt_datetime(value: datetime | date) -> datetime:
     """
-    ReceiptCreate.receipt_date is declared as datetime, but in practice you
-    often pass a date from the UI. This helper normalises either to a full
-    datetime for created_at on the transaction.
+    Normalise a date/datetime into a full datetime for created_at.
     """
     if isinstance(value, datetime):
         return value
     if isinstance(value, date):
         return datetime.combine(value, time.min)
-    # Fallback – should not really happen if Pydantic is doing its job
     return datetime.utcnow()
 
 
@@ -36,10 +33,12 @@ def create_receipt(
 
     Behaviour:
     - Looks up the Material by material_code.
+    - For TABLETS_CAPSULES, if there are approved manufacturers configured,
+      enforces that payload.manufacturer is one of them.
     - Finds or creates a MaterialLot for the given lot_number.
+    - Writes manufacturer/supplier to the lot (true traceability).
     - Inserts a StockTransaction with txn_type='RECEIPT', direction=+1.
-    - Uses payload.receipt_date as the StockTransaction.created_at, so the UI
-      shows the actual receipt date instead of "record entry" timestamp.
+    - Uses payload.receipt_date as StockTransaction.created_at.
     """
 
     # 1. Locate the material
@@ -51,7 +50,35 @@ def create_receipt(
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    # 2. Find or create the lot for this material + lot_number
+    # 2. For TABLETS_CAPSULES, enforce approved manufacturer list (if configured)
+    if material.category_code == "TABLETS_CAPSULES":
+        approved_rows = (
+            db.query(MaterialApprovedManufacturer)
+            .filter(
+                MaterialApprovedManufacturer.material_id == material.id,
+                MaterialApprovedManufacturer.is_active.is_(True),
+            )
+            .all()
+        )
+        approved_names = [
+            (row.manufacturer_name or "").strip().upper() for row in approved_rows
+        ]
+        approved_names = [n for n in approved_names if n]
+
+        if approved_names:
+            incoming = (payload.manufacturer or "").strip().upper()
+            if not incoming or incoming not in approved_names:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Manufacturer '{payload.manufacturer or ''}' is not in the "
+                        f"approved list for {material.material_code} ({material.name}). "
+                        "Please refer to R&D before booking in. Add the manufacturer "
+                        "to the approved list if approved."
+                    ),
+                )
+
+    # 3. Find or create the lot for this material + lot_number
     lot = (
         db.query(MaterialLot)
         .filter(
@@ -67,6 +94,8 @@ def create_receipt(
             lot_number=payload.lot_number,
             expiry_date=payload.expiry_date,
             status="AVAILABLE",
+            manufacturer=payload.manufacturer,
+            supplier=payload.supplier,
             created_by=payload.created_by,
         )
         db.add(lot)
@@ -76,14 +105,20 @@ def create_receipt(
         if payload.expiry_date and lot.expiry_date != payload.expiry_date:
             lot.expiry_date = payload.expiry_date
 
-    # 3. Optional: set "default" manufacturer/supplier on material only if blank
-    # (this avoids overwriting historical suppliers/manufacturers every time)
+        # If manufacturer/supplier provided and the lot doesn't have them yet,
+        # set them (preserve existing values if already set).
+        if payload.manufacturer and not lot.manufacturer:
+            lot.manufacturer = payload.manufacturer
+        if payload.supplier and not lot.supplier:
+            lot.supplier = payload.supplier
+
+    # 4. Optionally set default manufacturer/supplier on material only if blank
     if payload.manufacturer and not material.manufacturer:
         material.manufacturer = payload.manufacturer
     if payload.supplier and not material.supplier:
         material.supplier = payload.supplier
 
-    # 4. Use the provided receipt_date as the transaction timestamp
+    # 5. Use the provided receipt_date as the transaction timestamp
     created_at = _normalise_receipt_datetime(payload.receipt_date)
 
     txn = StockTransaction(
@@ -96,7 +131,6 @@ def create_receipt(
         total_value=payload.total_value,
         target_ref=payload.target_ref,
         comment=payload.comment,
-        # For raw-material receipts this is not applicable
         product_manufacture_date=None,
         created_at=created_at,
         created_by=payload.created_by,
@@ -119,8 +153,9 @@ def create_receipt(
         unit_price=txn.unit_price,
         total_value=txn.total_value,
         target_ref=txn.target_ref,
-        supplier=material.supplier,
-        manufacturer=material.manufacturer,
+        # Show from lot first (true history), fall back to material if needed
+        supplier=lot.supplier or material.supplier,
+        manufacturer=lot.manufacturer or material.manufacturer,
         created_at=txn.created_at,
         created_by=txn.created_by,
         comment=txn.comment,
@@ -135,7 +170,7 @@ def list_receipts(
     """
     List the most recent goods receipts.
 
-    NOTE: The "Goods Receipt Date" displayed in the UI is taken from
+    "Goods Receipt Date" displayed in the UI is taken from
     StockTransaction.created_at, which we set from ReceiptCreate.receipt_date.
     """
 
@@ -164,8 +199,8 @@ def list_receipts(
                 unit_price=txn.unit_price,
                 total_value=txn.total_value,
                 target_ref=txn.target_ref,
-                supplier=material.supplier,
-                manufacturer=material.manufacturer,
+                supplier=lot.supplier or material.supplier,
+                manufacturer=lot.manufacturer or material.manufacturer,
                 created_at=txn.created_at,
                 created_by=txn.created_by,
                 comment=txn.comment,
