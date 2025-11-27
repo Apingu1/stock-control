@@ -10,6 +10,15 @@ type IssueModalProps = {
   onIssuePosted: () => void;
 };
 
+type ConsumptionTypeCode = "USAGE" | "WASTAGE" | "DESTRUCTION" | "R_AND_D";
+
+const CONSUMPTION_TYPES: { code: ConsumptionTypeCode; label: string }[] = [
+  { code: "USAGE", label: "Usage (Batch Manufacturing)" },
+  { code: "WASTAGE", label: "Wastage" },
+  { code: "DESTRUCTION", label: "Destruction" },
+  { code: "R_AND_D", label: "R&D Usage" },
+];
+
 const IssueModal: React.FC<IssueModalProps> = ({
   open,
   onClose,
@@ -17,6 +26,9 @@ const IssueModal: React.FC<IssueModalProps> = ({
   lotBalances,
   onIssuePosted,
 }) => {
+  const [consumptionType, setConsumptionType] =
+    useState<ConsumptionTypeCode>("USAGE");
+
   const [materialSearch, setMaterialSearch] = useState("");
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
     null
@@ -34,6 +46,7 @@ const IssueModal: React.FC<IssueModalProps> = ({
 
   useEffect(() => {
     if (open) {
+      setConsumptionType("USAGE");
       setMaterialSearch("");
       setSelectedMaterial(null);
       setSelectedLot(null);
@@ -68,11 +81,6 @@ const IssueModal: React.FC<IssueModalProps> = ({
     );
   }, [selectedMaterial, lotBalances]);
 
-  console.log("IssueModal lotBalances", lotBalances);
-  console.log("Selected material", selectedMaterial);
-  console.log("lotsForMaterial", lotsForMaterial);
-
-
   const handleSelectMaterial = (m: Material) => {
     setSelectedMaterial(m);
     setMaterialSearch(`${m.name} (${m.material_code})`);
@@ -85,14 +93,19 @@ const IssueModal: React.FC<IssueModalProps> = ({
       (l) => `${l.material_code}-${l.lot_number}` === lotId
     );
     setSelectedLot(lot || null);
-    // manufacturer stays tied to the selected material
     if (selectedMaterial) {
       setManufacturer(selectedMaterial.manufacturer || "");
     }
   };
 
+  const isBatchRequired = consumptionType === "USAGE";
+  const isBatchOptional = consumptionType === "R_AND_D";
+  const isBatchIrrelevant =
+    consumptionType === "WASTAGE" || consumptionType === "DESTRUCTION";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!selectedMaterial) {
       setSubmitError("Please select a material.");
       return;
@@ -105,8 +118,16 @@ const IssueModal: React.FC<IssueModalProps> = ({
       setSubmitError("Please enter a quantity.");
       return;
     }
-    if (!productBatchNo) {
-      setSubmitError("Please enter the ES batch number.");
+
+    if (isBatchRequired && !productBatchNo.trim()) {
+      setSubmitError("Please enter the ES batch number for Usage.");
+      return;
+    }
+
+    if (consumptionType === "DESTRUCTION" && !comment.trim()) {
+      setSubmitError(
+        "Please enter a comment explaining the destruction of stock."
+      );
       return;
     }
 
@@ -119,10 +140,18 @@ const IssueModal: React.FC<IssueModalProps> = ({
         lot_number: selectedLot.lot_number,
         qty: Number(qty),
         uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
-        product_batch_no: productBatchNo,
-        product_manufacture_date: productManufactureDate || null,
+        product_batch_no:
+          isBatchRequired || isBatchOptional
+            ? productBatchNo.trim() || null
+            : null,
+        product_manufacture_date:
+          isBatchRequired || isBatchOptional
+            ? productManufactureDate || null
+            : null,
+        consumption_type: consumptionType,
         created_by: "apingu", // placeholder until auth wired
         comment: comment || null,
+        target_ref: null,
       };
 
       await apiFetch("/issues/", {
@@ -143,11 +172,10 @@ const IssueModal: React.FC<IssueModalProps> = ({
 
   if (!open) return null;
 
-  // Decide which UOM to show in the Quantity label
   const quantityUom =
-    selectedLot?.uom_code ||
-    selectedMaterial?.base_uom_code ||
-    "";
+    selectedLot?.uom_code || selectedMaterial?.base_uom_code || "";
+
+  const showBatchFields = !isBatchIrrelevant;
 
   return (
     <div className="modal-overlay">
@@ -156,7 +184,7 @@ const IssueModal: React.FC<IssueModalProps> = ({
           <div>
             <div className="modal-title">New Consumption</div>
             <div className="modal-subtitle">
-              Issue material from a specific lot into an ES product batch.
+              Issue material from a specific lot with GMP-style traceability.
             </div>
           </div>
           <button className="icon-btn" type="button" onClick={onClose}>
@@ -166,6 +194,25 @@ const IssueModal: React.FC<IssueModalProps> = ({
 
         <form className="modal-body" onSubmit={handleSubmit}>
           <div className="form-grid">
+            {/* CONSUMPTION TYPE */}
+            <div className="form-group">
+              <label className="label">Consumption type</label>
+              <select
+                className="input"
+                value={consumptionType}
+                onChange={(e) =>
+                  setConsumptionType(e.target.value as ConsumptionTypeCode)
+                }
+              >
+                {CONSUMPTION_TYPES.map((opt) => (
+                  <option key={opt.code} value={opt.code}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              
+            </div>
+
             {/* MATERIAL */}
             <div className="form-group">
               <label className="label">Material</label>
@@ -278,36 +325,84 @@ const IssueModal: React.FC<IssueModalProps> = ({
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
               />
+              {selectedLot && (
+                <div
+                  className="availability-chip"
+                  style={{
+                    marginTop: "0.35rem",
+                    fontSize: "0.8rem",
+                    color: "#c4b5fd",
+                  }}
+                >
+                  Available:{" "}
+                  <strong>
+                    {selectedLot.balance_qty} {selectedLot.uom_code}
+                  </strong>
+                </div>
+              )}
             </div>
 
-            {/* ES BATCH */}
-            <div className="form-group">
-              <label className="label">ES Batch</label>
-              <input
-                className="input"
-                placeholder="e.g. ES174424"
-                value={productBatchNo}
-                onChange={(e) => setProductBatchNo(e.target.value)}
-              />
-            </div>
+            {/* ES BATCH (for Usage / R&D) */}
+            {showBatchFields && (
+              <>
+                <div className="form-group">
+                  <label className="label">
+                    ES Batch{" "}
+                    {isBatchRequired ? (
+                      <span style={{ opacity: 0.7 }}>(required)</span>
+                    ) : (
+                      <span style={{ opacity: 0.7 }}>(optional)</span>
+                    )}
+                  </label>
+                  <input
+                    className="input"
+                    placeholder="e.g. ES174424"
+                    value={productBatchNo}
+                    onChange={(e) => setProductBatchNo(e.target.value)}
+                  />
+                </div>
 
-            {/* PRODUCT MANUFACTURE DATE */}
-            <div className="form-group">
-              <label className="label">Product manufacture date</label>
-              <input
-                className="input"
-                type="date"
-                value={productManufactureDate}
-                onChange={(e) => setProductManufactureDate(e.target.value)}
-              />
-            </div>
+                <div className="form-group">
+                  <label className="label">Product manufacture date</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={productManufactureDate}
+                    onChange={(e) => setProductManufactureDate(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Info when ES batch is not relevant */}
+            {isBatchIrrelevant && (
+              <div className="form-group form-group-full">
+                <label className="label">Batch linkage</label>
+                <div className="input" style={{ opacity: 0.7 }}>
+                  ES Batch: N/A for {consumptionType === "WASTAGE"
+                    ? "wastage"
+                    : "destruction"}{" "}
+                  movements. This transaction will still appear in the lot
+                  ledger.
+                </div>
+              </div>
+            )}
 
             {/* COMMENT */}
             <div className="form-group form-group-full">
-              <label className="label">Comment</label>
+              <label className="label">
+                Comment{" "}
+                {consumptionType === "DESTRUCTION" && (
+                  <span style={{ opacity: 0.7 }}>(required for destruction)</span>
+                )}
+              </label>
               <textarea
                 className="input textarea"
-                placeholder="e.g. Initial issue into ES174424 – pre-weigh"
+                placeholder={
+                  consumptionType === "USAGE"
+                    ? "e.g. Issue into ES174424 – pre-weigh"
+                    : "Reason / context for this consumption…"
+                }
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
               />

@@ -90,9 +90,19 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
           </div>
         </div>
 
-        <div className="table-wrapper">
-          <table>
-            <thead>
+        <div
+          className="table-wrapper"
+          style={{ maxHeight: 480, overflowY: "auto" }}
+        >
+          <table className="table">
+            <thead
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 1,
+                background: "#050816",
+              }}
+            >
               <tr>
                 <th>Code</th>
                 <th>Name</th>
@@ -101,7 +111,6 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
                 <th>Base UOM</th>
                 <th>Manufacturer</th>
                 <th>Supplier</th>
-                <th>ES Criteria</th>
                 <th>Status</th>
                 <th style={{ width: 80 }}>Actions</th>
               </tr>
@@ -109,7 +118,9 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
             <tbody>
               {libraryFilteredMaterials.length === 0 && (
                 <tr>
-                  <td colSpan={10}>No materials found.</td>
+                  <td colSpan={9} className="empty-row">
+                    No materials found.
+                  </td>
                 </tr>
               )}
               {libraryFilteredMaterials.map((m) => (
@@ -123,17 +134,6 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
                   <td>{m.base_uom_code}</td>
                   <td>{m.manufacturer || "—"}</td>
                   <td>{m.supplier || "—"}</td>
-                  <td>
-                    <span
-                      className={
-                        m.complies_es_criteria
-                          ? "tag tag-success"
-                          : "tag tag-warning"
-                      }
-                    >
-                      {m.complies_es_criteria ? "Complies" : "No"}
-                    </span>
-                  </td>
                   <td>
                     <span
                       className={

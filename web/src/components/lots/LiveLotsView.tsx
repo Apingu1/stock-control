@@ -47,22 +47,12 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
 
   return (
     <section className="content">
-      <header className="content-header">
-        <div>
-          <h1>Live Lot Balances</h1>
-          <p className="content-subtitle">
-            Real-time view of all lots with current balance, manufacturer and
-            supplier.
-          </p>
-        </div>
-      </header>
-
       <section className="card">
         <div className="card-header">
           <div>
-            <h2 className="card-title">Lots</h2>
+            <h2 className="card-title">Live lot balances</h2>
             <p className="card-subtitle">
-              Filter by status or search by material, lot, manufacturer or
+              Real-time view of all lots with current balance, manufacturer and
               supplier.
             </p>
           </div>
@@ -74,7 +64,8 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
               onChange={(e) => setSearch(e.target.value)}
             />
             <select
-              className="select"
+              className="input"
+              style={{ width: 180 }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             >
@@ -96,8 +87,8 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Material Code</th>
-                    <th>Material Name</th>
+                    <th>Material code</th>
+                    <th>Material name</th>
                     <th>Lot No.</th>
                     <th>Expiry</th>
                     <th>Manufacturer</th>

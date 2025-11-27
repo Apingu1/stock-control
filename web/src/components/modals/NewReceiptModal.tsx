@@ -1,4 +1,4 @@
-// src/components/modals/NewReceiptModal.tsx
+// src/components/receipts/NewReceiptModal.tsx
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { Material, ApprovedManufacturer } from "../../types";
@@ -21,6 +21,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
     null
   );
+
   const [lotNumber, setLotNumber] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [receiptDate, setReceiptDate] = useState("");
@@ -28,11 +29,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const [unitPrice, setUnitPrice] = useState("");
   const [supplier, setSupplier] = useState("");
   const [manufacturer, setManufacturer] = useState("");
-  const [comment, setComment] = useState("");
+  const [compliesEs, setCompliesEs] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Reset when modal opens
   useEffect(() => {
     if (open) {
       setMaterialSearch("");
@@ -44,7 +46,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       setUnitPrice("");
       setSupplier("");
       setManufacturer("");
-      setComment("");
+      setCompliesEs(false);
       setSubmitting(false);
       setSubmitError(null);
     }
@@ -65,7 +67,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const handleSelectMaterial = (m: Material) => {
     setSelectedMaterial(m);
     setMaterialSearch(`${m.name} (${m.material_code})`);
-    setManufacturer(""); // reset so user must choose from list if tablets/caps
+    setManufacturer("");
   };
 
   const isTabletsCaps =
@@ -82,8 +84,9 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!selectedMaterial) {
-      setSubmitError("Please select a material from the list.");
+      setSubmitError("Please select a material.");
       return;
     }
     if (!qty) {
@@ -91,14 +94,11 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       return;
     }
     if (!receiptDate) {
-      setSubmitError("Please enter the receipt date.");
+      setSubmitError("Please enter a receipt date.");
       return;
     }
-
     if (hasApproved && !manufacturer) {
-      setSubmitError(
-        "Please select a manufacturer from the approved list for this material."
-      );
+      setSubmitError("Please select an approved manufacturer.");
       return;
     }
 
@@ -108,16 +108,17 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
     try {
       const payload = {
         material_code: selectedMaterial.material_code,
-        lot_number: lotNumber || "",
+        lot_number: lotNumber || null,
         expiry_date: expiryDate || null,
-        receipt_date: receiptDate || null,
+        receipt_date: receiptDate,
         qty: Number(qty),
+        // 🔑 this was missing and caused the 422
         uom_code: selectedMaterial.base_uom_code,
         unit_price: unitPrice ? Number(unitPrice) : null,
         supplier: supplier || null,
         manufacturer: manufacturer || null,
-        comment: comment || null,
-        created_by: "apingu", // placeholder until auth wired
+        complies_es_criteria: compliesEs,
+        created_by: "apingu",
       };
 
       await apiFetch("/receipts/", {
@@ -130,9 +131,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error(err);
-      setSubmitError(
-        err.message ?? "Failed to post receipt. Check manufacturer restrictions."
-      );
+      setSubmitError(err.message ?? "Failed to post receipt.");
     } finally {
       setSubmitting(false);
     }
@@ -150,6 +149,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               Post an incoming delivery into ES stock.
             </div>
           </div>
+
           <button type="button" className="icon-btn" onClick={onClose}>
             ✕
           </button>
@@ -163,7 +163,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               <div className="typeahead-wrap">
                 <input
                   className="input"
-                  placeholder="e.g. RAMIPRIL 10MG (MAT0327)"
+                  placeholder="Start typing material or code…"
                   value={materialSearch}
                   onChange={(e) => {
                     setMaterialSearch(e.target.value);
@@ -171,7 +171,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                     setManufacturer("");
                   }}
                 />
-                {filteredMaterials.length > 0 && (
+                {filteredMaterials.length > 0 && !selectedMaterial && (
                   <div className="typeahead-dropdown">
                     {filteredMaterials.map((m) => (
                       <button
@@ -192,12 +192,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               </div>
             </div>
 
-            {/* LOT */}
+            {/* LOT NUMBER */}
             <div className="form-group">
               <label className="label">Lot number</label>
               <input
                 className="input"
-                placeholder="e.g. 4P3611A"
+                placeholder="e.g. A43621"
                 value={lotNumber}
                 onChange={(e) => setLotNumber(e.target.value)}
               />
@@ -213,6 +213,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                 onChange={(e) => setExpiryDate(e.target.value)}
               />
             </div>
+
             <div className="form-group">
               <label className="label">
                 Quantity{" "}
@@ -223,7 +224,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                 type="number"
                 min={0}
                 step="0.001"
-                placeholder="e.g. 280"
+                placeholder="e.g. 120"
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
               />
@@ -239,6 +240,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                 onChange={(e) => setReceiptDate(e.target.value)}
               />
             </div>
+
             <div className="form-group">
               <label className="label">Unit price (£)</label>
               <input
@@ -246,7 +248,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                 type="number"
                 min={0}
                 step="0.0001"
-                placeholder="e.g. 0.025"
+                placeholder="e.g. 0.10"
                 value={unitPrice}
                 onChange={(e) => setUnitPrice(e.target.value)}
               />
@@ -257,7 +259,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               <label className="label">Supplier</label>
               <input
                 className="input"
-                placeholder="e.g. MEDI HEALTH"
+                placeholder="e.g. Medi Health"
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
               />
@@ -265,6 +267,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
 
             <div className="form-group">
               <label className="label">Manufacturer</label>
+
               {isTabletsCaps ? (
                 hasApproved ? (
                   <select
@@ -274,10 +277,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                   >
                     <option value="">Select manufacturer…</option>
                     {approvedForMaterial.map((am) => (
-                      <option
-                        key={am.id}
-                        value={am.manufacturer_name}
-                      >
+                      <option key={am.id} value={am.manufacturer_name}>
                         {am.manufacturer_name}
                       </option>
                     ))}
@@ -300,15 +300,32 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               )}
             </div>
 
-            {/* COMMENT */}
+            {/* ES CRITERIA */}
             <div className="form-group form-group-full">
-              <label className="label">Comment</label>
-              <textarea
-                className="input textarea"
-                placeholder="e.g. Initial booking from delivery note"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-              />
+              <label className="label">ES criteria</label>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  fontSize: 13,
+                }}
+              >
+                <input
+                  id="receipt-es-checkbox"
+                  type="checkbox"
+                  checked={compliesEs}
+                  onChange={(e) => setCompliesEs(e.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                <label
+                  htmlFor="receipt-es-checkbox"
+                  style={{ cursor: "pointer" }}
+                >
+                  Goods-in checks confirm this lot complies with ES criteria
+                </label>
+              </div>
             </div>
           </div>
 

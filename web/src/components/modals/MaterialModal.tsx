@@ -39,9 +39,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     initial?.manufacturer ?? ""
   );
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
-  const [compliesEs, setCompliesEs] = useState(
-    initial?.complies_es_criteria ?? true
-  );
   const [status, setStatus] = useState(initial?.status ?? "ACTIVE");
 
   const [submitting, setSubmitting] = useState(false);
@@ -91,7 +88,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       );
       setManufacturer(initial?.manufacturer ?? "");
       setSupplier(initial?.supplier ?? "");
-      setCompliesEs(initial?.complies_es_criteria ?? true);
       setStatus(initial?.status ?? "ACTIVE");
       setSubmitting(false);
       setError(null);
@@ -137,7 +133,8 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           base_uom_code: baseUomCode.trim(),
           manufacturer: manufacturer || null,
           supplier: supplier || null,
-          complies_es_criteria: compliesEs,
+          // Silent default – we no longer expose this in the UI
+          complies_es_criteria: true,
           status,
           created_by: "apingu",
         };
@@ -155,7 +152,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           base_uom_code: baseUomCode.trim(),
           manufacturer: manufacturer || null,
           supplier: supplier || null,
-          complies_es_criteria: compliesEs,
+          complies_es_criteria: true,
           status,
         };
 
@@ -355,32 +352,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
               />
-            </div>
-
-            <div className="form-group form-group-full">
-              <label className="label">ES criteria</label>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  fontSize: 13,
-                }}
-              >
-                <input
-                  id="complies-es-checkbox"
-                  type="checkbox"
-                  checked={compliesEs}
-                  onChange={(e) => setCompliesEs(e.target.checked)}
-                  style={{ width: 16, height: 16 }}
-                />
-                <label
-                  htmlFor="complies-es-checkbox"
-                  style={{ cursor: "pointer" }}
-                >
-                  Material complies with licensed finished product ES criteria
-                </label>
-              </div>
             </div>
 
             {isEdit && isTabletsCaps && (

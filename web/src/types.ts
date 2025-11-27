@@ -32,7 +32,7 @@ export type Material = {
   supplier: string | null;
   complies_es_criteria: boolean;
   status: string;
-  // NEW: optional list from backend
+  // optional list from backend
   approved_manufacturers?: ApprovedManufacturer[];
 };
 
@@ -53,6 +53,9 @@ export type Receipt = {
   created_at: string;
   created_by: string;
   comment: string | null;
+
+  // NEW: ES criteria status for this receipt (optional so older data is fine)
+  complies_es_criteria?: boolean | null;
 };
 
 // Matches enriched IssueOut
@@ -72,6 +75,9 @@ export type Issue = {
   created_at: string;
   created_by: string;
   comment: string | null;
+
+  // NEW: to support consumption type filters/column
+  consumption_type?: string | null;
 };
 
 export type ViewMode =

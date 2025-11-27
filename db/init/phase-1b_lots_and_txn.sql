@@ -98,12 +98,14 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
     id                      SERIAL PRIMARY KEY,
     material_lot_id         INTEGER NOT NULL REFERENCES material_lots(id),
     txn_type                TEXT NOT NULL,
+    consumption_type        TEXT NOT NULL DEFAULT 'USAGE',  -- USAGE / WASTAGE / DESTRUCTION / R_AND_D
     qty                     NUMERIC(18, 3) NOT NULL,
     uom_code                TEXT NOT NULL,
     direction               SMALLINT NOT NULL,
     unit_price              NUMERIC(18, 4),
     total_value             NUMERIC(18, 4),
     target_ref              TEXT,
+    product_batch_no        TEXT,           -- ES batch or R&D ref (optional)
     product_manufacture_date DATE,
     comment                 TEXT,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -147,7 +149,8 @@ GROUP BY
     ml.supplier,
     m.base_uom_code;
 
--- Approved manufacturers per material
+-- Approved manufacturers per material (compat duplicate kept for backwards compatibility)
+
 CREATE TABLE IF NOT EXISTS material_approved_manufacturers (
     id              SERIAL PRIMARY KEY,
     material_id     INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
@@ -159,7 +162,6 @@ CREATE TABLE IF NOT EXISTS material_approved_manufacturers (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_material_approved_manufacturer_material_name
 ON material_approved_manufacturers (material_id, LOWER(manufacturer_name));
-
 
 -- Backwards-compatibility wrapper: keep old name v_lot_balances working ------
 

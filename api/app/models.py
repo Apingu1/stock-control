@@ -66,7 +66,6 @@ class Uom(Base):
         return f"<Uom code={self.code!r}>"
 
 
-
 # --- Materials ---------------------------------------------------------------
 
 
@@ -116,7 +115,7 @@ class Material(Base):
         cascade="all, delete-orphan",
     )
 
-    # NEW: approved manufacturers for tablets/capsules etc.
+    # Approved manufacturers for tablets/capsules etc.
     approved_manufacturers: Mapped[list["MaterialApprovedManufacturer"]] = relationship(
         "MaterialApprovedManufacturer",
         back_populates="material",
@@ -127,7 +126,7 @@ class Material(Base):
         return f"<Material code={self.material_code!r} name={self.name!r}>"
 
 
-# NEW: Approved manufacturers per material ------------------------------------
+# --- Approved manufacturers per material ------------------------------------
 
 
 class MaterialApprovedManufacturer(Base):
@@ -221,6 +220,12 @@ class StockTransaction(Base):
     # RECEIPT / ISSUE
     txn_type: Mapped[str] = mapped_column(String(20), nullable=False)
 
+    # NEW: consumption type for ISSUE records:
+    #  USAGE / WASTAGE / DESTRUCTION / R_AND_D
+    consumption_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="USAGE"
+    )
+
     qty: Mapped[float] = mapped_column(Float, nullable=False)
     uom_code: Mapped[str] = mapped_column(String(50), nullable=False)
 
@@ -230,7 +235,13 @@ class StockTransaction(Base):
     unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     total_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # Optional reference (e.g. GRN, worksheet ref, internal link)
     target_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # NEW: ES batch or R&D reference for usage
+    product_batch_no: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )
 
     # Product manufacture date for issues (batch usage)
     product_manufacture_date: Mapped[Optional[date]] = mapped_column(

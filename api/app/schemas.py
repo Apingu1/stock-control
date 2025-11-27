@@ -120,7 +120,6 @@ class ReceiptOut(BaseModel):
     class Config:
         from_attributes = True
 
-
 # --- Issues (Used) -----------------------------------------------------------
 
 
@@ -133,9 +132,15 @@ class IssueCreate(BaseModel):
     lot_number: str
     qty: float
     uom_code: str
-    # ES batch number (display only; not persisted in DB yet)
-    product_batch_no: str
+    # ES batch number / R&D ref (now stored in DB)
+    product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[datetime] = None
+    # Consumption type:
+    #  - USAGE       → batch usage (ES batch required)
+    #  - WASTAGE     → wastage/spillage
+    #  - DESTRUCTION → destruction of stock
+    #  - R_AND_D     → R&D usage (ES batch optional)
+    consumption_type: str = "USAGE"
     # Optional reference (e.g. worksheet ref, internal ref)
     target_ref: Optional[str] = None
     created_by: str
@@ -150,12 +155,14 @@ class IssueOut(BaseModel):
     expiry_date: Optional[datetime] = None
     qty: float
     uom_code: str
-    # Optional, because we don’t store it in stock_transactions
+    # Stored on stock_transactions from now on
     product_batch_no: Optional[str] = None
     manufacturer: Optional[str] = None
     supplier: Optional[str] = None
     # For display on the Consumption page
     product_manufacture_date: Optional[datetime] = None
+    # Consumption type (USAGE / WASTAGE / DESTRUCTION / R_AND_D)
+    consumption_type: str
     # Optional reference (e.g. worksheet ref, internal ref)
     target_ref: Optional[str] = None
     created_at: datetime

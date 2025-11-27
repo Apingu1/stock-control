@@ -2,8 +2,8 @@ import React, { useMemo, useState } from "react";
 import type { Receipt } from "../../types";
 import { formatDate } from "../../utils/format";
 
-// Local date filter type for this component
-type DateFilter = "ALL" | "30" | "90" | "365" | "CUSTOM";
+type DateFilter = "ALL" | "30" | "90" | "365";
+
 interface GoodsReceiptsViewProps {
   receipts: Receipt[];
   loadingReceipts: boolean;
@@ -19,17 +19,8 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
-  const [uomFilter, setUomFilter] = useState<string>("ALL");
   const [supplierFilter, setSupplierFilter] = useState<string>("ALL");
   const [manufacturerFilter, setManufacturerFilter] = useState<string>("ALL");
-
-  const uniqueUoms = useMemo(
-    () =>
-      Array.from(
-        new Set(receipts.map((r) => r.uom_code).filter((x) => !!x))
-      ).sort(),
-    [receipts]
-  );
 
   const uniqueSuppliers = useMemo(
     () =>
@@ -60,7 +51,6 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
     const now = new Date();
 
     return receipts.filter((r) => {
-      // Date filter
       if (dateFilter !== "ALL") {
         const created = new Date(r.created_at);
         const diffMs = now.getTime() - created.getTime();
@@ -70,14 +60,9 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
         if (dateFilter === "365" && diffDays > 365) return false;
       }
 
-      if (uomFilter !== "ALL" && r.uom_code !== uomFilter) {
-        return false;
-      }
-
       if (supplierFilter !== "ALL" && r.supplier !== supplierFilter) {
         return false;
       }
-
       if (
         manufacturerFilter !== "ALL" &&
         r.manufacturer !== manufacturerFilter
@@ -102,51 +87,32 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
 
       return haystack.includes(q);
     });
-  }, [
-    receipts,
-    search,
-    dateFilter,
-    uomFilter,
-    supplierFilter,
-    manufacturerFilter,
-  ]);
+  }, [receipts, search, dateFilter, supplierFilter, manufacturerFilter]);
 
   return (
     <section className="content">
-      <header className="content-header">
-        <div>
-          <h1>Goods Receipts</h1>
-          <p className="content-subtitle">
-            Log and review incoming goods. The Goods Receipt Date is the actual
-            receipt date from the GRN, not just the record creation time.
-          </p>
-        </div>
-        <div className="content-actions">
-          <button className="btn primary" onClick={onNewReceipt}>
-            + New Goods Receipt
-          </button>
-        </div>
-      </header>
-
       <section className="card">
         <div className="card-header">
           <div>
-            <h2 className="card-title">Receipt History</h2>
-            <p className="card-subtitle">
-              Use the filters to drill down by date, UOM, supplier and
-              manufacturer.
-            </p>
+            <div className="card-title">Goods Receipts</div>
+            <div className="card-subtitle">
+              Log and review incoming goods. The Goods Receipt Date is the
+              actual receipt date from the GRN, not just the record creation
+              time.
+            </div>
           </div>
           <div className="card-actions card-actions-wrap">
             <input
               className="input"
+              style={{ minWidth: 260 }}
               placeholder="Search material / lot / supplier / manufacturer…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
 
             <select
-              className="select"
+              className="input"
+              style={{ width: 150 }}
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value as DateFilter)}
             >
@@ -157,20 +123,8 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             </select>
 
             <select
-              className="select"
-              value={uomFilter}
-              onChange={(e) => setUomFilter(e.target.value)}
-            >
-              <option value="ALL">All UOMs</option>
-              {uniqueUoms.map((uom) => (
-                <option key={uom} value={uom}>
-                  {uom}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="select"
+              className="input"
+              style={{ width: 180 }}
               value={supplierFilter}
               onChange={(e) => setSupplierFilter(e.target.value)}
             >
@@ -183,7 +137,8 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             </select>
 
             <select
-              className="select"
+              className="input"
+              style={{ width: 210 }}
               value={manufacturerFilter}
               onChange={(e) => setManufacturerFilter(e.target.value)}
             >
@@ -194,46 +149,71 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                 </option>
               ))}
             </select>
+
+            <button className="btn primary" onClick={onNewReceipt}>
+              + New Goods Receipt
+            </button>
           </div>
         </div>
 
-        <div className="card-body">
-          {loadingReceipts && (
-            <div className="info-row">Loading goods receipts…</div>
-          )}
-          {receiptsError && !loadingReceipts && (
-            <div className="error-row">{receiptsError}</div>
-          )}
-          {!loadingReceipts && !receiptsError && (
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
+        {loadingReceipts && (
+          <div className="info-row">Loading goods receipts…</div>
+        )}
+        {receiptsError && !loadingReceipts && (
+          <div className="error-row">{receiptsError}</div>
+        )}
+        {!loadingReceipts && !receiptsError && (
+          <div
+            className="table-wrapper"
+            style={{ maxHeight: 480, overflowY: "auto" }}
+          >
+            <table className="table">
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  background: "#050816",
+                }}
+              >
+                <tr>
+                  <th>Goods Receipt Date</th>
+                  <th>Material Code</th>
+                  <th>Material Name</th>
+                  <th>Lot No.</th>
+                  <th>Expiry</th>
+                  <th className="numeric">Qty</th>
+                  <th>UOM</th>
+                  <th>Unit Price</th>
+                  <th>Total</th>
+                  <th>Supplier</th>
+                  <th>Manufacturer</th>
+                  <th>ES Criteria</th>
+                  <th>Created By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReceipts.length === 0 && (
                   <tr>
-                    <th>Goods Receipt Date</th>
-                    <th>Material Code</th>
-                    <th>Material Name</th>
-                    <th>Lot No.</th>
-                    <th>Expiry</th>
-                    <th className="numeric">Qty</th>
-                    <th>UOM</th>
-                    <th>Unit Price</th>
-                    <th>Total</th>
-                    <th>Supplier</th>
-                    <th>Manufacturer</th>
-                    <th>Ref / Comment</th>
-                    <th>Created By</th>
+                    <td colSpan={13} className="empty-row">
+                      No receipts match your filters.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredReceipts.length === 0 && (
-                    <tr>
-                      <td colSpan={13} className="empty-row">
-                        No receipts match your filters.
-                      </td>
-                    </tr>
-                  )}
+                )}
 
-                  {filteredReceipts.map((r) => (
+                {filteredReceipts.map((r) => {
+                  let esLabel = "—";
+                  let esClass = "tag tag-muted";
+
+                  if (r.complies_es_criteria === true) {
+                    esLabel = "Complies";
+                    esClass = "tag tag-success";
+                  } else if (r.complies_es_criteria === false) {
+                    esLabel = "No";
+                    esClass = "tag tag-warning";
+                  }
+
+                  return (
                     <tr key={r.id}>
                       <td>{formatDate(r.created_at)}</td>
                       <td>{r.material_code}</td>
@@ -251,20 +231,16 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                       <td>{r.supplier || "—"}</td>
                       <td>{r.manufacturer || "—"}</td>
                       <td>
-                        {r.target_ref || r.comment
-                          ? [r.target_ref, r.comment]
-                              .filter(Boolean)
-                              .join(" — ")
-                          : "—"}
+                        <span className={esClass}>{esLabel}</span>
                       </td>
                       <td>{r.created_by}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </section>
   );

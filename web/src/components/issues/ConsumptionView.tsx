@@ -2,8 +2,14 @@ import React, { useMemo, useState } from "react";
 import type { Issue } from "../../types";
 import { formatDate } from "../../utils/format";
 
-// Local date filter type just for this view
-type DateFilter = "ALL" | "30" | "90" | "365" | "CUSTOM";
+type DateFilter = "ALL" | "30" | "90" | "365";
+type ConsumptionTypeFilter =
+  | "ALL"
+  | "USAGE"
+  | "WASTAGE"
+  | "DESTRUCTION"
+  | "R_AND_D";
+
 interface ConsumptionViewProps {
   issues: Issue[];
   loadingIssues: boolean;
@@ -11,37 +17,22 @@ interface ConsumptionViewProps {
   onNewIssue: () => void;
 }
 
+const CONSUMPTION_TYPE_LABELS: Record<string, string> = {
+  USAGE: "Usage (Batch manufacturing)",
+  WASTAGE: "Wastage",
+  DESTRUCTION: "Destruction",
+  R_AND_D: "R&D usage",
+};
+
 const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   issues,
   loadingIssues,
   issuesError,
-  onNewIssue,
 }) => {
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
-  const [uomFilter, setUomFilter] = useState<string>("ALL");
-  const [supplierFilter, setSupplierFilter] = useState<string>("ALL");
   const [manufacturerFilter, setManufacturerFilter] = useState<string>("ALL");
-
-  const uniqueUoms = useMemo(
-    () =>
-      Array.from(
-        new Set(issues.map((i) => i.uom_code).filter((x) => !!x))
-      ).sort(),
-    [issues]
-  );
-
-  const uniqueSuppliers = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          issues
-            .map((i) => i.supplier || "")
-            .filter((x) => x && x.trim().length > 0)
-        )
-      ).sort(),
-    [issues]
-  );
+  const [typeFilter, setTypeFilter] = useState<ConsumptionTypeFilter>("ALL");
 
   const uniqueManufacturers = useMemo(
     () =>
@@ -55,11 +46,25 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
     [issues]
   );
 
+  const uniqueTypes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          issues
+            .map((i) => (i.consumption_type || "USAGE") as string)
+            .filter((x) => x && x.trim().length > 0)
+        )
+      ).sort(),
+    [issues]
+  );
+
   const filteredIssues = useMemo(() => {
     const q = search.trim().toLowerCase();
     const now = new Date();
 
     return issues.filter((i) => {
+      const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
+
       if (dateFilter !== "ALL") {
         const created = new Date(i.created_at);
         const diffMs = now.getTime() - created.getTime();
@@ -69,18 +74,11 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         if (dateFilter === "365" && diffDays > 365) return false;
       }
 
-      if (uomFilter !== "ALL" && i.uom_code !== uomFilter) {
+      if (manufacturerFilter !== "ALL" && i.manufacturer !== manufacturerFilter) {
         return false;
       }
 
-      if (supplierFilter !== "ALL" && i.supplier !== supplierFilter) {
-        return false;
-      }
-
-      if (
-        manufacturerFilter !== "ALL" &&
-        i.manufacturer !== manufacturerFilter
-      ) {
+      if (typeFilter !== "ALL" && ct !== typeFilter) {
         return false;
       }
 
@@ -91,61 +89,44 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.material_name,
         i.lot_number,
         i.uom_code,
-        i.supplier ?? "",
         i.manufacturer ?? "",
         i.product_batch_no ?? "",
         i.comment ?? "",
+        i.consumption_type ?? "",
       ]
         .join(" ")
         .toLowerCase();
 
       return haystack.includes(q);
     });
-  }, [
-    issues,
-    search,
-    dateFilter,
-    uomFilter,
-    supplierFilter,
-    manufacturerFilter,
-  ]);
+  }, [issues, search, dateFilter, manufacturerFilter, typeFilter]);
+
+  const renderConsumptionType = (raw?: string | null): string =>
+    raw ? CONSUMPTION_TYPE_LABELS[raw] ?? raw : "Usage";
 
   return (
     <section className="content">
-      <header className="content-header">
-        <div>
-          <h1>Consumption / Issues</h1>
-          <p className="content-subtitle">
-            Track material consumption by lot, including Issue Date and Product
-            Manufacture Date.
-          </p>
-        </div>
-        <div className="content-actions">
-          <button className="btn primary" onClick={onNewIssue}>
-            + New Issue
-          </button>
-        </div>
-      </header>
-
       <section className="card">
         <div className="card-header">
           <div>
-            <h2 className="card-title">Issue History</h2>
-            <p className="card-subtitle">
-              Filter by date, UOM, supplier and manufacturer, or use the search
-              box to find specific lots or materials.
-            </p>
+            <div className="card-title">Issue History</div>
+            <div className="card-subtitle">
+              Filter by date, consumption type or manufacturer, or search by
+              material, lot or ES batch.
+            </div>
           </div>
           <div className="card-actions card-actions-wrap">
             <input
               className="input"
-              placeholder="Search material / lot / supplier / manufacturer…"
+              style={{ minWidth: 260 }}
+              placeholder="Search material / lot / ES batch / comment…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
 
             <select
-              className="select"
+              className="input"
+              style={{ width: 150 }}
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value as DateFilter)}
             >
@@ -156,33 +137,24 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
             </select>
 
             <select
-              className="select"
-              value={uomFilter}
-              onChange={(e) => setUomFilter(e.target.value)}
+              className="input"
+              style={{ width: 190 }}
+              value={typeFilter}
+              onChange={(e) =>
+                setTypeFilter(e.target.value as ConsumptionTypeFilter)
+              }
             >
-              <option value="ALL">All UOMs</option>
-              {uniqueUoms.map((uom) => (
-                <option key={uom} value={uom}>
-                  {uom}
+              <option value="ALL">All types</option>
+              {uniqueTypes.map((t) => (
+                <option key={t} value={t}>
+                  {CONSUMPTION_TYPE_LABELS[t] ?? t}
                 </option>
               ))}
             </select>
 
             <select
-              className="select"
-              value={supplierFilter}
-              onChange={(e) => setSupplierFilter(e.target.value)}
-            >
-              <option value="ALL">All suppliers</option>
-              {uniqueSuppliers.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="select"
+              className="input"
+              style={{ width: 210 }}
               value={manufacturerFilter}
               onChange={(e) => setManufacturerFilter(e.target.value)}
             >
@@ -196,68 +168,86 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
           </div>
         </div>
 
-        <div className="card-body">
-          {loadingIssues && (
-            <div className="info-row">Loading consumption history…</div>
-          )}
-          {issuesError && !loadingIssues && (
-            <div className="error-row">{issuesError}</div>
-          )}
-          {!loadingIssues && !issuesError && (
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
+        {loadingIssues && (
+          <div className="info-row">Loading consumption history…</div>
+        )}
+        {issuesError && !loadingIssues && (
+          <div className="error-row">{issuesError}</div>
+        )}
+        {!loadingIssues && !issuesError && (
+          <div
+            className="table-wrapper"
+            style={{ maxHeight: 480, overflowY: "auto" }}
+          >
+            <table className="table">
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  background: "#050816",
+                }}
+              >
+                <tr>
+                  <th>Issue Date</th>
+                  <th>Product Mfg Date</th>
+                  <th>Type</th>
+                  <th>ES Batch / Ref</th>
+                  <th>Material Code</th>
+                  <th>Material Name</th>
+                  <th>Lot No.</th>
+                  <th>Expiry</th>
+                  <th className="numeric">Qty</th>
+                  <th>UOM</th>
+                  <th>Manufacturer</th>
+                  <th>Comment</th>
+                  <th>Created By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredIssues.length === 0 && (
                   <tr>
-                    <th>Issue Date</th>
-                    <th>Product Mfg Date</th>
-                    <th>Material Code</th>
-                    <th>Material Name</th>
-                    <th>Lot No.</th>
-                    <th>Expiry</th>
-                    <th className="numeric">Qty</th>
-                    <th>UOM</th>
-                    <th>Supplier</th>
-                    <th>Manufacturer</th>
-                    <th>Ref / Comment</th>
-                    <th>Created By</th>
+                    <td colSpan={13} className="empty-row">
+                      No issues match your filters.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredIssues.length === 0 && (
-                    <tr>
-                      <td colSpan={12} className="empty-row">
-                        No issues match your filters.
-                      </td>
-                    </tr>
-                  )}
+                )}
 
-                  {filteredIssues.map((i) => (
+                {filteredIssues.map((i) => {
+                  const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
+                  const isBatchRelevant =
+                    ct === "USAGE" || ct === "R_AND_D";
+
+                  const esRef = isBatchRelevant
+                    ? i.product_batch_no || "—"
+                    : "N/A";
+
+                  return (
                     <tr key={i.id}>
                       <td>{formatDate(i.created_at)}</td>
                       <td>{formatDate(i.product_manufacture_date)}</td>
+                      <td>{renderConsumptionType(i.consumption_type)}</td>
+                      <td>{esRef}</td>
                       <td>{i.material_code}</td>
                       <td>{i.material_name}</td>
                       <td>{i.lot_number}</td>
                       <td>{formatDate(i.expiry_date)}</td>
                       <td className="numeric">{i.qty}</td>
                       <td>{i.uom_code}</td>
-                      <td>{i.supplier || "—"}</td>
                       <td>{i.manufacturer || "—"}</td>
                       <td>
-                        {i.product_batch_no || i.comment
-                          ? [i.product_batch_no, i.comment]
-                              .filter(Boolean)
-                              .join(" — ")
+                        {i.comment && i.comment.trim().length > 0
+                          ? i.comment
                           : "—"}
                       </td>
                       <td>{i.created_by}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </section>
   );

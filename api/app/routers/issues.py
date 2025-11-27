@@ -25,8 +25,6 @@ def create_issue(
     - Looks up (or creates) the MaterialLot for the given lot_number.
     - Checks there is enough stock in that lot (sum of qty * direction).
     - Inserts a StockTransaction with txn_type='ISSUE', direction=-1.
-    - Uses 'now' as created_at (the IssueCreate payload does not carry an
-      explicit issue_date; the consumption date is the time of entry).
     """
 
     # 1. Locate material
@@ -87,14 +85,16 @@ def create_issue(
     txn = StockTransaction(
         material_lot_id=lot.id,
         txn_type="ISSUE",
+        consumption_type=payload.consumption_type or "USAGE",
         qty=payload.qty,
         uom_code=payload.uom_code,
         direction=-1,
         unit_price=None,
         total_value=None,
         target_ref=payload.target_ref,
-        comment=payload.comment,
+        product_batch_no=payload.product_batch_no,
         product_manufacture_date=payload.product_manufacture_date,
+        comment=payload.comment,
         created_at=now,
         created_by=payload.created_by,
     )
@@ -105,8 +105,10 @@ def create_issue(
     db.refresh(lot)
     db.refresh(material)
 
-    # NOTE: product_batch_no is *not* stored in the DB; we just echo it back
-    # from the payload so the UI can show it in the immediate response.
+    # Manufacturer & supplier should come from the lot (GRN), not the material
+    manufacturer = lot.manufacturer or material.manufacturer
+    supplier = lot.supplier or material.supplier
+
     return IssueOut(
         id=txn.id,
         material_code=material.material_code,
@@ -115,10 +117,11 @@ def create_issue(
         expiry_date=lot.expiry_date,
         qty=txn.qty,
         uom_code=txn.uom_code,
-        product_batch_no=payload.product_batch_no,
-        manufacturer=material.manufacturer,
-        supplier=material.supplier,
+        product_batch_no=txn.product_batch_no,
+        manufacturer=manufacturer,
+        supplier=supplier,
         product_manufacture_date=txn.product_manufacture_date,
+        consumption_type=txn.consumption_type or "USAGE",
         target_ref=txn.target_ref,
         created_at=txn.created_at,
         created_by=txn.created_by,
@@ -152,6 +155,9 @@ def list_issues(
 
     results: List[IssueOut] = []
     for txn, lot, material in rows:
+        manufacturer = lot.manufacturer or material.manufacturer
+        supplier = lot.supplier or material.supplier
+
         results.append(
             IssueOut(
                 id=txn.id,
@@ -161,11 +167,11 @@ def list_issues(
                 expiry_date=lot.expiry_date,
                 qty=txn.qty,
                 uom_code=txn.uom_code,
-                # Historical issues won't have product_batch_no stored
-                product_batch_no=None,
-                manufacturer=material.manufacturer,
-                supplier=material.supplier,
+                product_batch_no=txn.product_batch_no,
+                manufacturer=manufacturer,
+                supplier=supplier,
                 product_manufacture_date=txn.product_manufacture_date,
+                consumption_type=txn.consumption_type or "USAGE",
                 target_ref=txn.target_ref,
                 created_at=txn.created_at,
                 created_by=txn.created_by,
