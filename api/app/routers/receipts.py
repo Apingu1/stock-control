@@ -6,7 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Material, MaterialLot, StockTransaction, MaterialApprovedManufacturer
+from ..models import (
+    Material,
+    MaterialLot,
+    StockTransaction,
+    MaterialApprovedManufacturer,
+)
 from ..schemas import ReceiptCreate, ReceiptOut
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -35,11 +40,24 @@ def create_receipt(
     - Looks up the Material by material_code.
     - For TABLETS_CAPSULES, if there are approved manufacturers configured,
       enforces that payload.manufacturer is one of them.
+    - Requires goods-in ES criteria confirmation (checkbox must be ticked).
     - Finds or creates a MaterialLot for the given lot_number.
     - Writes manufacturer/supplier to the lot (true traceability).
     - Inserts a StockTransaction with txn_type='RECEIPT', direction=+1.
     - Uses payload.receipt_date as StockTransaction.created_at.
+
+    NOTE:
+    - ES criteria is treated as a per-receipt confirmation only and is not
+      stored on the material or transaction; we just enforce that it is true
+      and echo it back as `complies_es_criteria=True` in the API response.
     """
+
+    # 0. Enforce ES criteria checkbox (must be ticked)
+    if not payload.complies_es_criteria:
+        raise HTTPException(
+            status_code=400,
+            detail="Ensure goods in comply with ES criteria specified in ES.SOP.112",
+        )
 
     # 1. Locate the material
     material = (
@@ -118,6 +136,10 @@ def create_receipt(
     if payload.supplier and not material.supplier:
         material.supplier = payload.supplier
 
+    # IMPORTANT:
+    # We NO LONGER update material.complies_es_criteria here.
+    # The ES checkbox is treated as a per-receipt confirmation only.
+
     # 5. Use the provided receipt_date as the transaction timestamp
     created_at = _normalise_receipt_datetime(payload.receipt_date)
 
@@ -156,6 +178,8 @@ def create_receipt(
         # Show from lot first (true history), fall back to material if needed
         supplier=lot.supplier or material.supplier,
         manufacturer=lot.manufacturer or material.manufacturer,
+        # Per-receipt confirmation – always True if we got this far
+        complies_es_criteria=True,
         created_at=txn.created_at,
         created_by=txn.created_by,
         comment=txn.comment,
@@ -172,6 +196,11 @@ def list_receipts(
 
     "Goods Receipt Date" displayed in the UI is taken from
     StockTransaction.created_at, which we set from ReceiptCreate.receipt_date.
+
+    ES criteria:
+    - Historically we treat all listed receipts as having complied with ES
+      checks at the time of booking-in, so we simply return
+      complies_es_criteria=True for each row.
     """
 
     stmt = (
@@ -201,6 +230,7 @@ def list_receipts(
                 target_ref=txn.target_ref,
                 supplier=lot.supplier or material.supplier,
                 manufacturer=lot.manufacturer or material.manufacturer,
+                complies_es_criteria=True,
                 created_at=txn.created_at,
                 created_by=txn.created_by,
                 comment=txn.comment,

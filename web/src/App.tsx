@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useEffect, useState } from "react";
 import type {
   LotBalance,
@@ -24,9 +25,17 @@ const App: React.FC = () => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
 
+  // Loading / error flags
   const [loadingLots, setLoadingLots] = useState(true);
   const [lotsError, setLotsError] = useState<string | null>(null);
 
+  const [loadingReceipts, setLoadingReceipts] = useState(true);
+  const [receiptsError, setReceiptsError] = useState<string | null>(null);
+
+  const [loadingIssues, setLoadingIssues] = useState(true);
+  const [issuesError, setIssuesError] = useState<string | null>(null);
+
+  // Modals
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false);
@@ -65,23 +74,33 @@ const App: React.FC = () => {
 
   const loadReceipts = async () => {
     try {
+      setLoadingReceipts(true);
+      setReceiptsError(null);
       const res = await apiFetch("/receipts/?limit=500");
       const data = (await res.json()) as Receipt[];
       setReceipts(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to load receipts", e);
       setReceipts([]);
+      setReceiptsError(e?.message ?? "Failed to load receipts");
+    } finally {
+      setLoadingReceipts(false);
     }
   };
 
   const loadIssues = async () => {
     try {
+      setLoadingIssues(true);
+      setIssuesError(null);
       const res = await apiFetch("/issues/?limit=500");
       const data = (await res.json()) as Issue[];
       setIssues(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to load issues", e);
       setIssues([]);
+      setIssuesError(e?.message ?? "Failed to load issues");
+    } finally {
+      setLoadingIssues(false);
     }
   };
 
@@ -313,6 +332,8 @@ const App: React.FC = () => {
         {view === "receipts" && (
           <GoodsReceiptsView
             receipts={receipts}
+            loadingReceipts={loadingReceipts}
+            receiptsError={receiptsError}
             onNewReceipt={() => setShowReceiptModal(true)}
           />
         )}
@@ -320,6 +341,8 @@ const App: React.FC = () => {
         {view === "issues" && (
           <ConsumptionView
             issues={issues}
+            loadingIssues={loadingIssues}
+            issuesError={issuesError}
             onNewIssue={() => setShowIssueModal(true)}
           />
         )}

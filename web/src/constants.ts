@@ -5,13 +5,12 @@ export const MATERIAL_CATEGORY_OPTIONS: string[] = [
   "CREAMS_OINTMENTS",
   "AMPOULES",
   "PACKAGING",
-  "WAREHOUSE_ITEMS",
   "NA",
 ];
 
 export const MATERIAL_TYPE_OPTIONS: string[] = [
   "API",
-  "PROD_API",
+  "LICENSED FP",
   "EXCIPIENT",
   "PACKAGING",
   "OTHER",

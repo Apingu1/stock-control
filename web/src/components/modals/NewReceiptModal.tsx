@@ -101,7 +101,10 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       setSubmitError("Please select an approved manufacturer.");
       return;
     }
-
+    if (!compliesEs) {
+    setSubmitError("Ensure goods in comply with ES criteria specified in ES.SOP.112");
+    return;
+    }
     setSubmitting(true);
     setSubmitError(null);
 

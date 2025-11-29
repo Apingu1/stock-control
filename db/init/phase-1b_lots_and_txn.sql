@@ -62,10 +62,11 @@ INSERT INTO material_categories (code, name) VALUES
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO material_types (code, name) VALUES
-    ('API',       'Active Pharmaceutical Ingredient'),
-    ('EXCIPIENT', 'Excipient'),
-    ('PACKAGING', 'Packaging'),
-    ('OTHER',     'Other')
+    ('API',         'Active Pharmaceutical Ingredient'),
+    ('Licensed FP', 'Licensed FP'),
+    ('EXCIPIENT',   'Excipient'),
+    ('PACKAGING',   'Packaging'),
+    ('OTHER',       'Other');
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO uoms (code, description) VALUES
@@ -126,6 +127,8 @@ WITH latest_status AS (
 SELECT
     ml.id              AS material_lot_id,
     m.material_code,
+    m.category_code,
+    m.type_code,
     m.name             AS material_name,
     ml.lot_number,
     ml.expiry_date,
@@ -141,6 +144,8 @@ LEFT JOIN stock_transactions st ON st.material_lot_id = ml.id
 GROUP BY
     ml.id,
     m.material_code,
+    m.category_code,
+    m.type_code,
     m.name,
     ml.lot_number,
     ml.expiry_date,

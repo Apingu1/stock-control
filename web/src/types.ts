@@ -3,6 +3,8 @@
 export type LotBalance = {
   material_lot_id: number;
   material_code: string;
+  category_code: string;
+  type_code: string;
   material_name: string;
   lot_number: string;
   expiry_date: string | null;

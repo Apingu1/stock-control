@@ -113,6 +113,7 @@ class ReceiptOut(BaseModel):
     target_ref: Optional[str] = None  # GRN / invoice ref
     supplier: Optional[str] = None
     manufacturer: Optional[str] = None
+    complies_es_criteria: Optional[bool] = None
     created_at: datetime
     created_by: str
     comment: Optional[str] = None
@@ -179,6 +180,8 @@ class IssueOut(BaseModel):
 class LotBalanceOut(BaseModel):
     material_lot_id: int
     material_code: str
+    category_code: str
+    type_code: str
     material_name: str
     lot_number: str
     expiry_date: Optional[date]
