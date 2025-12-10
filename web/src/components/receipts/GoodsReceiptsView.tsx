@@ -1,6 +1,8 @@
+// src/components/receipts/GoodsReceiptsView.tsx
 import React, { useMemo, useState } from "react";
 import type { Receipt } from "../../types";
 import { formatDate } from "../../utils/format";
+import CsvExportModal from "../../components/modals/CsvExportModal";
 
 type DateFilter = "ALL" | "30" | "90" | "365";
 
@@ -8,19 +10,54 @@ interface GoodsReceiptsViewProps {
   receipts: Receipt[];
   loadingReceipts: boolean;
   receiptsError: string | null;
-  onNewReceipt: () => void;
+  onNewReceipt: () => void; // kept for now, not used
 }
+
+type CsvExportParams = {
+  fromDate: string | null;
+  toDate: string | null;
+  respectFilters: boolean;
+};
+
+const exportToCsv = (
+  filename: string,
+  rows: (string | number | null | undefined)[][]
+) => {
+  const escapeCell = (cell: string | number | null | undefined): string => {
+    if (cell === null || cell === undefined) return "";
+    let s = String(cell);
+    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+
+  const csvContent =
+    rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
 
 const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
   receipts,
   loadingReceipts,
   receiptsError,
-  onNewReceipt,
 }) => {
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [supplierFilter, setSupplierFilter] = useState<string>("ALL");
   const [manufacturerFilter, setManufacturerFilter] = useState<string>("ALL");
+
+  // CSV Export modal open/close
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const uniqueSuppliers = useMemo(
     () =>
@@ -89,6 +126,71 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
     });
   }, [receipts, search, dateFilter, supplierFilter, manufacturerFilter]);
 
+  const handleExportConfirm = ({
+    fromDate,
+    toDate,
+    respectFilters,
+  }: CsvExportParams) => {
+    const base = respectFilters ? filteredReceipts : receipts;
+
+    const from = fromDate ? new Date(fromDate) : null;
+    const to = toDate ? new Date(toDate) : null;
+    let toEnd: Date | null = null;
+    if (to) {
+      toEnd = new Date(to);
+      toEnd.setDate(toEnd.getDate() + 1); // inclusive
+    }
+
+    const exportRowsSource = base.filter((r) => {
+      if (!from && !toEnd) return true;
+      const created = new Date(r.created_at);
+      if (from && created < from) return false;
+      if (toEnd && created >= toEnd) return false;
+      return true;
+    });
+
+    const header = [
+      "Goods Receipt Date",
+      "Material Code",
+      "Material Name",
+      "Lot No.",
+      "Expiry",
+      "Qty",
+      "UOM",
+      "Unit Price",
+      "Total",
+      "Supplier",
+      "Manufacturer",
+      "ES Criteria",
+      "Created By",
+    ];
+
+    const rows = exportRowsSource.map((r) => {
+      let esLabel = "—";
+      if (r.complies_es_criteria === true) esLabel = "Complies";
+      else if (r.complies_es_criteria === false) esLabel = "No";
+
+      return [
+        r.created_at ? formatDate(r.created_at) : "",
+        r.material_code,
+        r.material_name,
+        r.lot_number,
+        r.expiry_date ? formatDate(r.expiry_date) : "",
+        r.qty,
+        r.uom_code,
+        r.unit_price != null ? r.unit_price.toFixed(2) : "",
+        r.total_value != null ? r.total_value.toFixed(2) : "",
+        r.supplier || "",
+        r.manufacturer || "",
+        esLabel,
+        r.created_by,
+      ];
+    });
+
+    exportToCsv("goods_receipts.csv", [header, ...rows]);
+    setExportModalOpen(false);
+  };
+
   return (
     <section className="content">
       <section className="card">
@@ -150,8 +252,8 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
               ))}
             </select>
 
-            <button className="btn primary" onClick={onNewReceipt}>
-              + New Goods Receipt
+            <button className="btn" onClick={() => setExportModalOpen(true)}>
+              Export CSV
             </button>
           </div>
         </div>
@@ -226,7 +328,9 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                         {r.unit_price != null ? r.unit_price.toFixed(2) : "—"}
                       </td>
                       <td className="numeric">
-                        {r.total_value != null ? r.total_value.toFixed(2) : "—"}
+                        {r.total_value != null
+                          ? r.total_value.toFixed(2)
+                          : "—"}
                       </td>
                       <td>{r.supplier || "—"}</td>
                       <td>{r.manufacturer || "—"}</td>
@@ -241,6 +345,18 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             </table>
           </div>
         )}
+
+        {/* CSV Export modal */}
+        <CsvExportModal
+          open={exportModalOpen}
+          title="Export Goods Receipts"
+          helpText="Export goods receipts to CSV. Optionally limit by Goods Receipt date range and keep your current filters."
+          fromLabel="Goods Receipt date from (optional)"
+          toLabel="Goods Receipt date to (optional)"
+          defaultRespectFilters={true}
+          onClose={() => setExportModalOpen(false)}
+          onConfirm={handleExportConfirm}
+        />
       </section>
     </section>
   );

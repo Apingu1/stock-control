@@ -445,7 +445,8 @@ body {
 }
 
 /* Modal shell */
-.modal-overlay {
+.modal-overlay,
+.modal-backdrop {           /* <-- change: treat both the same */
   position: fixed;
   inset: 0;
   background: rgba(6, 8, 20, 0.75);
@@ -596,7 +597,6 @@ body {
   color: inherit;
   cursor: pointer;
 }
-
 
 /* ---------- Autocomplete material field ---------- */
 

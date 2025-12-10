@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import type { Issue } from "../../types";
 import { formatDate } from "../../utils/format";
+import CsvExportModal from "../../components/modals/CsvExportModal";
 
 type DateFilter = "ALL" | "30" | "90" | "365";
 type ConsumptionTypeFilter =
@@ -17,11 +18,44 @@ interface ConsumptionViewProps {
   onNewIssue: () => void;
 }
 
+type CsvExportParams = {
+  fromDate: string | null;
+  toDate: string | null;
+  respectFilters: boolean;
+};
+
 const CONSUMPTION_TYPE_LABELS: Record<string, string> = {
   USAGE: "Usage (Batch manufacturing)",
   WASTAGE: "Wastage",
   DESTRUCTION: "Destruction",
   R_AND_D: "R&D usage",
+};
+
+const exportToCsv = (
+  filename: string,
+  rows: (string | number | null | undefined)[][]
+) => {
+  const escapeCell = (cell: string | number | null | undefined): string => {
+    if (cell === null || cell === undefined) return "";
+    let s = String(cell);
+    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+
+  const csvContent =
+    rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 const ConsumptionView: React.FC<ConsumptionViewProps> = ({
@@ -33,6 +67,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [manufacturerFilter, setManufacturerFilter] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<ConsumptionTypeFilter>("ALL");
+
+  // CSV export modal state
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const uniqueManufacturers = useMemo(
     () =>
@@ -74,7 +111,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         if (dateFilter === "365" && diffDays > 365) return false;
       }
 
-      if (manufacturerFilter !== "ALL" && i.manufacturer !== manufacturerFilter) {
+      if (
+        manufacturerFilter !== "ALL" &&
+        i.manufacturer !== manufacturerFilter
+      ) {
         return false;
       }
 
@@ -103,6 +143,73 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
 
   const renderConsumptionType = (raw?: string | null): string =>
     raw ? CONSUMPTION_TYPE_LABELS[raw] ?? raw : "Usage";
+
+  const handleExportConfirm = ({
+    fromDate,
+    toDate,
+    respectFilters,
+  }: CsvExportParams) => {
+    const base = respectFilters ? filteredIssues : issues;
+
+    const from = fromDate ? new Date(fromDate) : null;
+    const to = toDate ? new Date(toDate) : null;
+    let toEnd: Date | null = null;
+    if (to) {
+      toEnd = new Date(to);
+      toEnd.setDate(toEnd.getDate() + 1); // inclusive
+    }
+
+    const exportRowsSource = base.filter((i) => {
+      if (!from && !toEnd) return true;
+      const created = new Date(i.created_at);
+      if (from && created < from) return false;
+      if (toEnd && created >= toEnd) return false;
+      return true;
+    });
+
+    const header = [
+      "Issue Date",
+      "Product Mfg Date",
+      "Type",
+      "ES Batch / Ref",
+      "Material Code",
+      "Material Name",
+      "Lot No.",
+      "Expiry",
+      "Qty",
+      "UOM",
+      "Manufacturer",
+      "Comment",
+      "Created By",
+    ];
+
+    const rows = exportRowsSource.map((i) => {
+      const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
+      const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D";
+      const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
+
+      return [
+        i.created_at ? formatDate(i.created_at) : "",
+        i.product_manufacture_date
+          ? formatDate(i.product_manufacture_date)
+          : "",
+        renderConsumptionType(i.consumption_type),
+        esRef,
+        i.material_code,
+        i.material_name,
+        i.lot_number,
+        i.expiry_date ? formatDate(i.expiry_date) : "",
+        i.qty,
+        i.uom_code,
+        i.manufacturer || "",
+        i.comment && i.comment.trim().length > 0 ? i.comment : "",
+        i.created_by,
+      ];
+    });
+
+    exportToCsv("consumption_history.csv", [header, ...rows]);
+    setExportModalOpen(false);
+  };
 
   return (
     <section className="content">
@@ -165,6 +272,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                 </option>
               ))}
             </select>
+
+            <button className="btn" onClick={() => setExportModalOpen(true)}>
+              Export CSV
+            </button>
           </div>
         </div>
 
@@ -248,6 +359,18 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
             </table>
           </div>
         )}
+
+        {/* CSV export modal */}
+        <CsvExportModal
+          open={exportModalOpen}
+          title="Export Issue / Consumption History"
+          helpText="Export stock issues / consumption history to CSV. Optionally limit by Issue Date range and keep your current filters."
+          fromLabel="Issue date from (optional)"
+          toLabel="Issue date to (optional)"
+          defaultRespectFilters={true}
+          onClose={() => setExportModalOpen(false)}
+          onConfirm={handleExportConfirm}
+        />
       </section>
     </section>
   );

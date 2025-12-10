@@ -14,6 +14,30 @@ interface LiveLotsViewProps {
   lotsError: string | null;
 }
 
+const exportToCsv = (filename: string, rows: (string | number | null | undefined)[][]) => {
+  const escapeCell = (cell: string | number | null | undefined): string => {
+    if (cell === null || cell === undefined) return "";
+    let s = String(cell);
+    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+
+  const csvContent =
+    rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 const LiveLotsView: React.FC<LiveLotsViewProps> = ({
   lotBalances,
   loadingLots,
@@ -28,17 +52,14 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
     const q = search.trim().toLowerCase();
 
     return lotBalances.filter((lot) => {
-      // Category filter
       if (categoryFilter !== "ALL" && lot.category_code !== categoryFilter) {
         return false;
       }
 
-      // Type filter
       if (typeFilter !== "ALL" && lot.type_code !== typeFilter) {
         return false;
       }
 
-      // Status filter
       if (statusFilter !== "ALL" && lot.status !== statusFilter) {
         return false;
       }
@@ -62,6 +83,36 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
     });
   }, [lotBalances, search, statusFilter, categoryFilter, typeFilter]);
 
+  const handleExport = () => {
+    const header = [
+      "Material code",
+      "Material name",
+      "Category",
+      "Type",
+      "Lot No.",
+      "Expiry",
+      "Manufacturer",
+      "Balance",
+      "UOM",
+      "Status",
+    ];
+
+    const rows = filteredLots.map((lot) => [
+      lot.material_code,
+      lot.material_name,
+      lot.category_code,
+      lot.type_code,
+      lot.lot_number,
+      lot.expiry_date ? formatDate(lot.expiry_date) : "",
+      lot.manufacturer || "",
+      lot.balance_qty,
+      lot.uom_code,
+      lot.status,
+    ]);
+
+    exportToCsv("live_lot_balances.csv", [header, ...rows]);
+  };
+
   return (
     <section className="content">
       <section className="card">
@@ -74,7 +125,6 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
             </div>
           </div>
           <div className="card-actions">
-            {/* Category filter – same look as Materials Library */}
             <select
               className="input"
               style={{ width: 180, marginRight: 8 }}
@@ -89,7 +139,6 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
               ))}
             </select>
 
-            {/* Type filter – same look as Materials Library */}
             <select
               className="input"
               style={{ width: 160, marginRight: 8 }}
@@ -104,7 +153,6 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
               ))}
             </select>
 
-            {/* Search */}
             <input
               className="input"
               style={{ width: 260, marginRight: 8 }}
@@ -113,10 +161,9 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
               onChange={(e) => setSearch(e.target.value)}
             />
 
-            {/* Status filter */}
             <select
               className="input"
-              style={{ width: 160 }}
+              style={{ width: 160, marginRight: 8 }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             >
@@ -125,6 +172,10 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
               <option value="QUARANTINE">Quarantine</option>
               <option value="REJECTED">Rejected</option>
             </select>
+
+            <button className="btn" onClick={handleExport}>
+              Export CSV
+            </button>
           </div>
         </div>
 

@@ -10,6 +10,30 @@ type MaterialsLibraryViewProps = {
   onEditMaterial: (m: Material) => void;
 };
 
+const exportToCsv = (filename: string, rows: (string | number | null | undefined)[][]) => {
+  const escapeCell = (cell: string | number | null | undefined): string => {
+    if (cell === null || cell === undefined) return "";
+    let s = String(cell);
+    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+
+  const csvContent =
+    rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
   materials,
   onEditMaterial,
@@ -39,6 +63,32 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
       );
     });
   }, [materials, materialsSearch, categoryFilter, typeFilter]);
+
+  const handleExport = () => {
+    const header = [
+      "Code",
+      "Name",
+      "Category",
+      "Type",
+      "Base UOM",
+      "Manufacturer",
+      "Supplier",
+      "Status",
+    ];
+
+    const rows = libraryFilteredMaterials.map((m) => [
+      m.material_code,
+      m.name,
+      m.category_code,
+      m.type_code,
+      m.base_uom_code,
+      m.manufacturer || "",
+      m.supplier || "",
+      m.status,
+    ]);
+
+    exportToCsv("materials_library.csv", [header, ...rows]);
+  };
 
   return (
     <section className="content">
@@ -82,11 +132,15 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
 
             <input
               className="input"
-              style={{ width: 260 }}
+              style={{ width: 260, marginRight: 8 }}
               placeholder="Search by code, name, supplier, manufacturer…"
               value={materialsSearch}
               onChange={(e) => setMaterialsSearch(e.target.value)}
             />
+
+            <button className="btn" onClick={handleExport}>
+              Export CSV
+            </button>
           </div>
         </div>
 
