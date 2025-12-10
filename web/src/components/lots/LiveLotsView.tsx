@@ -1,7 +1,10 @@
-// src/components/lots/LiveLotsView.tsx
 import React, { useMemo, useState } from "react";
 import type { LotBalance } from "../../types";
 import { formatDate } from "../../utils/format";
+import {
+  MATERIAL_CATEGORY_OPTIONS,
+  MATERIAL_TYPE_OPTIONS,
+} from "../../constants";
 
 type StatusFilter = "ALL" | "QUARANTINE" | "RELEASED" | "REJECTED";
 
@@ -18,11 +21,24 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
 
   const filteredLots = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return lotBalances.filter((lot) => {
+      // Category filter
+      if (categoryFilter !== "ALL" && lot.category_code !== categoryFilter) {
+        return false;
+      }
+
+      // Type filter
+      if (typeFilter !== "ALL" && lot.type_code !== typeFilter) {
+        return false;
+      }
+
+      // Status filter
       if (statusFilter !== "ALL" && lot.status !== statusFilter) {
         return false;
       }
@@ -38,36 +54,69 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
         lot.uom_code,
         lot.status,
         lot.manufacturer ?? "",
-        // supplier intentionally not used here
       ]
         .join(" ")
         .toLowerCase();
 
       return haystack.includes(q);
     });
-  }, [lotBalances, search, statusFilter]);
+  }, [lotBalances, search, statusFilter, categoryFilter, typeFilter]);
 
   return (
     <section className="content">
       <section className="card">
         <div className="card-header">
           <div>
-            <h2 className="card-title">Live lot balances</h2>
-            <p className="card-subtitle">
+            <div className="card-title">Live lot balances</div>
+            <div className="card-subtitle">
               Real-time view of all lots with current balance, category, type
               and manufacturer.
-            </p>
+            </div>
           </div>
           <div className="card-actions">
+            {/* Category filter – same look as Materials Library */}
+            <select
+              className="input"
+              style={{ width: 180, marginRight: 8 }}
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+            >
+              <option value="ALL">All categories</option>
+              {MATERIAL_CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+
+            {/* Type filter – same look as Materials Library */}
+            <select
+              className="input"
+              style={{ width: 160, marginRight: 8 }}
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="ALL">All types</option>
+              {MATERIAL_TYPE_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+
+            {/* Search */}
             <input
               className="input"
+              style={{ width: 260, marginRight: 8 }}
               placeholder="Search material / lot / manufacturer…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+
+            {/* Status filter */}
             <select
               className="input"
-              style={{ width: 180 }}
+              style={{ width: 160 }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             >
