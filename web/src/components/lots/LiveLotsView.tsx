@@ -5,6 +5,7 @@ import {
   MATERIAL_CATEGORY_OPTIONS,
   MATERIAL_TYPE_OPTIONS,
 } from "../../constants";
+import LotStatusModal from "../modals/LotStatusModal";
 
 type StatusFilter = "ALL" | "QUARANTINE" | "RELEASED" | "REJECTED";
 
@@ -12,9 +13,13 @@ interface LiveLotsViewProps {
   lotBalances: LotBalance[];
   loadingLots: boolean;
   lotsError: string | null;
+  onLotStatusChanged?: () => void; // NEW: tell parent to reload
 }
 
-const exportToCsv = (filename: string, rows: (string | number | null | undefined)[][]) => {
+const exportToCsv = (
+  filename: string,
+  rows: (string | number | null | undefined)[][]
+) => {
   const escapeCell = (cell: string | number | null | undefined): string => {
     if (cell === null || cell === undefined) return "";
     let s = String(cell);
@@ -38,15 +43,34 @@ const exportToCsv = (filename: string, rows: (string | number | null | undefined
   URL.revokeObjectURL(url);
 };
 
+const formatStatusLabel = (status: string | null | undefined): string => {
+  if (!status) return "Unknown";
+  switch (status.toUpperCase()) {
+    case "RELEASED":
+      return "Released";
+    case "QUARANTINE":
+      return "Quarantine";
+    case "REJECTED":
+      return "Rejected";
+    default:
+      return status;
+  }
+};
+
 const LiveLotsView: React.FC<LiveLotsViewProps> = ({
   lotBalances,
   loadingLots,
   lotsError,
+  onLotStatusChanged,
 }) => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
+
+  // Modal state
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [selectedLot, setSelectedLot] = useState<LotBalance | null>(null);
 
   const filteredLots = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -111,6 +135,27 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
     ]);
 
     exportToCsv("live_lot_balances.csv", [header, ...rows]);
+  };
+
+  const buildStatusTooltip = (lot: LotBalance): string => {
+    const reason = (lot as any).last_status_reason as string | undefined;
+    const changedAt = (lot as any).last_status_changed_at as string | undefined;
+
+    if (!reason && !changedAt) {
+      return "No recorded status changes yet.";
+    }
+
+    const dt = changedAt
+      ? new Date(changedAt).toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "Unknown time";
+
+    return `Last change: ${dt}\nReason: ${reason || "—"}`;
   };
 
   return (
@@ -209,36 +254,83 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
                     <th className="numeric">Balance</th>
                     <th>UOM</th>
                     <th>Status</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredLots.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="empty-row">
+                      <td colSpan={11} className="empty-row">
                         No lots match your filters.
                       </td>
                     </tr>
                   )}
-                  {filteredLots.map((lot) => (
-                    <tr key={`${lot.material_code}-${lot.lot_number}`}>
-                      <td>{lot.material_code}</td>
-                      <td>{lot.material_name}</td>
-                      <td>{lot.category_code}</td>
-                      <td>{lot.type_code}</td>
-                      <td>{lot.lot_number}</td>
-                      <td>{formatDate(lot.expiry_date)}</td>
-                      <td>{lot.manufacturer || "—"}</td>
-                      <td className="numeric">{lot.balance_qty}</td>
-                      <td>{lot.uom_code}</td>
-                      <td>{lot.status}</td>
-                    </tr>
-                  ))}
+                  {filteredLots.map((lot) => {
+                    const statusLabel = formatStatusLabel(lot.status);
+                    let tagClass = "tag tag-muted";
+                    if (lot.status === "RELEASED") tagClass = "tag tag-success";
+                    if (lot.status === "QUARANTINE")
+                      tagClass = "tag tag-warning";
+
+                    return (
+                      <tr
+                        key={`${lot.material_code}-${lot.lot_number}`}
+                      >
+                        <td>{lot.material_code}</td>
+                        <td>{lot.material_name}</td>
+                        <td>{lot.category_code}</td>
+                        <td>{lot.type_code}</td>
+                        <td>{lot.lot_number}</td>
+                        <td>{formatDate(lot.expiry_date)}</td>
+                        <td>{lot.manufacturer || "—"}</td>
+                        <td className="numeric">{lot.balance_qty}</td>
+                        <td>{lot.uom_code}</td>
+                        <td>
+                          <span
+                            className={tagClass}
+                            title={buildStatusTooltip(lot)}
+                          >
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              borderRadius: 999,
+                            }}
+                            onClick={() => {
+                              setSelectedLot(lot);
+                              setStatusModalOpen(true);
+                            }}
+                          >
+                            Change
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </div>
       </section>
+
+      <LotStatusModal
+        open={statusModalOpen}
+        lot={selectedLot}
+        onClose={() => {
+          setStatusModalOpen(false);
+          setSelectedLot(null);
+        }}
+        onStatusChanged={() => {
+          onLotStatusChanged?.();
+        }}
+      />
     </section>
   );
 };

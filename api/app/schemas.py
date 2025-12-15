@@ -121,6 +121,7 @@ class ReceiptOut(BaseModel):
     class Config:
         from_attributes = True
 
+
 # --- Issues (Used) -----------------------------------------------------------
 
 
@@ -174,6 +175,15 @@ class IssueOut(BaseModel):
         from_attributes = True
 
 
+# --- Lot status changes (input) ----------------------------------------------
+
+
+class LotStatusChangeCreate(BaseModel):
+    new_status: str
+    reason: str
+    changed_by: Optional[str] = None
+
+
 # --- Lot balances (view) -----------------------------------------------------
 
 
@@ -190,6 +200,10 @@ class LotBalanceOut(BaseModel):
     supplier: Optional[str] = None
     balance_qty: float
     uom_code: str
+
+    # NEW: last status change metadata for tooltip / audit preview
+    last_status_reason: Optional[str] = None
+    last_status_changed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

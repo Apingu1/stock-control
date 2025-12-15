@@ -13,6 +13,8 @@ export type LotBalance = {
   supplier: string | null;
   balance_qty: number;
   uom_code: string;
+  last_status_reason?: string | null;
+  last_status_changed_at?: string | null;
 };
 
 export type ApprovedManufacturer = {

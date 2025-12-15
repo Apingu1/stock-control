@@ -352,6 +352,7 @@ const App: React.FC = () => {
             lotBalances={lotBalances}
             loadingLots={loadingLots}
             lotsError={lotsError}
+            onLotStatusChanged={loadLotBalances}
           />
         )}
       </main>

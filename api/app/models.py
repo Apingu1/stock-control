@@ -204,6 +204,13 @@ class MaterialLot(Base):
         "StockTransaction", back_populates="material_lot"
     )
 
+    # NEW: status change history
+    status_changes: Mapped[list["LotStatusChange"]] = relationship(
+        "LotStatusChange",
+        back_populates="material_lot",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<MaterialLot material_id={self.material_id} lot={self.lot_number!r}>"
 
@@ -270,4 +277,35 @@ class StockTransaction(Base):
         return (
             f"<StockTransaction id={self.id} "
             f"lot_id={self.material_lot_id} qty={self.qty} dir={self.direction}>"
+        )
+
+
+# --- Lot status change history ----------------------------------------------
+
+
+class LotStatusChange(Base):
+    __tablename__ = "lot_status_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    material_lot_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("material_lots.id"), nullable=False
+    )
+    old_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    new_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    changed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    material_lot: Mapped["MaterialLot"] = relationship(
+        "MaterialLot", back_populates="status_changes"
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<LotStatusChange lot_id={self.material_lot_id} "
+            f"{self.old_status!r}->{self.new_status!r}>"
         )

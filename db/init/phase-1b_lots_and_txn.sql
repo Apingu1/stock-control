@@ -66,7 +66,7 @@ INSERT INTO material_types (code, name) VALUES
     ('Licensed FP', 'Licensed FP'),
     ('EXCIPIENT',   'Excipient'),
     ('PACKAGING',   'Packaging'),
-    ('OTHER',       'Other');
+    ('OTHER',       'Other')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO uoms (code, description) VALUES
@@ -91,6 +91,18 @@ CREATE TABLE IF NOT EXISTS material_lots (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by      TEXT,
     UNIQUE (material_id, lot_number)
+);
+
+-- Lot status change history (NEW) --------------------------------------------
+
+CREATE TABLE IF NOT EXISTS lot_status_changes (
+    id              SERIAL PRIMARY KEY,
+    material_lot_id INTEGER NOT NULL REFERENCES material_lots(id),
+    old_status      VARCHAR(20) NOT NULL,
+    new_status      VARCHAR(20) NOT NULL,
+    reason          TEXT NOT NULL,
+    changed_by      TEXT,
+    changed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Stock transactions (ledger) -------------------------------------------------
@@ -123,6 +135,14 @@ WITH latest_status AS (
         ml.created_at AS updated_at
     FROM material_lots ml
     ORDER BY ml.id, ml.created_at DESC
+),
+last_change AS (
+    SELECT DISTINCT ON (material_lot_id)
+        material_lot_id,
+        reason,
+        changed_at
+    FROM lot_status_changes
+    ORDER BY material_lot_id, changed_at DESC
 )
 SELECT
     ml.id              AS material_lot_id,
@@ -136,11 +156,14 @@ SELECT
     ml.manufacturer,
     ml.supplier,
     COALESCE(SUM(st.qty * st.direction), 0) AS balance_qty,
-    m.base_uom_code    AS uom_code
+    m.base_uom_code    AS uom_code,
+    lc.reason          AS last_status_reason,
+    lc.changed_at      AS last_status_changed_at
 FROM material_lots ml
 JOIN materials m ON ml.material_id = m.id
 LEFT JOIN latest_status ls ON ls.material_lot_id = ml.id
 LEFT JOIN stock_transactions st ON st.material_lot_id = ml.id
+LEFT JOIN last_change lc ON lc.material_lot_id = ml.id
 GROUP BY
     ml.id,
     m.material_code,
@@ -152,7 +175,9 @@ GROUP BY
     ls.status,
     ml.manufacturer,
     ml.supplier,
-    m.base_uom_code;
+    m.base_uom_code,
+    lc.reason,
+    lc.changed_at;
 
 -- Approved manufacturers per material (compat duplicate kept for backwards compatibility)
 
