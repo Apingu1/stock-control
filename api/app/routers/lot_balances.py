@@ -146,11 +146,14 @@ def change_lot_status(
 
     # If user selected partial move, move_qty MUST be provided
     if not whole_lot and move_qty is None:
-    raise HTTPException(status_code=400, detail="move_qty is required for partial status changes")
+        raise HTTPException(
+            status_code=400,
+            detail="move_qty is required for partial status changes",
+        )
 
     # Whole lot = default to full balance
     if whole_lot:
-    move_qty = current_balance
+        move_qty = current_balance
 
 
     if move_qty <= 0:
