@@ -179,8 +179,9 @@ class MaterialLot(Base):
     lot_number: Mapped[str] = mapped_column(String(100), nullable=False)
     expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
-    # Lot status – QUARANTINE / RELEASED / REJECTED / EXPIRED etc.
-    status: Mapped[str] = mapped_column(String(20), default="QUARANTINE")
+    # Standardise: AVAILABLE / QUARANTINE / REJECTED
+    # (Previously you had default="QUARANTINE" — changing to AVAILABLE for consistency)
+    status: Mapped[str] = mapped_column(String(20), default="AVAILABLE")
 
     # Manufacturer / supplier at lot level (true traceability)
     manufacturer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -192,10 +193,12 @@ class MaterialLot(Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     __table_args__ = (
+        # Split-lot support: allow same lot_number multiple times, one per status segment.
         UniqueConstraint(
             "material_id",
             "lot_number",
-            name="uq_material_lots_material_lot_number",
+            "status",
+            name="uq_material_lots_material_lot_number_status",
         ),
     )
 
@@ -204,7 +207,7 @@ class MaterialLot(Base):
         "StockTransaction", back_populates="material_lot"
     )
 
-    # NEW: status change history
+    # status change history
     status_changes: Mapped[list["LotStatusChange"]] = relationship(
         "LotStatusChange",
         back_populates="material_lot",
@@ -227,7 +230,7 @@ class StockTransaction(Base):
     # RECEIPT / ISSUE
     txn_type: Mapped[str] = mapped_column(String(20), nullable=False)
 
-    # NEW: consumption type for ISSUE records:
+    # consumption type for ISSUE records:
     #  USAGE / WASTAGE / DESTRUCTION / R_AND_D
     consumption_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="USAGE"
@@ -245,15 +248,11 @@ class StockTransaction(Base):
     # Optional reference (e.g. GRN, worksheet ref, internal link)
     target_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    # NEW: ES batch or R&D reference for usage
-    product_batch_no: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True
-    )
+    # ES batch or R&D reference for usage
+    product_batch_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Product manufacture date for issues (batch usage)
-    product_manufacture_date: Mapped[Optional[date]] = mapped_column(
-        Date, nullable=True
-    )
+    product_manufacture_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     comment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LotBalance } from "../../types";
 import { apiFetch } from "../../utils/api";
 
@@ -6,14 +6,28 @@ type LotStatusModalProps = {
   open: boolean;
   lot: LotBalance | null;
   onClose: () => void;
-  onStatusChanged: () => void; // callback after successful change
+  onStatusChanged: () => void;
 };
 
 const STATUS_OPTIONS = [
-  { value: "RELEASED", label: "Released" },
+  { value: "AVAILABLE", label: "Available" },
   { value: "QUARANTINE", label: "Quarantine" },
   { value: "REJECTED", label: "Rejected" },
-];
+] as const;
+
+type StatusValue = (typeof STATUS_OPTIONS)[number]["value"];
+
+const normalizeStatus = (s: string | null | undefined) => {
+  const up = (s || "").toUpperCase().trim();
+  if (up === "RELEASED") return "AVAILABLE";
+  return up || "UNKNOWN";
+};
+
+const statusPillClass = (s: string) => {
+  if (s === "AVAILABLE") return "tag tag-success";
+  if (s === "QUARANTINE") return "tag tag-warning";
+  return "tag tag-muted";
+};
 
 const LotStatusModal: React.FC<LotStatusModalProps> = ({
   open,
@@ -21,29 +35,55 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
   onClose,
   onStatusChanged,
 }) => {
-  const [newStatus, setNewStatus] = useState("");
+  const [newStatus, setNewStatus] = useState<StatusValue | "">("");
   const [reason, setReason] = useState("");
+  const [isPartial, setIsPartial] = useState(false); // default unchecked
+  const [partialQty, setPartialQty] = useState<string>("");
+
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const currentStatus = useMemo(() => normalizeStatus(lot?.status), [lot?.status]);
 
   useEffect(() => {
     if (open) {
       setNewStatus("");
       setReason("");
+      setIsPartial(false);
+      setPartialQty("");
       setError(null);
       setSubmitting(false);
     }
   }, [open, lot]);
 
+  const affectedQty = useMemo(() => {
+    if (!lot) return "";
+    if (!isPartial) return `${lot.balance_qty} ${lot.uom_code}`;
+    const n = Number(partialQty);
+    if (!Number.isFinite(n) || n <= 0) return `— ${lot.uom_code}`;
+    return `${n} ${lot.uom_code}`;
+  }, [lot, isPartial, partialQty]);
+
   if (!open || !lot) return null;
 
+  const validate = () => {
+    if (!newStatus) return "Please select a new status.";
+    if (!reason.trim()) return "Reason for change is required.";
+    if (newStatus === currentStatus) return "New status must be different to current status.";
+
+    if (!isPartial) return null;
+
+    const n = Number(partialQty);
+    if (!Number.isFinite(n) || n <= 0) return "Enter a valid partial quantity to move.";
+    if (n > Number(lot.balance_qty)) return "Partial quantity cannot exceed current balance.";
+
+    return null;
+  };
+
   const handleSubmit = async () => {
-    if (!newStatus) {
-      setError("Please select a new status.");
-      return;
-    }
-    if (!reason.trim()) {
-      setError("Reason for change is required.");
+    const v = validate();
+    if (v) {
+      setError(v);
       return;
     }
 
@@ -51,32 +91,17 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
       setSubmitting(true);
       setError(null);
 
-      const res = await apiFetch(
-        `/lot-balances/${lot.material_lot_id}/status-change`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            new_status: newStatus,
-            reason: reason.trim(),
-            changed_by: "web-ui", // placeholder until users/RBAC
-          }),
-        }
-      );
-
-      if (!res.ok) {
-        let detail = "Failed to change status";
-        try {
-          const data = await res.json();
-          if (data?.detail) detail = data.detail;
-        } catch {
-          // ignore JSON parse errors
-        }
-        throw new Error(detail);
-      }
-
-      // We don't need the body; App will reload lot balances
-      await res.json().catch(() => undefined);
+      await apiFetch(`/lot-balances/${lot.material_lot_id}/status-change`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          new_status: newStatus,
+          reason: reason.trim(),
+          changed_by: "web-ui",
+          whole_lot: !isPartial,
+          move_qty: isPartial ? Number(partialQty) : null,
+        }),
+      });
 
       onStatusChanged();
       onClose();
@@ -91,35 +116,43 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
     <div className="modal-overlay">
       <div className="modal" role="dialog" aria-modal="true">
         <div className="modal-header">
-          <div>
-            <h3 className="modal-title">Change lot status</h3>
-            <div className="modal-subtitle">
-              {lot.material_code} • {lot.material_name} • Lot {lot.lot_number}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>Change lot status</div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>
+                {lot.material_name}
+              </div>
+
+              <div style={{ fontSize: 13, color: "#9ca3af" }}>
+                • Lot <span style={{ fontWeight: 600, color: "#e5e7eb" }}>{lot.lot_number}</span>
+              </div>
+
+              <span className={statusPillClass(currentStatus)} style={{ marginLeft: 2 }}>
+                {currentStatus}
+              </span>
             </div>
           </div>
+
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={onClose}
+            disabled={submitting}
+            style={{ padding: "6px 10px" }}
+          >
+            ✕
+          </button>
         </div>
 
         <div className="modal-body">
-          <div
-            className="form-grid"
-            style={{ gridTemplateColumns: "1fr 1fr" }}
-          >
+          <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="form-group">
-              <span className="label">Current status</span>
-              <div
-                className="tag tag-muted"
-                style={{ borderRadius: 999, display: "inline-block" }}
-              >
-                {lot.status || "—"}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <span className="label">New status</span>
+              <span className="label">Change to</span>
               <select
                 className="input"
                 value={newStatus}
-                onChange={(e) => setNewStatus(e.target.value)}
+                onChange={(e) => setNewStatus(e.target.value as StatusValue | "")}
               >
                 <option value="">Select status…</option>
                 {STATUS_OPTIONS.map((opt) => (
@@ -129,21 +162,57 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
                 ))}
               </select>
             </div>
-            
+
             <div className="form-group">
-              <span className="label">Current quantity</span>
-              <div style={{ fontSize: 13, marginTop: 4 }}>
-                {lot.balance_qty} {lot.uom_code}
-              </div>
+              <span className="label">Affected quantity</span>
+              <div style={{ fontSize: 13, marginTop: 8 }}>{affectedQty}</div>
             </div>
 
             <div className="form-group form-group-full">
-              <span className="label">Reason for change</span>
+              <span className="label">Move type</span>
+
+              <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={isPartial}
+                  onChange={(e) => {
+                    setIsPartial(e.target.checked);
+                    setPartialQty("");
+                    setError(null);
+                  }}
+                  disabled={submitting}
+                />
+                <span style={{ fontSize: 13 }}>Change status for partial quantity</span>
+              </label>
+
+              <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 6 }}>
+                If enabled, the system splits the lot into two lines in Live Lots (same lot number,
+                different status).
+              </div>
+            </div>
+
+            {isPartial && (
+              <div className="form-group form-group-full">
+                <span className="label">Partial quantity to move</span>
+                <input
+                  className="input"
+                  inputMode="decimal"
+                  value={partialQty}
+                  onChange={(e) => setPartialQty(e.target.value)}
+                  placeholder={`Max ${lot.balance_qty} ${lot.uom_code}`}
+                  disabled={submitting}
+                />
+              </div>
+            )}
+
+            <div className="form-group form-group-full">
+              <span className="label">Reason (mandatory)</span>
               <textarea
                 className="input textarea"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="E.g. moved to quarantine due to temperature excursion, or released after QA approval…"
+                placeholder="E.g. damaged, investigation, QA disposition…"
+                disabled={submitting}
               />
             </div>
           </div>
@@ -152,21 +221,11 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
         </div>
 
         <div className="modal-footer">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={submitting}
-            onClick={onClose}
-          >
+          <button className="btn btn-ghost" type="button" onClick={onClose} disabled={submitting}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={submitting}
-            onClick={handleSubmit}
-          >
-            {submitting ? "Saving…" : "Change status"}
+          <button className="btn btn-primary" type="button" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Saving…" : "Confirm change"}
           </button>
         </div>
       </div>

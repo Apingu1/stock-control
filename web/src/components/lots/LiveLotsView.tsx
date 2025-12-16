@@ -1,19 +1,16 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { LotBalance } from "../../types";
 import { formatDate } from "../../utils/format";
-import {
-  MATERIAL_CATEGORY_OPTIONS,
-  MATERIAL_TYPE_OPTIONS,
-} from "../../constants";
+import { MATERIAL_CATEGORY_OPTIONS, MATERIAL_TYPE_OPTIONS } from "../../constants";
 import LotStatusModal from "../modals/LotStatusModal";
 
-type StatusFilter = "ALL" | "QUARANTINE" | "RELEASED" | "REJECTED";
+type StatusFilter = "ALL" | "AVAILABLE" | "QUARANTINE" | "REJECTED";
 
 interface LiveLotsViewProps {
   lotBalances: LotBalance[];
   loadingLots: boolean;
   lotsError: string | null;
-  onLotStatusChanged?: () => void; // NEW: tell parent to reload
+  onLotStatusChanged?: () => void;
 }
 
 const exportToCsv = (
@@ -43,18 +40,18 @@ const exportToCsv = (
   URL.revokeObjectURL(url);
 };
 
-const formatStatusLabel = (status: string | null | undefined): string => {
-  if (!status) return "Unknown";
-  switch (status.toUpperCase()) {
-    case "RELEASED":
-      return "Released";
-    case "QUARANTINE":
-      return "Quarantine";
-    case "REJECTED":
-      return "Rejected";
-    default:
-      return status;
-  }
+const normalizeStatus = (s: string | null | undefined) => {
+  const up = (s || "").toUpperCase().trim();
+  if (up === "RELEASED") return "AVAILABLE"; // legacy compatibility
+  return up || "UNKNOWN";
+};
+
+const formatStatusLabel = (s: string | null | undefined) => {
+  const st = normalizeStatus(s);
+  if (st === "AVAILABLE") return "Available";
+  if (st === "QUARANTINE") return "Quarantine";
+  if (st === "REJECTED") return "Rejected";
+  return st;
 };
 
 const LiveLotsView: React.FC<LiveLotsViewProps> = ({
@@ -68,7 +65,6 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
 
-  // Modal state
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [selectedLot, setSelectedLot] = useState<LotBalance | null>(null);
 
@@ -76,17 +72,11 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
     const q = search.trim().toLowerCase();
 
     return lotBalances.filter((lot) => {
-      if (categoryFilter !== "ALL" && lot.category_code !== categoryFilter) {
-        return false;
-      }
+      if (categoryFilter !== "ALL" && lot.category_code !== categoryFilter) return false;
+      if (typeFilter !== "ALL" && lot.type_code !== typeFilter) return false;
 
-      if (typeFilter !== "ALL" && lot.type_code !== typeFilter) {
-        return false;
-      }
-
-      if (statusFilter !== "ALL" && lot.status !== statusFilter) {
-        return false;
-      }
+      const st = normalizeStatus(lot.status);
+      if (statusFilter !== "ALL" && st !== statusFilter) return false;
 
       if (!q) return true;
 
@@ -97,7 +87,7 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
         lot.type_code,
         lot.lot_number,
         lot.uom_code,
-        lot.status,
+        st,
         lot.manufacturer ?? "",
       ]
         .join(" ")
@@ -131,19 +121,17 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
       lot.manufacturer || "",
       lot.balance_qty,
       lot.uom_code,
-      lot.status,
+      normalizeStatus(lot.status),
     ]);
 
     exportToCsv("live_lot_balances.csv", [header, ...rows]);
   };
 
   const buildStatusTooltip = (lot: LotBalance): string => {
-    const reason = (lot as any).last_status_reason as string | undefined;
-    const changedAt = (lot as any).last_status_changed_at as string | undefined;
+    const reason = lot.last_status_reason ?? undefined;
+    const changedAt = lot.last_status_changed_at ?? undefined;
 
-    if (!reason && !changedAt) {
-      return "No recorded status changes yet.";
-    }
+    if (!reason && !changedAt) return "No recorded status changes yet.";
 
     const dt = changedAt
       ? new Date(changedAt).toLocaleString(undefined, {
@@ -165,10 +153,10 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
           <div>
             <div className="card-title">Live lot balances</div>
             <div className="card-subtitle">
-              Real-time view of all lots with current balance, category, type
-              and manufacturer.
+              Real-time view of all lots with current balance, category, type and manufacturer.
             </div>
           </div>
+
           <div className="card-actions">
             <select
               className="input"
@@ -213,7 +201,7 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             >
               <option value="ALL">All statuses</option>
-              <option value="RELEASED">Released</option>
+              <option value="AVAILABLE">Available</option>
               <option value="QUARANTINE">Quarantine</option>
               <option value="REJECTED">Rejected</option>
             </select>
@@ -226,14 +214,10 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
 
         <div className="card-body">
           {loadingLots && <div className="info-row">Loading lot balances…</div>}
-          {lotsError && !loadingLots && (
-            <div className="error-row">{lotsError}</div>
-          )}
+          {lotsError && !loadingLots && <div className="error-row">{lotsError}</div>}
+
           {!loadingLots && !lotsError && (
-            <div
-              className="table-wrapper"
-              style={{ maxHeight: 480, overflowY: "auto" }}
-            >
+            <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
               <table className="table">
                 <thead
                   style={{
@@ -257,6 +241,7 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
                     <th>Actions</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {filteredLots.length === 0 && (
                     <tr>
@@ -265,17 +250,17 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
                       </td>
                     </tr>
                   )}
+
                   {filteredLots.map((lot) => {
-                    const statusLabel = formatStatusLabel(lot.status);
+                    const st = normalizeStatus(lot.status);
+                    const statusLabel = formatStatusLabel(st);
+
                     let tagClass = "tag tag-muted";
-                    if (lot.status === "RELEASED") tagClass = "tag tag-success";
-                    if (lot.status === "QUARANTINE")
-                      tagClass = "tag tag-warning";
+                    if (st === "AVAILABLE") tagClass = "tag tag-success";
+                    if (st === "QUARANTINE") tagClass = "tag tag-warning";
 
                     return (
-                      <tr
-                        key={`${lot.material_code}-${lot.lot_number}`}
-                      >
+                      <tr key={lot.material_lot_id}>
                         <td>{lot.material_code}</td>
                         <td>{lot.material_name}</td>
                         <td>{lot.category_code}</td>
@@ -286,10 +271,7 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
                         <td className="numeric">{lot.balance_qty}</td>
                         <td>{lot.uom_code}</td>
                         <td>
-                          <span
-                            className={tagClass}
-                            title={buildStatusTooltip(lot)}
-                          >
+                          <span className={tagClass} title={buildStatusTooltip(lot)}>
                             {statusLabel}
                           </span>
                         </td>
@@ -297,11 +279,7 @@ const LiveLotsView: React.FC<LiveLotsViewProps> = ({
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            style={{
-                              padding: "4px 10px",
-                              fontSize: 12,
-                              borderRadius: 999,
-                            }}
+                            style={{ padding: "4px 10px", fontSize: 12, borderRadius: 999 }}
                             onClick={() => {
                               setSelectedLot(lot);
                               setStatusModalOpen(true);

@@ -1,31 +1,23 @@
-import React, { useEffect, useMemo, useState } from "react";
-import type { LotBalance, Material } from "../../types";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
-
-type IssueModalProps = {
-  open: boolean;
-  onClose: () => void;
-  materials: Material[];
-  lotBalances: LotBalance[];
-  onIssuePosted: () => void;
-};
+import type { LotBalance, Material } from "../../types";
+import { CONSUMPTION_TYPES } from "../../constants";
 
 type ConsumptionTypeCode = "USAGE" | "WASTAGE" | "DESTRUCTION" | "R_AND_D";
 
-const CONSUMPTION_TYPES: { code: ConsumptionTypeCode; label: string }[] = [
-  { code: "USAGE", label: "Usage (Batch Manufacturing)" },
-  { code: "WASTAGE", label: "Wastage" },
-  { code: "DESTRUCTION", label: "Destruction" },
-  { code: "R_AND_D", label: "R&D Usage" },
-];
-
-const IssueModal: React.FC<IssueModalProps> = ({
+export default function IssueModal({
   open,
   onClose,
+  onIssuePosted,
   materials,
   lotBalances,
-  onIssuePosted,
-}) => {
+}: {
+  open: boolean;
+  onClose: () => void;
+  onIssuePosted: () => void;
+  materials: Material[];
+  lotBalances: LotBalance[];
+}) {
   const [consumptionType, setConsumptionType] =
     useState<ConsumptionTypeCode>("USAGE");
 
@@ -74,11 +66,23 @@ const IssueModal: React.FC<IssueModalProps> = ({
 
   const lotsForMaterial = useMemo(() => {
     if (!selectedMaterial) return [];
-    return lotBalances.filter(
-      (lot) =>
-        lot.material_code === selectedMaterial.material_code &&
-        lot.balance_qty > 0
-    );
+    return lotBalances
+      .filter(
+        (lot) =>
+          lot.material_code === selectedMaterial.material_code &&
+          lot.balance_qty > 0
+      )
+      .sort((a, b) => {
+        // nice UX: AVAILABLE first, then QUARANTINE, then REJECTED
+        const rank = (s: string) => {
+          const x = (s || "").toUpperCase();
+          if (x === "AVAILABLE") return 1;
+          if (x === "QUARANTINE") return 2;
+          if (x === "REJECTED") return 3;
+          return 9;
+        };
+        return rank(a.status) - rank(b.status);
+      });
   }, [selectedMaterial, lotBalances]);
 
   const handleSelectMaterial = (m: Material) => {
@@ -89,9 +93,8 @@ const IssueModal: React.FC<IssueModalProps> = ({
   };
 
   const handleSelectLot = (lotId: string) => {
-    const lot = lotsForMaterial.find(
-      (l) => `${l.material_code}-${l.lot_number}` === lotId
-    );
+    const idNum = Number(lotId);
+    const lot = lotsForMaterial.find((l) => l.material_lot_id === idNum);
     setSelectedLot(lot || null);
     if (selectedMaterial) {
       setManufacturer(selectedMaterial.manufacturer || "");
@@ -102,6 +105,8 @@ const IssueModal: React.FC<IssueModalProps> = ({
   const isBatchOptional = consumptionType === "R_AND_D";
   const isBatchIrrelevant =
     consumptionType === "WASTAGE" || consumptionType === "DESTRUCTION";
+
+  const showBatchFields = !isBatchIrrelevant;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,6 +143,10 @@ const IssueModal: React.FC<IssueModalProps> = ({
       const payload = {
         material_code: selectedMaterial.material_code,
         lot_number: selectedLot.lot_number,
+
+        // NEW: exact segment selection (split lots safe)
+        material_lot_id: selectedLot.material_lot_id,
+
         qty: Number(qty),
         uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
         product_batch_no:
@@ -175,7 +184,8 @@ const IssueModal: React.FC<IssueModalProps> = ({
   const quantityUom =
     selectedLot?.uom_code || selectedMaterial?.base_uom_code || "";
 
-  const showBatchFields = !isBatchIrrelevant;
+  const isQuarantined =
+    (selectedLot?.status || "").toUpperCase() === "QUARANTINE";
 
   return (
     <div className="modal-overlay">
@@ -210,7 +220,6 @@ const IssueModal: React.FC<IssueModalProps> = ({
                   </option>
                 ))}
               </select>
-              
             </div>
 
             {/* MATERIAL */}
@@ -232,15 +241,16 @@ const IssueModal: React.FC<IssueModalProps> = ({
                   <div className="typeahead-dropdown">
                     {filteredMaterials.map((m) => (
                       <button
-                        key={m.id}
                         type="button"
+                        key={m.id}
                         className="typeahead-option"
                         onClick={() => handleSelectMaterial(m)}
                       >
-                        <div className="typeahead-main">{m.name}</div>
+                        <div className="typeahead-main">
+                          {m.name} ({m.material_code})
+                        </div>
                         <div className="typeahead-meta">
-                          {m.material_code} •{" "}
-                          {m.manufacturer || m.supplier || "No supplier set"}
+                          {m.category_code} • {m.type_code}
                         </div>
                       </button>
                     ))}
@@ -249,116 +259,84 @@ const IssueModal: React.FC<IssueModalProps> = ({
               </div>
             </div>
 
-            {/* LOT SELECTION */}
+            {/* LOT */}
             <div className="form-group">
-              <label className="label">Lot number (released)</label>
+              <label className="label">Lot (choose segment)</label>
               <select
                 className="input"
-                value={
-                  selectedLot
-                    ? `${selectedLot.material_code}-${selectedLot.lot_number}`
-                    : ""
-                }
+                value={selectedLot ? String(selectedLot.material_lot_id) : ""}
                 onChange={(e) => handleSelectLot(e.target.value)}
-                disabled={!selectedMaterial || lotsForMaterial.length === 0}
+                disabled={!selectedMaterial}
               >
-                <option value="">
-                  {selectedMaterial
-                    ? lotsForMaterial.length > 0
-                      ? "Select lot…"
-                      : "No live lots for this material"
-                    : "Select a material first"}
-                </option>
-                {lotsForMaterial.map((lot) => (
-                  <option
-                    key={`${lot.material_code}-${lot.lot_number}`}
-                    value={`${lot.material_code}-${lot.lot_number}`}
-                  >
-                    {lot.lot_number} • {lot.balance_qty} {lot.uom_code} • exp{" "}
-                    {lot.expiry_date
-                      ? new Date(lot.expiry_date).toLocaleDateString("en-GB")
-                      : "—"}
-                  </option>
-                ))}
+                <option value="">Select lot…</option>
+                {lotsForMaterial.map((lot) => {
+                  const status = (lot.status || "").toUpperCase();
+                  const label = `${lot.lot_number} • ${status} • ${lot.balance_qty} ${lot.uom_code}`;
+                  return (
+                    <option key={lot.material_lot_id} value={lot.material_lot_id}>
+                      {label}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
-            {/* MANUFACTURER (auto) */}
-            <div className="form-group">
-              <label className="label">Manufacturer (from GRN)</label>
-              <input
-                className="input"
-                value={manufacturer}
-                readOnly
-                placeholder="Auto from material / GRN"
-              />
-            </div>
-
-            {/* LOT EXPIRY (read-only display) */}
-            <div className="form-group">
-              <label className="label">Lot expiry</label>
-              <input
-                className="input"
-                value={
-                  selectedLot && selectedLot.expiry_date
-                    ? new Date(
-                        selectedLot.expiry_date
-                      ).toLocaleDateString("en-GB")
-                    : ""
-                }
-                readOnly
-                placeholder="Auto from lot"
-              />
-            </div>
+            {/* QUARANTINE WARNING */}
+            {isQuarantined && (
+              <div className="form-group form-group-full">
+                <div
+                  style={{
+                    border: "1px solid rgba(248,113,113,0.55)",
+                    background: "rgba(248,113,113,0.10)",
+                    borderRadius: 12,
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    color: "#fecaca",
+                  }}
+                >
+                  <strong>Warning:</strong> This is quarantined material. Obtain
+                  QA approval prior to use. If already used, escalate to QA
+                  Management.
+                </div>
+              </div>
+            )}
 
             {/* QTY */}
             <div className="form-group">
-              <label className="label">
-                Quantity {quantityUom ? `(${quantityUom})` : ""}
-              </label>
+              <label className="label">Quantity ({quantityUom || "uom"})</label>
               <input
                 className="input"
-                type="number"
-                min={0}
-                step="0.001"
-                placeholder="e.g. 120"
+                inputMode="decimal"
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
+                placeholder="e.g. 10"
               />
-              {selectedLot && (
-                <div
-                  className="availability-chip"
-                  style={{
-                    marginTop: "0.35rem",
-                    fontSize: "0.8rem",
-                    color: "#c4b5fd",
-                  }}
-                >
-                  Available:{" "}
-                  <strong>
-                    {selectedLot.balance_qty} {selectedLot.uom_code}
-                  </strong>
-                </div>
-              )}
             </div>
 
-            {/* ES BATCH (for Usage / R&D) */}
+            {/* MANUFACTURER (DISPLAY ONLY, CURRENT UX) */}
+            <div className="form-group">
+              <label className="label">Manufacturer (info)</label>
+              <input
+                className="input"
+                value={manufacturer}
+                onChange={(e) => setManufacturer(e.target.value)}
+                placeholder="(auto)"
+              />
+            </div>
+
+            {/* Batch fields */}
             {showBatchFields && (
               <>
                 <div className="form-group">
                   <label className="label">
-                    ES Batch{" "}
-                    {isBatchRequired ? (
-                      <span style={{ opacity: 0.7 }}>(required)</span>
-                    ) : (
-                      <span style={{ opacity: 0.7 }}>(optional)</span>
-                    )}
+                    ES batch number{" "}
+                    {isBatchRequired ? "(required)" : "(optional)"}
                   </label>
                   <input
                     className="input"
-                    placeholder="e.g. ES174424"
                     value={productBatchNo}
                     onChange={(e) => setProductBatchNo(e.target.value)}
+                    placeholder="e.g. ES000123"
                   />
                 </div>
 
@@ -374,37 +352,16 @@ const IssueModal: React.FC<IssueModalProps> = ({
               </>
             )}
 
-            {/* Info when ES batch is not relevant */}
-            {isBatchIrrelevant && (
-              <div className="form-group form-group-full">
-                <label className="label">Batch linkage</label>
-                <div className="input" style={{ opacity: 0.7 }}>
-                  ES Batch: N/A for {consumptionType === "WASTAGE"
-                    ? "wastage"
-                    : "destruction"}{" "}
-                  movements. This transaction will still appear in the lot
-                  ledger.
-                </div>
-              </div>
-            )}
-
-            {/* COMMENT */}
+            {/* Comment */}
             <div className="form-group form-group-full">
               <label className="label">
-                Comment{" "}
-                {consumptionType === "DESTRUCTION" && (
-                  <span style={{ opacity: 0.7 }}>(required for destruction)</span>
-                )}
+                Comment {consumptionType === "DESTRUCTION" ? "(required)" : ""}
               </label>
               <textarea
                 className="input textarea"
-                placeholder={
-                  consumptionType === "USAGE"
-                    ? "e.g. Issue into ES174424 – pre-weigh"
-                    : "Reason / context for this consumption…"
-                }
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
+                placeholder="Optional unless destruction…"
               />
             </div>
           </div>
@@ -413,18 +370,14 @@ const IssueModal: React.FC<IssueModalProps> = ({
 
           <div className="modal-footer">
             <button
+              className="btn-muted"
               type="button"
-              className="btn btn-ghost"
               onClick={onClose}
               disabled={submitting}
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={submitting}
-            >
+            <button className="btn-primary" type="submit" disabled={submitting}>
               {submitting ? "Posting…" : "Post consumption"}
             </button>
           </div>
@@ -432,6 +385,4 @@ const IssueModal: React.FC<IssueModalProps> = ({
       </div>
     </div>
   );
-};
-
-export default IssueModal;
+}

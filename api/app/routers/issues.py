@@ -20,11 +20,9 @@ def create_issue(
     """
     Log a consumption / goods issue against a specific lot.
 
-    Behaviour:
-    - Looks up Material by material_code.
-    - Looks up (or creates) the MaterialLot for the given lot_number.
-    - Checks there is enough stock in that lot (sum of qty * direction).
-    - Inserts a StockTransaction with txn_type='ISSUE', direction=-1.
+    Updated for split lots:
+    - Prefer payload.material_lot_id (exact segment)
+    - Fallback to (material_code + lot_number) ONLY if it resolves uniquely
     """
 
     # 1. Locate material
@@ -36,30 +34,55 @@ def create_issue(
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    # 2. Locate (or create) lot
-    lot = (
-        db.query(MaterialLot)
-        .filter(
-            MaterialLot.material_id == material.id,
-            MaterialLot.lot_number == payload.lot_number,
-        )
-        .one_or_none()
-    )
+    # 2. Locate lot segment
+    lot = None
 
-    if lot is None:
-        # Normally you should not be issuing from a lot that has never been
-        # received, but we handle it defensively.
-        lot = MaterialLot(
-            material_id=material.id,
-            lot_number=payload.lot_number,
-            expiry_date=None,
-            status="AVAILABLE",
-            created_by=payload.created_by,
+    if payload.material_lot_id is not None:
+        lot = (
+            db.query(MaterialLot)
+            .filter(
+                MaterialLot.id == payload.material_lot_id,
+                MaterialLot.material_id == material.id,
+            )
+            .one_or_none()
         )
-        db.add(lot)
-        db.flush()
+        if lot is None:
+            raise HTTPException(status_code=404, detail="Lot segment not found")
+    else:
+        # Legacy lookup: MUST be unique, otherwise split lots will break traceability
+        matches = (
+            db.query(MaterialLot)
+            .filter(
+                MaterialLot.material_id == material.id,
+                MaterialLot.lot_number == payload.lot_number,
+            )
+            .order_by(MaterialLot.id.asc())
+            .all()
+        )
 
-    # 3. Check current balance for this lot
+        if len(matches) == 0:
+            # defensive create (keeps previous behaviour)
+            lot = MaterialLot(
+                material_id=material.id,
+                lot_number=payload.lot_number,
+                expiry_date=None,
+                status="AVAILABLE",
+                created_by=payload.created_by,
+            )
+            db.add(lot)
+            db.flush()
+        elif len(matches) == 1:
+            lot = matches[0]
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Multiple lot segments exist for this lot number. "
+                    "Please select a specific segment (material_lot_id)."
+                ),
+            )
+
+    # 3. Check current balance for this lot segment
     current_balance = (
         db.query(
             func.coalesce(
@@ -69,6 +92,7 @@ def create_issue(
         .filter(StockTransaction.material_lot_id == lot.id)
         .scalar()
     )
+    current_balance = float(current_balance or 0.0)
 
     if current_balance < payload.qty:
         raise HTTPException(
@@ -105,7 +129,6 @@ def create_issue(
     db.refresh(lot)
     db.refresh(material)
 
-    # Manufacturer & supplier should come from the lot (GRN), not the material
     manufacturer = lot.manufacturer or material.manufacturer
     supplier = lot.supplier or material.supplier
 
@@ -134,14 +157,6 @@ def list_issues(
     limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db),
 ) -> List[IssueOut]:
-    """
-    List recent consumption / issues.
-
-    The UI shows:
-    - Issue Date -> StockTransaction.created_at
-    - Product Manufacture Date -> StockTransaction.product_manufacture_date
-    """
-
     stmt = (
         select(StockTransaction, MaterialLot, Material)
         .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)

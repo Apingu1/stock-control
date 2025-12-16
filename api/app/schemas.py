@@ -48,11 +48,6 @@ class MaterialCreate(MaterialBase):
 
 
 class MaterialUpdate(BaseModel):
-    """
-    Fields that can be updated for an existing material.
-    We don't allow material_code changes via this endpoint.
-    """
-
     name: str
     category_code: str
     type_code: str
@@ -69,7 +64,6 @@ class MaterialOut(MaterialBase):
     updated_at: datetime
     created_by: Optional[str] = None
 
-    # NEW: approved manufacturers (if any)
     approved_manufacturers: List[ApprovedManufacturerOut] = []
 
     class Config:
@@ -80,10 +74,6 @@ class MaterialOut(MaterialBase):
 
 
 class ReceiptCreate(BaseModel):
-    """
-    One GRN line, i.e. a row from your 'Purchased' tab.
-    """
-
     material_code: str
     lot_number: str
     expiry_date: Optional[datetime] = None
@@ -92,7 +82,7 @@ class ReceiptCreate(BaseModel):
     uom_code: str
     unit_price: Optional[float] = None
     total_value: Optional[float] = None
-    target_ref: Optional[str] = None  # GRN / invoice ref
+    target_ref: Optional[str] = None
     supplier: Optional[str] = None
     manufacturer: Optional[str] = None
     complies_es_criteria: Optional[bool] = True
@@ -110,7 +100,7 @@ class ReceiptOut(BaseModel):
     uom_code: str
     unit_price: Optional[float] = None
     total_value: Optional[float] = None
-    target_ref: Optional[str] = None  # GRN / invoice ref
+    target_ref: Optional[str] = None
     supplier: Optional[str] = None
     manufacturer: Optional[str] = None
     complies_es_criteria: Optional[bool] = None
@@ -132,18 +122,15 @@ class IssueCreate(BaseModel):
 
     material_code: str
     lot_number: str
+
+    # NEW: preferred for split-lots (exact segment)
+    material_lot_id: Optional[int] = None
+
     qty: float
     uom_code: str
-    # ES batch number / R&D ref (now stored in DB)
     product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[datetime] = None
-    # Consumption type:
-    #  - USAGE       → batch usage (ES batch required)
-    #  - WASTAGE     → wastage/spillage
-    #  - DESTRUCTION → destruction of stock
-    #  - R_AND_D     → R&D usage (ES batch optional)
     consumption_type: str = "USAGE"
-    # Optional reference (e.g. worksheet ref, internal ref)
     target_ref: Optional[str] = None
     created_by: str
     comment: Optional[str] = None
@@ -157,15 +144,11 @@ class IssueOut(BaseModel):
     expiry_date: Optional[datetime] = None
     qty: float
     uom_code: str
-    # Stored on stock_transactions from now on
     product_batch_no: Optional[str] = None
     manufacturer: Optional[str] = None
     supplier: Optional[str] = None
-    # For display on the Consumption page
     product_manufacture_date: Optional[datetime] = None
-    # Consumption type (USAGE / WASTAGE / DESTRUCTION / R_AND_D)
     consumption_type: str
-    # Optional reference (e.g. worksheet ref, internal ref)
     target_ref: Optional[str] = None
     created_at: datetime
     created_by: str
@@ -173,15 +156,6 @@ class IssueOut(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-# --- Lot status changes (input) ----------------------------------------------
-
-
-class LotStatusChangeCreate(BaseModel):
-    new_status: str
-    reason: str
-    changed_by: Optional[str] = None
 
 
 # --- Lot balances (view) -----------------------------------------------------
@@ -201,9 +175,19 @@ class LotBalanceOut(BaseModel):
     balance_qty: float
     uom_code: str
 
-    # NEW: last status change metadata for tooltip / audit preview
+    # NEW: from lot_balances_view
     last_status_reason: Optional[str] = None
     last_status_changed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class LotStatusChangeCreate(BaseModel):
+    new_status: str
+    reason: str
+    changed_by: Optional[str] = None
+
+    # NEW: split/partial handling
+    whole_lot: bool = True
+    move_qty: Optional[float] = None

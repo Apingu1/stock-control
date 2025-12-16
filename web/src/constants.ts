@@ -27,3 +27,19 @@ export const MATERIAL_UOM_OPTIONS: string[] = [
   "AMP",
   "NA",
 ];
+
+export type ConsumptionTypeCode =
+  | "USAGE"
+  | "WASTAGE"
+  | "DESTRUCTION"
+  | "R_AND_D";
+
+export const CONSUMPTION_TYPES: {
+  code: ConsumptionTypeCode;
+  label: string;
+}[] = [
+  { code: "USAGE", label: "Usage" },
+  { code: "WASTAGE", label: "Wastage" },
+  { code: "DESTRUCTION", label: "Destruction" },
+  { code: "R_AND_D", label: "R&D" },
+];
