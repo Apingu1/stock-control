@@ -1,26 +1,24 @@
 -- Phase-1d: Split-lot support (status segments)
--- Allows same (material_id, lot_number) multiple times (one per status segment).
--- Also creates status change log + upgrades lot_balances_view.
+-- Enforces uniqueness per (material_id, lot_number, status)
+-- Updates lot_balances_view to use lot_status_changes.changed_at (not created_at)
 
 BEGIN;
 
--- 1) Relax unique constraint(s) to allow multiple rows for same (material_id, lot_number)
--- Your environment previously had: material_lots_material_id_lot_number_key
--- Older scripts may have used: uq_material_lots_material_lot_number
+-- 1) Drop old unique constraints that block split-lots
 DO $$
 BEGIN
+  -- older name seen in your DB error logs previously
   IF EXISTS (
-    SELECT 1
-    FROM pg_constraint
+    SELECT 1 FROM pg_constraint
     WHERE conname = 'material_lots_material_id_lot_number_key'
   ) THEN
     ALTER TABLE material_lots
       DROP CONSTRAINT material_lots_material_id_lot_number_key;
   END IF;
 
+  -- older script name
   IF EXISTS (
-    SELECT 1
-    FROM pg_constraint
+    SELECT 1 FROM pg_constraint
     WHERE conname = 'uq_material_lots_material_lot_number'
   ) THEN
     ALTER TABLE material_lots
@@ -28,8 +26,7 @@ BEGIN
   END IF;
 END $$;
 
--- Replace with uniqueness per status segment
--- This allows: same printed lot number, but different status rows (AVAILABLE/QUARANTINE/REJECTED)
+-- 2) Add uniqueness guard per status segment
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -42,27 +39,16 @@ BEGIN
   END IF;
 END $$;
 
--- 2) Status change log (for last_reason / audit trail later)
-CREATE TABLE IF NOT EXISTS lot_status_changes (
-  id              SERIAL PRIMARY KEY,
-  material_lot_id INTEGER NOT NULL REFERENCES material_lots(id) ON DELETE CASCADE,
-  from_status     VARCHAR(20) NOT NULL,
-  to_status       VARCHAR(20) NOT NULL,
-  qty_moved       NUMERIC NOT NULL,
-  reason          TEXT NOT NULL,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_by      TEXT
-);
-
--- 3) Upgrade lot_balances_view to include last reason + last changed at
+-- 3) Update lot_balances_view to include last status reason + last changed at
+-- Your lot_status_changes table uses: reason + changed_at
 CREATE OR REPLACE VIEW lot_balances_view AS
 WITH latest_status_change AS (
   SELECT DISTINCT ON (lsc.material_lot_id)
     lsc.material_lot_id,
     lsc.reason AS last_status_reason,
-    lsc.created_at AS last_status_changed_at
+    lsc.changed_at AS last_status_changed_at
   FROM lot_status_changes lsc
-  ORDER BY lsc.material_lot_id, lsc.created_at DESC
+  ORDER BY lsc.material_lot_id, lsc.changed_at DESC
 )
 SELECT
   ml.id AS material_lot_id,
