@@ -5,6 +5,18 @@ import { CONSUMPTION_TYPES } from "../../constants";
 
 type ConsumptionTypeCode = "USAGE" | "WASTAGE" | "DESTRUCTION" | "R_AND_D";
 
+function formatDateShort(d: string | null | undefined) {
+  if (!d) return "—";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return String(d);
+
+  const day = String(dt.getDate()).padStart(2, "0");
+  const month = String(dt.getMonth() + 1).padStart(2, "0");
+  const year = dt.getFullYear();
+
+  return `${day}-${month}-${year}`; // DD-MM-YYYY
+}
+
 export default function IssueModal({
   open,
   onClose,
@@ -144,7 +156,7 @@ export default function IssueModal({
         material_code: selectedMaterial.material_code,
         lot_number: selectedLot.lot_number,
 
-        // NEW: exact segment selection (split lots safe)
+        // exact segment selection (split lots safe)
         material_lot_id: selectedLot.material_lot_id,
 
         qty: Number(qty),
@@ -271,9 +283,14 @@ export default function IssueModal({
                 <option value="">Select lot…</option>
                 {lotsForMaterial.map((lot) => {
                   const status = (lot.status || "").toUpperCase();
-                  const label = `${lot.lot_number} • ${status} • ${lot.balance_qty} ${lot.uom_code}`;
+                  const exp = formatDateShort(lot.expiry_date);
+                  // ✅ add expiry back, keep status visible, keep segment behaviour
+                  const label = `${lot.lot_number} • EXP ${exp} • ${status} • ${lot.balance_qty} ${lot.uom_code}`;
                   return (
-                    <option key={lot.material_lot_id} value={lot.material_lot_id}>
+                    <option
+                      key={lot.material_lot_id}
+                      value={lot.material_lot_id}
+                    >
                       {label}
                     </option>
                   );
