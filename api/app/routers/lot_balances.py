@@ -1,3 +1,4 @@
+# app/routers/lot_balances.py
 from typing import List, Optional
 from datetime import datetime
 
@@ -7,14 +8,13 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..schemas import LotBalanceOut, LotStatusChangeCreate
-from ..models import MaterialLot, LotStatusChange, StockTransaction, Material
+from ..models import MaterialLot, LotStatusChange, StockTransaction, Material, User
+from ..security import require_senior
 
 router = APIRouter(prefix="/lot-balances", tags=["lot-balances"])
 
-# Standardised status set (UI + DB)
 ALLOWED_LOT_STATUSES = {"AVAILABLE", "QUARANTINE", "REJECTED"}
 
-# Backward-compatible alias handling
 STATUS_ALIASES = {
     "RELEASED": "AVAILABLE",
 }
@@ -23,12 +23,8 @@ STATUS_ALIASES = {
 @router.get("/", response_model=List[LotBalanceOut])
 def list_lot_balances(
     db: Session = Depends(get_db),
-    material_code: Optional[str] = Query(
-        None, description="Filter by material_code, e.g. MAT0327"
-    ),
-    search: Optional[str] = Query(
-        None, description="Search by material code, name, or lot number (ILIKE)"
-    ),
+    material_code: Optional[str] = Query(None, description="Filter by material_code"),
+    search: Optional[str] = Query(None, description="Search code/name/lot (ILIKE)"),
     include_zero: bool = Query(False, description="Include lots with zero balance"),
     limit: int = Query(200, ge=1, le=1000),
 ):
@@ -97,9 +93,7 @@ def list_lot_balances(
 
 def _get_lot_balance(db: Session, lot_id: int) -> float:
     bal = (
-        db.query(
-            func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0)
-        )
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
         .filter(StockTransaction.material_lot_id == lot_id)
         .scalar()
     )
@@ -116,20 +110,13 @@ def change_lot_status(
     material_lot_id: int,
     payload: LotStatusChangeCreate,
     db: Session = Depends(get_db),
+    user: User = Depends(require_senior),  # SENIOR/ADMIN enforced server-side
 ) -> LotBalanceOut:
     """
-    Whole lot:
-      - If destination segment exists (same material_id + lot_number + status),
-        MERGE by moving balance into destination via STATUS_MOVE.
-      - Else flip MaterialLot.status.
-
-    Partial quantity:
-      - If destination segment exists, MERGE partial qty into destination via STATUS_MOVE.
-      - Else create a new MaterialLot segment (same printed lot_number) and STATUS_MOVE into it.
-
-    Never flips a segment into a status that already exists (prevents duplicates).
+    Phase A:
+    - Requires SENIOR/ADMIN
+    - changed_by is enforced from authenticated user (server-side)
     """
-
     lot = db.query(MaterialLot).filter(MaterialLot.id == material_lot_id).one_or_none()
     if lot is None:
         raise HTTPException(status_code=404, detail="Lot not found")
@@ -145,24 +132,19 @@ def change_lot_status(
     if new_status == old_status:
         raise HTTPException(status_code=400, detail="Status is already set to this value")
 
-    # Current balance on this specific segment (material_lot_id)
     current_balance = _get_lot_balance(db, lot.id)
     if current_balance <= 0:
         raise HTTPException(status_code=400, detail="Cannot change status: lot has zero balance")
 
-    # Determine whole vs partial
     whole_lot = bool(payload.whole_lot)
 
     move_qty = payload.move_qty
     if not whole_lot and move_qty is None:
-        raise HTTPException(
-            status_code=400, detail="move_qty is required for partial status changes"
-        )
+        raise HTTPException(status_code=400, detail="move_qty is required for partial status changes")
 
     if whole_lot:
         move_qty = current_balance
 
-    # Validate qty
     try:
         move_qty_f = float(move_qty)
     except Exception:
@@ -178,18 +160,11 @@ def change_lot_status(
         )
 
     reason = payload.reason.strip()
-    changed_by = (payload.changed_by or "").strip() or None
+    changed_by = user.username
 
-    # Need UOM from material master
     material = db.query(Material).filter(Material.id == lot.material_id).one()
     uom_code = material.base_uom_code
 
-    # ---------------------------------------------------------------------
-    # MERGE-AWARE destination lookup
-    #
-    # IMPORTANT: for AVAILABLE, also treat legacy RELEASED as equivalent
-    # so the merge path triggers even if old data still has RELEASED.
-    # ---------------------------------------------------------------------
     dest_statuses = [new_status]
     if new_status == "AVAILABLE":
         dest_statuses = ["AVAILABLE", "RELEASED"]
@@ -208,7 +183,6 @@ def change_lot_status(
 
     # --- MERGE path: destination segment already exists -----------------------
     if dest_lot is not None:
-        # Move qty from source segment -> destination segment (whole or partial)
         db.add(
             StockTransaction(
                 material_lot_id=lot.id,
@@ -232,8 +206,6 @@ def change_lot_status(
             )
         )
 
-        # Log change against BOTH segments so the view shows last reason on both
-        # (Your DB schema is old_status/new_status/reason/changed_by/changed_at)
         db.add(
             LotStatusChange(
                 material_lot_id=lot.id,
@@ -253,12 +225,10 @@ def change_lot_status(
             )
         )
 
-        # IMPORTANT: Do NOT flip lot.status (would create duplicate status segments)
         db.commit()
 
     # --- NO destination segment exists ---------------------------------------
     else:
-        # Whole lot flip (safe because destination doesn't exist)
         if whole_lot:
             db.add(
                 LotStatusChange(
@@ -271,8 +241,6 @@ def change_lot_status(
             )
             lot.status = new_status
             db.commit()
-
-        # Partial split: create a new segment lot and move qty into it
         else:
             new_lot = MaterialLot(
                 material_id=lot.material_id,
@@ -284,7 +252,7 @@ def change_lot_status(
                 created_by=changed_by,
             )
             db.add(new_lot)
-            db.flush()  # get new_lot.id
+            db.flush()
 
             db.add(
                 StockTransaction(
@@ -330,7 +298,6 @@ def change_lot_status(
 
             db.commit()
 
-    # Reload source row from view (UI should refetch list to see both rows)
     row = db.execute(
         text(
             """

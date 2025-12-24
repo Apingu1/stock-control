@@ -1,3 +1,4 @@
+# app/routers/issues.py
 from datetime import datetime
 from typing import List
 
@@ -6,8 +7,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Material, MaterialLot, StockTransaction
+from ..models import Material, MaterialLot, StockTransaction, User
 from ..schemas import IssueCreate, IssueOut
+from ..security import get_current_user
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
@@ -16,14 +18,20 @@ router = APIRouter(prefix="/issues", tags=["issues"])
 def create_issue(
     payload: IssueCreate,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> IssueOut:
     """
     Log a consumption / goods issue against a specific lot.
 
-    Updated for split lots:
-    - Prefer payload.material_lot_id (exact segment)
+    Phase A:
+    - Requires auth
+    - created_by is enforced from authenticated user (server-side)
+
+    Split-lots:
+    - Prefer payload.material_lot_id
     - Fallback to (material_code + lot_number) ONLY if it resolves uniquely
     """
+    created_by = user.username
 
     # 1. Locate material
     material = (
@@ -49,7 +57,6 @@ def create_issue(
         if lot is None:
             raise HTTPException(status_code=404, detail="Lot segment not found")
     else:
-        # Legacy lookup: MUST be unique, otherwise split lots will break traceability
         matches = (
             db.query(MaterialLot)
             .filter(
@@ -61,13 +68,12 @@ def create_issue(
         )
 
         if len(matches) == 0:
-            # defensive create (keeps previous behaviour)
             lot = MaterialLot(
                 material_id=material.id,
                 lot_number=payload.lot_number,
                 expiry_date=None,
                 status="AVAILABLE",
-                created_by=payload.created_by,
+                created_by=created_by,
             )
             db.add(lot)
             db.flush()
@@ -120,7 +126,7 @@ def create_issue(
         product_manufacture_date=payload.product_manufacture_date,
         comment=payload.comment,
         created_at=now,
-        created_by=payload.created_by,
+        created_by=created_by,
     )
 
     db.add(txn)
@@ -147,7 +153,7 @@ def create_issue(
         consumption_type=txn.consumption_type or "USAGE",
         target_ref=txn.target_ref,
         created_at=txn.created_at,
-        created_by=txn.created_by,
+        created_by=txn.created_by or created_by,
         comment=txn.comment,
     )
 
@@ -189,7 +195,7 @@ def list_issues(
                 consumption_type=txn.consumption_type or "USAGE",
                 target_ref=txn.target_ref,
                 created_at=txn.created_at,
-                created_by=txn.created_by,
+                created_by=txn.created_by or "—",
                 comment=txn.comment,
             )
         )

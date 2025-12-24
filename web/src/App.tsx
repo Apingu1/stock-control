@@ -1,13 +1,7 @@
-// src/App.tsx
+// web/src/App.tsx
 import React, { useEffect, useState } from "react";
-import type {
-  LotBalance,
-  Material,
-  ViewMode,
-  Receipt,
-  Issue,
-} from "./types";
-import { apiFetch } from "./utils/api";
+import type { LotBalance, Material, ViewMode, Receipt, Issue, UserMe } from "./types";
+import { apiFetch, clearToken, fetchMe, getToken } from "./utils/api";
 
 import DashboardView from "./components/dashboard/DashboardView";
 import MaterialsLibraryView from "./components/materials/MaterialsLibraryView";
@@ -19,7 +13,19 @@ import NewReceiptModal from "./components/modals/NewReceiptModal";
 import IssueModal from "./components/modals/IssueModal";
 import MaterialModal from "./components/modals/MaterialModal";
 
+import LoginModal from "./components/modals/LoginModal";
+import AdminUsersView from "./components/admin/AdminUsersView";
+
 const App: React.FC = () => {
+  // --- Auth -----------------------------------------------------------------
+  const [me, setMe] = useState<UserMe | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+
+  const isAdmin = me?.role === "ADMIN";
+  const canChangeStatus = me?.role === "SENIOR" || me?.role === "ADMIN";
+
+  // --- Data -----------------------------------------------------------------
   const [lotBalances, setLotBalances] = useState<LotBalance[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -39,13 +45,11 @@ const App: React.FC = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false);
-  const [editingMaterial, setEditingMaterial] = useState<Material | null>(
-    null
-  );
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
 
   const [view, setView] = useState<ViewMode>("dashboard");
 
-  // --- Data loaders ----------------------------------------------------------
+  // --- Loaders --------------------------------------------------------------
 
   const loadLotBalances = async () => {
     try {
@@ -67,8 +71,9 @@ const App: React.FC = () => {
       const res = await apiFetch("/materials/?limit=500");
       const data = (await res.json()) as Material[];
       setMaterials(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to load materials", e);
+      // keep existing list
     }
   };
 
@@ -104,29 +109,95 @@ const App: React.FC = () => {
     }
   };
 
+  const loadAll = async () => {
+    await Promise.all([loadLotBalances(), loadMaterials(), loadReceipts(), loadIssues()]);
+  };
+
+  // --- Auth bootstrap -------------------------------------------------------
+
   useEffect(() => {
-    void loadLotBalances();
-    void loadMaterials();
-    void loadReceipts();
-    void loadIssues();
+    const boot = async () => {
+      const token = getToken();
+      if (!token) {
+        setMe(null);
+        setAuthChecked(true);
+        setShowLogin(true);
+        return;
+      }
+
+      try {
+        const u = await fetchMe();
+        setMe(u);
+        setAuthChecked(true);
+        setShowLogin(false);
+        await loadAll();
+      } catch (e) {
+        clearToken();
+        setMe(null);
+        setAuthChecked(true);
+        setShowLogin(true);
+      }
+    };
+
+    void boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleLoggedIn = async (u: UserMe) => {
+    setMe(u);
+    setShowLogin(false);
+    await loadAll();
+  };
+
+  const logout = () => {
+    clearToken();
+    setMe(null);
+    setShowLogin(true);
+    setView("dashboard");
+    setLotBalances([]);
+    setMaterials([]);
+    setReceipts([]);
+    setIssues([]);
+  };
+
+  // --- Modal handlers -------------------------------------------------------
+
   const handleMaterialSaved = async () => {
+    setShowNewMaterialModal(false);
+    setEditingMaterial(null);
     await loadMaterials();
   };
 
   const handleReceiptPosted = async () => {
+    setShowReceiptModal(false);
     await Promise.all([loadLotBalances(), loadReceipts()]);
   };
 
   const handleIssuePosted = async () => {
+    setShowIssueModal(false);
     await Promise.all([loadLotBalances(), loadIssues()]);
   };
+
+  // --- Loading gate ---------------------------------------------------------
+
+  if (!authChecked) {
+    return (
+      <div className="app-shell">
+        <div className="content">
+          <section className="card">
+            <div className="info-row">Loading…</div>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   // --- Render ---------------------------------------------------------------
 
   return (
     <div className="app-shell">
+      <LoginModal open={showLogin} onLoggedIn={handleLoggedIn} />
+
       {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="sidebar-brand">
@@ -142,67 +213,86 @@ const App: React.FC = () => {
           <li className="nav-item">
             <button
               type="button"
-              className={
-                "nav-link as-button " +
-                (view === "dashboard" ? "active" : "")
-              }
+              className={"nav-link as-button " + (view === "dashboard" ? "active" : "")}
               onClick={() => setView("dashboard")}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               <span className="icon">📊</span>
               Dashboard
               <span className="badge">Today</span>
             </button>
           </li>
+
           <li className="nav-item">
             <button
               type="button"
-              className={
-                "nav-link as-button " +
-                (view === "materials" ? "active" : "")
-              }
+              className={"nav-link as-button " + (view === "materials" ? "active" : "")}
               onClick={() => setView("materials")}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               <span className="icon">🧪</span>
               Materials Library
             </button>
           </li>
+
           <li className="nav-item">
             <button
               type="button"
-              className={
-                "nav-link as-button " +
-                (view === "receipts" ? "active" : "")
-              }
+              className={"nav-link as-button " + (view === "receipts" ? "active" : "")}
               onClick={() => setView("receipts")}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               <span className="icon">📥</span>
               Goods Receipts
             </button>
           </li>
+
           <li className="nav-item">
             <button
               type="button"
-              className={
-                "nav-link as-button " + (view === "issues" ? "active" : "")
-              }
-              onClick={() => setView("issues")}
+              className={"nav-link as-button " + (view === "consumption" ? "active" : "")}
+              onClick={() => setView("consumption")}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               <span className="icon">🚚</span>
               Consumption
             </button>
           </li>
+
           <li className="nav-item">
             <button
               type="button"
-              className={
-                "nav-link as-button " + (view === "lots" ? "active" : "")
-              }
+              className={"nav-link as-button " + (view === "lots" ? "active" : "")}
               onClick={() => setView("lots")}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               <span className="icon">📦</span>
               Live Lots
             </button>
           </li>
+
+          {isAdmin && (
+            <>
+              <div className="sidebar-section-label" style={{ marginTop: 14 }}>
+                Admin
+              </div>
+              <li className="nav-item">
+                <button
+                  type="button"
+                  className={"nav-link as-button " + (view === "admin" ? "active" : "")}
+                  onClick={() => setView("admin")}
+                >
+                  <span className="icon">👤</span>
+                  Users &amp; Roles
+                </button>
+              </li>
+            </>
+          )}
         </ul>
 
         <div className="sidebar-section-label">Risk &amp; Quality</div>
@@ -229,9 +319,26 @@ const App: React.FC = () => {
           </li>
         </ul>
 
-        <div className="sidebar-footer">
-          <span>GMP Mode</span>
-          <span className="pill-muted">Pilot • On-prem</span>
+        <div style={{ flex: 1 }} />
+
+        <div className="sidebar-footer" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+          {me ? (
+            <div style={{ width: "100%" }}>
+              <div style={{ fontSize: 12, opacity: 0.85 }}>
+                Signed in as <b>{me.username}</b> ({me.role})
+              </div>
+              <button className="btn" style={{ marginTop: 10, width: "100%" }} onClick={logout}>
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div className="info-row">Please sign in.</div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>GMP Mode</span>
+            <span className="pill-muted">Pilot • On-prem</span>
+          </div>
         </div>
       </aside>
 
@@ -241,78 +348,87 @@ const App: React.FC = () => {
         <header className="top-bar">
           <div>
             <div className="page-tag">Stock Control • Live Pilot</div>
+
             <div className="page-title">
               {view === "dashboard" && (
                 <>
                   Inventory Command Centre{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>
-                    / ES Specials
-                  </span>
+                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ ES Specials</span>
                 </>
               )}
               {view === "materials" && (
                 <>
                   Materials Library{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>
-                    / ES Master Data
-                  </span>
+                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ ES Master Data</span>
                 </>
               )}
               {view === "receipts" && (
                 <>
                   Goods Receipts{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>
-                    / Historic Purchases
-                  </span>
+                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ Historic Purchases</span>
                 </>
               )}
-              {view === "issues" && (
+              {view === "consumption" && (
                 <>
                   Issues &amp; Consumption{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>
-                    / ES Batch Usage
-                  </span>
+                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ ES Batch Usage</span>
                 </>
               )}
               {view === "lots" && (
                 <>
                   Live Lot Balances{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>
-                    / On-hand Stock
-                  </span>
+                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ On-hand Stock</span>
+                </>
+              )}
+              {view === "admin" && (
+                <>
+                  Admin — Users &amp; Roles{" "}
+                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ Access Control</span>
                 </>
               )}
             </div>
+
             <div className="page-subtitle">
               {view === "dashboard"
                 ? "See your materials, expiries and locations in one boujee, high-trust view."
+                : view === "admin"
+                ? "Create users, assign roles and control access (server-enforced)."
                 : "Search, filter and drill into the ES stock ledger with GMP-style traceability."}
             </div>
           </div>
+
           <div className="top-bar-actions">
             <div className="chip">
               <span className="chip-dot" />
               Stock engine healthy
             </div>
-            {/* Global quick actions */}
+
             <button
               className="btn btn-ghost"
               type="button"
               onClick={() => setShowNewMaterialModal(true)}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               🧪 New Material
             </button>
+
             <button
               className="btn btn-ghost"
               type="button"
               onClick={() => setShowReceiptModal(true)}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               📥 New Goods Receipt
             </button>
+
             <button
               className="btn btn-primary"
               type="button"
               onClick={() => setShowIssueModal(true)}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
             >
               🚚 New Consumption
             </button>
@@ -323,10 +439,7 @@ const App: React.FC = () => {
         {view === "dashboard" && <DashboardView materials={materials} />}
 
         {view === "materials" && (
-          <MaterialsLibraryView
-            materials={materials}
-            onEditMaterial={(m) => setEditingMaterial(m)}
-          />
+          <MaterialsLibraryView materials={materials} onEditMaterial={(m) => setEditingMaterial(m)} />
         )}
 
         {view === "receipts" && (
@@ -338,7 +451,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {view === "issues" && (
+        {view === "consumption" && (
           <ConsumptionView
             issues={issues}
             loadingIssues={loadingIssues}
@@ -353,8 +466,11 @@ const App: React.FC = () => {
             loadingLots={loadingLots}
             lotsError={lotsError}
             onLotStatusChanged={loadLotBalances}
+            canChangeStatus={!!canChangeStatus}
           />
         )}
+
+        {view === "admin" && isAdmin && <AdminUsersView />}
       </main>
 
       {/* MODALS */}
@@ -364,19 +480,23 @@ const App: React.FC = () => {
         materials={materials}
         onReceiptPosted={handleReceiptPosted}
       />
+
       <IssueModal
         open={showIssueModal}
         onClose={() => setShowIssueModal(false)}
         materials={materials}
         lotBalances={lotBalances}
         onIssuePosted={handleIssuePosted}
+        createdBy={me?.username || ""}
       />
+
       <MaterialModal
         open={showNewMaterialModal}
         onClose={() => setShowNewMaterialModal(false)}
         mode="create"
         onSaved={handleMaterialSaved}
       />
+
       <MaterialModal
         open={!!editingMaterial}
         onClose={() => setEditingMaterial(null)}

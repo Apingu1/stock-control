@@ -1,3 +1,4 @@
+# app/routers/receipts.py
 from datetime import datetime, date, time
 from typing import List
 
@@ -11,8 +12,10 @@ from ..models import (
     MaterialLot,
     StockTransaction,
     MaterialApprovedManufacturer,
+    User,
 )
 from ..schemas import ReceiptCreate, ReceiptOut
+from ..security import get_current_user
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -32,25 +35,17 @@ def _normalise_receipt_datetime(value: datetime | date) -> datetime:
 def create_receipt(
     payload: ReceiptCreate,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> ReceiptOut:
     """
     Create a new goods receipt.
 
-    Behaviour:
-    - Looks up the Material by material_code.
-    - For TABLETS_CAPSULES, if there are approved manufacturers configured,
-      enforces that payload.manufacturer is one of them.
-    - Requires goods-in ES criteria confirmation (checkbox must be ticked).
-    - Finds or creates a MaterialLot for the given lot_number.
-    - Writes manufacturer/supplier to the lot (true traceability).
-    - Inserts a StockTransaction with txn_type='RECEIPT', direction=+1.
-    - Uses payload.receipt_date as StockTransaction.created_at.
-
-    NOTE:
-    - ES criteria is treated as a per-receipt confirmation only and is not
-      stored on the material or transaction; we just enforce that it is true
-      and echo it back as `complies_es_criteria=True` in the API response.
+    Phase A:
+    - Requires auth
+    - created_by is enforced from authenticated user (server-side)
     """
+
+    created_by = user.username
 
     # 0. Enforce ES criteria checkbox (must be ticked)
     if not payload.complies_es_criteria:
@@ -114,17 +109,14 @@ def create_receipt(
             status="AVAILABLE",
             manufacturer=payload.manufacturer,
             supplier=payload.supplier,
-            created_by=payload.created_by,
+            created_by=created_by,
         )
         db.add(lot)
-        db.flush()  # get lot.id
+        db.flush()
     else:
-        # If an expiry date is supplied and different, update the lot
         if payload.expiry_date and lot.expiry_date != payload.expiry_date:
             lot.expiry_date = payload.expiry_date
 
-        # If manufacturer/supplier provided and the lot doesn't have them yet,
-        # set them (preserve existing values if already set).
         if payload.manufacturer and not lot.manufacturer:
             lot.manufacturer = payload.manufacturer
         if payload.supplier and not lot.supplier:
@@ -135,10 +127,6 @@ def create_receipt(
         material.manufacturer = payload.manufacturer
     if payload.supplier and not material.supplier:
         material.supplier = payload.supplier
-
-    # IMPORTANT:
-    # We NO LONGER update material.complies_es_criteria here.
-    # The ES checkbox is treated as a per-receipt confirmation only.
 
     # 5. Use the provided receipt_date as the transaction timestamp
     created_at = _normalise_receipt_datetime(payload.receipt_date)
@@ -155,7 +143,7 @@ def create_receipt(
         comment=payload.comment,
         product_manufacture_date=None,
         created_at=created_at,
-        created_by=payload.created_by,
+        created_by=created_by,
     )
 
     db.add(txn)
@@ -175,13 +163,11 @@ def create_receipt(
         unit_price=txn.unit_price,
         total_value=txn.total_value,
         target_ref=txn.target_ref,
-        # Show from lot first (true history), fall back to material if needed
         supplier=lot.supplier or material.supplier,
         manufacturer=lot.manufacturer or material.manufacturer,
-        # Per-receipt confirmation – always True if we got this far
         complies_es_criteria=True,
         created_at=txn.created_at,
-        created_by=txn.created_by,
+        created_by=txn.created_by or created_by,
         comment=txn.comment,
     )
 
@@ -193,16 +179,7 @@ def list_receipts(
 ) -> List[ReceiptOut]:
     """
     List the most recent goods receipts.
-
-    "Goods Receipt Date" displayed in the UI is taken from
-    StockTransaction.created_at, which we set from ReceiptCreate.receipt_date.
-
-    ES criteria:
-    - Historically we treat all listed receipts as having complied with ES
-      checks at the time of booking-in, so we simply return
-      complies_es_criteria=True for each row.
     """
-
     stmt = (
         select(StockTransaction, MaterialLot, Material)
         .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
@@ -232,7 +209,7 @@ def list_receipts(
                 manufacturer=lot.manufacturer or material.manufacturer,
                 complies_es_criteria=True,
                 created_at=txn.created_at,
-                created_by=txn.created_by,
+                created_by=txn.created_by or "—",
                 comment=txn.comment,
             )
         )

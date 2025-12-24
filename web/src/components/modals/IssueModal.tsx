@@ -23,12 +23,14 @@ export default function IssueModal({
   onIssuePosted,
   materials,
   lotBalances,
+  createdBy,
 }: {
   open: boolean;
   onClose: () => void;
   onIssuePosted: () => void;
   materials: Material[];
   lotBalances: LotBalance[];
+  createdBy: string; // ✅ from authenticated user
 }) {
   const [consumptionType, setConsumptionType] =
     useState<ConsumptionTypeCode>("USAGE");
@@ -85,7 +87,6 @@ export default function IssueModal({
           lot.balance_qty > 0
       )
       .sort((a, b) => {
-        // nice UX: AVAILABLE first, then QUARANTINE, then REJECTED
         const rank = (s: string) => {
           const x = (s || "").toUpperCase();
           if (x === "AVAILABLE") return 1;
@@ -148,6 +149,11 @@ export default function IssueModal({
       return;
     }
 
+    if (!createdBy?.trim()) {
+      setSubmitError("Not signed in (created_by missing). Please re-login.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -156,28 +162,29 @@ export default function IssueModal({
         material_code: selectedMaterial.material_code,
         lot_number: selectedLot.lot_number,
 
-        // exact segment selection (split lots safe)
+        // split-lot safe selection
         material_lot_id: selectedLot.material_lot_id,
 
         qty: Number(qty),
         uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
+
         product_batch_no:
-          isBatchRequired || isBatchOptional
-            ? productBatchNo.trim() || null
-            : null,
+          isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
         product_manufacture_date:
-          isBatchRequired || isBatchOptional
-            ? productManufactureDate || null
-            : null,
+          isBatchRequired || isBatchOptional ? productManufactureDate || null : null,
+
         consumption_type: consumptionType,
-        created_by: "apingu", // placeholder until auth wired
+
+        // ✅ derived from authenticated user (passed down)
+        created_by: createdBy,
+
         comment: comment || null,
+        manufacturer: manufacturer || null,
         target_ref: null,
       };
 
       await apiFetch("/issues/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -216,7 +223,6 @@ export default function IssueModal({
 
         <form className="modal-body" onSubmit={handleSubmit}>
           <div className="form-grid">
-            {/* CONSUMPTION TYPE */}
             <div className="form-group">
               <label className="label">Consumption type</label>
               <select
@@ -234,7 +240,6 @@ export default function IssueModal({
               </select>
             </div>
 
-            {/* MATERIAL */}
             <div className="form-group">
               <label className="label">Material</label>
               <div className="typeahead-wrap">
@@ -271,7 +276,6 @@ export default function IssueModal({
               </div>
             </div>
 
-            {/* LOT */}
             <div className="form-group">
               <label className="label">Lot (choose segment)</label>
               <select
@@ -284,13 +288,9 @@ export default function IssueModal({
                 {lotsForMaterial.map((lot) => {
                   const status = (lot.status || "").toUpperCase();
                   const exp = formatDateShort(lot.expiry_date);
-                  // ✅ add expiry back, keep status visible, keep segment behaviour
                   const label = `${lot.lot_number} • EXP ${exp} • ${status} • ${lot.balance_qty} ${lot.uom_code}`;
                   return (
-                    <option
-                      key={lot.material_lot_id}
-                      value={lot.material_lot_id}
-                    >
+                    <option key={lot.material_lot_id} value={lot.material_lot_id}>
                       {label}
                     </option>
                   );
@@ -298,7 +298,6 @@ export default function IssueModal({
               </select>
             </div>
 
-            {/* QUARANTINE WARNING */}
             {isQuarantined && (
               <div className="form-group form-group-full">
                 <div
@@ -318,7 +317,6 @@ export default function IssueModal({
               </div>
             )}
 
-            {/* QTY */}
             <div className="form-group">
               <label className="label">Quantity ({quantityUom || "uom"})</label>
               <input
@@ -330,7 +328,6 @@ export default function IssueModal({
               />
             </div>
 
-            {/* MANUFACTURER (DISPLAY ONLY, CURRENT UX) */}
             <div className="form-group">
               <label className="label">Manufacturer (info)</label>
               <input
@@ -341,13 +338,11 @@ export default function IssueModal({
               />
             </div>
 
-            {/* Batch fields */}
             {showBatchFields && (
               <>
                 <div className="form-group">
                   <label className="label">
-                    ES batch number{" "}
-                    {isBatchRequired ? "(required)" : "(optional)"}
+                    ES batch number {isBatchRequired ? "(required)" : "(optional)"}
                   </label>
                   <input
                     className="input"
@@ -369,7 +364,6 @@ export default function IssueModal({
               </>
             )}
 
-            {/* Comment */}
             <div className="form-group form-group-full">
               <label className="label">
                 Comment {consumptionType === "DESTRUCTION" ? "(required)" : ""}

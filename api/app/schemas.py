@@ -1,11 +1,57 @@
+# app/schemas.py
 from datetime import datetime, date
 from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
 
-# --- Approved manufacturers ---------------------------------------------------
+# ---------------------------------------------------------------------------
+# AUTH (Phase A)
+# ---------------------------------------------------------------------------
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserMeOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    created_by: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "OPERATOR"
+    is_active: bool = True
+
+
+class UserUpdate(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+
+# --- Approved manufacturers ---------------------------------------------------
 
 class ApprovedManufacturerBase(BaseModel):
     manufacturer_name: str
@@ -27,12 +73,8 @@ class ApprovedManufacturerOut(ApprovedManufacturerBase):
 
 # --- Materials ---------------------------------------------------------------
 
-
 class MaterialBase(BaseModel):
-    material_code: str = Field(
-        ...,
-        description="Canonical material code, e.g. MAT0327",
-    )
+    material_code: str = Field(..., description="Canonical material code, e.g. MAT0327")
     name: str
     category_code: str
     type_code: str
@@ -72,7 +114,6 @@ class MaterialOut(MaterialBase):
 
 # --- Receipts (Purchased) ----------------------------------------------------
 
-
 class ReceiptCreate(BaseModel):
     material_code: str
     lot_number: str
@@ -86,7 +127,10 @@ class ReceiptCreate(BaseModel):
     supplier: Optional[str] = None
     manufacturer: Optional[str] = None
     complies_es_criteria: Optional[bool] = True
-    created_by: str
+
+    # Phase A: client may send, but server will override from JWT user.
+    created_by: Optional[str] = None
+
     comment: Optional[str] = None
 
 
@@ -114,16 +158,14 @@ class ReceiptOut(BaseModel):
 
 # --- Issues (Used) -----------------------------------------------------------
 
-
 class IssueCreate(BaseModel):
     """
-    One row from your 'Used' tab.'
+    One row from your 'Used' tab.
     """
-
     material_code: str
     lot_number: str
 
-    # NEW: preferred for split-lots (exact segment)
+    # preferred for split-lots (exact segment)
     material_lot_id: Optional[int] = None
 
     qty: float
@@ -132,7 +174,10 @@ class IssueCreate(BaseModel):
     product_manufacture_date: Optional[datetime] = None
     consumption_type: str = "USAGE"
     target_ref: Optional[str] = None
-    created_by: str
+
+    # Phase A: client may send, but server will override from JWT user.
+    created_by: Optional[str] = None
+
     comment: Optional[str] = None
 
 
@@ -160,7 +205,6 @@ class IssueOut(BaseModel):
 
 # --- Lot balances (view) -----------------------------------------------------
 
-
 class LotBalanceOut(BaseModel):
     material_lot_id: int
     material_code: str
@@ -175,7 +219,6 @@ class LotBalanceOut(BaseModel):
     balance_qty: float
     uom_code: str
 
-    # NEW: from lot_balances_view
     last_status_reason: Optional[str] = None
     last_status_changed_at: Optional[datetime] = None
 
@@ -186,8 +229,9 @@ class LotBalanceOut(BaseModel):
 class LotStatusChangeCreate(BaseModel):
     new_status: str
     reason: str
+
+    # Phase A: client may send, but server will override from JWT user.
     changed_by: Optional[str] = None
 
-    # NEW: split/partial handling
     whole_lot: bool = True
     move_qty: Optional[float] = None

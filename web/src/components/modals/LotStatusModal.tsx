@@ -1,40 +1,39 @@
 import { useEffect, useMemo, useState } from "react";
-import type { LotBalance } from "../../types";
 import { apiFetch } from "../../utils/api";
+import type { LotBalance } from "../../types";
 
-type LotStatusModalProps = {
-  open: boolean;
-  lot: LotBalance | null;
-  onClose: () => void;
-  onStatusChanged: () => void;
-};
+type StatusValue = "AVAILABLE" | "QUARANTINE" | "REJECTED";
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: { value: StatusValue; label: string }[] = [
   { value: "AVAILABLE", label: "Available" },
   { value: "QUARANTINE", label: "Quarantine" },
   { value: "REJECTED", label: "Rejected" },
-] as const;
+];
 
-type StatusValue = (typeof STATUS_OPTIONS)[number]["value"];
+function normalizeStatus(s: any): StatusValue {
+  const x = String(s || "").toUpperCase();
+  if (x === "AVAILABLE") return "AVAILABLE";
+  if (x === "QUARANTINE") return "QUARANTINE";
+  return "REJECTED";
+}
 
-const normalizeStatus = (s: string | null | undefined) => {
-  const up = (s || "").toUpperCase().trim();
-  if (up === "RELEASED") return "AVAILABLE";
-  return up || "UNKNOWN";
-};
+function statusPillClass(status: StatusValue) {
+  if (status === "AVAILABLE") return "pill pill-ok";
+  if (status === "QUARANTINE") return "pill pill-warn";
+  return "pill pill-bad";
+}
 
-const statusPillClass = (s: string) => {
-  if (s === "AVAILABLE") return "tag tag-success";
-  if (s === "QUARANTINE") return "tag tag-warning";
-  return "tag tag-muted";
-};
-
-const LotStatusModal: React.FC<LotStatusModalProps> = ({
+export default function LotStatusModal({
   open,
   lot,
   onClose,
   onStatusChanged,
-}) => {
+}: {
+  open: boolean;
+  lot: LotBalance | null;
+  onClose: () => void;
+  onStatusChanged: () => void;
+}) {
   const [newStatus, setNewStatus] = useState<StatusValue | "">("");
   const [reason, setReason] = useState("");
   const [isPartial, setIsPartial] = useState(false); // default unchecked
@@ -54,17 +53,13 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
       setError(null);
       setSubmitting(false);
     }
-  }, [open, lot]);
-
-  const affectedQty = useMemo(() => {
-    if (!lot) return "";
-    if (!isPartial) return `${lot.balance_qty} ${lot.uom_code}`;
-    const n = Number(partialQty);
-    if (!Number.isFinite(n) || n <= 0) return `— ${lot.uom_code}`;
-    return `${n} ${lot.uom_code}`;
-  }, [lot, isPartial, partialQty]);
+  }, [open]);
 
   if (!open || !lot) return null;
+
+  const affectedQty = isPartial
+    ? `${partialQty || "—"} ${lot.uom_code}`
+    : `${lot.balance_qty} ${lot.uom_code}`;
 
   const validate = () => {
     if (!newStatus) return "Please select a new status.";
@@ -80,24 +75,23 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
     return null;
   };
 
-  const handleSubmit = async () => {
+  const submit = async () => {
     const v = validate();
     if (v) {
       setError(v);
       return;
     }
 
-    try {
-      setSubmitting(true);
-      setError(null);
+    setSubmitting(true);
+    setError(null);
 
+    try {
       await apiFetch(`/lot-balances/${lot.material_lot_id}/status-change`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           new_status: newStatus,
           reason: reason.trim(),
-          changed_by: "web-ui",
+          // changed_by is server-derived / optional, so don't hardcode it
           whole_lot: !isPartial,
           move_qty: isPartial ? Number(partialQty) : null,
         }),
@@ -105,8 +99,9 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
 
       onStatusChanged();
       onClose();
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to change status");
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message ?? "Failed to change status");
     } finally {
       setSubmitting(false);
     }
@@ -121,31 +116,33 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>
-                {lot.material_name}
+                {lot.material_name} ({lot.material_code})
               </div>
 
               <div style={{ fontSize: 13, color: "#9ca3af" }}>
-                • Lot <span style={{ fontWeight: 600, color: "#e5e7eb" }}>{lot.lot_number}</span>
+                • Lot{" "}
+                <span style={{ fontWeight: 600, color: "#e5e7eb" }}>{lot.lot_number}</span>
               </div>
 
               <span className={statusPillClass(currentStatus)} style={{ marginLeft: 2 }}>
                 {currentStatus}
               </span>
             </div>
+
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>
+              Affected quantity:{" "}
+              <span style={{ color: "#e5e7eb", fontWeight: 600 }}>{affectedQty}</span>
+            </div>
           </div>
 
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onClose}
-            disabled={submitting}
-            style={{ padding: "6px 10px" }}
-          >
+          <button className="icon-btn" type="button" onClick={onClose} disabled={submitting}>
             ✕
           </button>
         </div>
 
         <div className="modal-body">
+          {error && <div className="form-error">{error}</div>}
+
           <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="form-group">
               <span className="label">Change to</span>
@@ -153,6 +150,7 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
                 className="input"
                 value={newStatus}
                 onChange={(e) => setNewStatus(e.target.value as StatusValue | "")}
+                disabled={submitting}
               >
                 <option value="">Select status…</option>
                 {STATUS_OPTIONS.map((opt) => (
@@ -164,14 +162,9 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
             </div>
 
             <div className="form-group">
-              <span className="label">Affected quantity</span>
-              <div style={{ fontSize: 13, marginTop: 8 }}>{affectedQty}</div>
-            </div>
-
-            <div className="form-group form-group-full">
               <span className="label">Move type</span>
 
-              <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
                 <input
                   type="checkbox"
                   checked={isPartial}
@@ -216,21 +209,17 @@ const LotStatusModal: React.FC<LotStatusModalProps> = ({
               />
             </div>
           </div>
-
-          {error && <div className="form-error">{error}</div>}
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-ghost" type="button" onClick={onClose} disabled={submitting}>
+          <button className="btn-muted" type="button" onClick={onClose} disabled={submitting}>
             Cancel
           </button>
-          <button className="btn btn-primary" type="button" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Saving…" : "Confirm change"}
+          <button className="btn-primary" type="button" onClick={submit} disabled={submitting}>
+            {submitting ? "Saving…" : "Apply change"}
           </button>
         </div>
       </div>
     </div>
   );
-};
-
-export default LotStatusModal;
+}

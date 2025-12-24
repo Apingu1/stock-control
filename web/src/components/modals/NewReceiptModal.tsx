@@ -18,9 +18,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   onReceiptPosted,
 }) => {
   const [materialSearch, setMaterialSearch] = useState("");
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
-    null
-  );
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
 
   const [lotNumber, setLotNumber] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
@@ -34,7 +32,6 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Reset when modal opens
   useEffect(() => {
     if (open) {
       setMaterialSearch("");
@@ -70,14 +67,11 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
     setManufacturer("");
   };
 
-  const isTabletsCaps =
-    selectedMaterial?.category_code === "TABLETS_CAPSULES";
+  const isTabletsCaps = selectedMaterial?.category_code === "TABLETS_CAPSULES";
 
   const approvedForMaterial: ApprovedManufacturer[] = useMemo(() => {
     if (!selectedMaterial?.approved_manufacturers) return [];
-    return selectedMaterial.approved_manufacturers.filter(
-      (am) => am.is_active
-    );
+    return selectedMaterial.approved_manufacturers.filter((am) => am.is_active);
   }, [selectedMaterial]);
 
   const hasApproved = isTabletsCaps && approvedForMaterial.length > 0;
@@ -102,9 +96,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       return;
     }
     if (!compliesEs) {
-    setSubmitError("Ensure goods in comply with ES criteria specified in ES.SOP.112");
-    return;
+      setSubmitError(
+        "Ensure goods in comply with ES criteria specified in ES.SOP.112"
+      );
+      return;
     }
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -115,13 +112,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
         expiry_date: expiryDate || null,
         receipt_date: receiptDate,
         qty: Number(qty),
-        // 🔑 this was missing and caused the 422
         uom_code: selectedMaterial.base_uom_code,
         unit_price: unitPrice ? Number(unitPrice) : null,
         supplier: supplier || null,
         manufacturer: manufacturer || null,
         complies_es_criteria: compliesEs,
-        created_by: "apingu",
+        // created_by is set server-side from JWT user
       };
 
       await apiFetch("/receipts/", {
@@ -134,7 +130,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error(err);
-      setSubmitError(err.message ?? "Failed to post receipt.");
+      setSubmitError(err?.message ?? "Failed to post receipt.");
     } finally {
       setSubmitting(false);
     }
@@ -160,7 +156,6 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
 
         <form className="modal-body" onSubmit={handleSubmit}>
           <div className="form-grid">
-            {/* MATERIAL */}
             <div className="form-group">
               <label className="label">Material</label>
               <div className="typeahead-wrap">
@@ -195,7 +190,6 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               </div>
             </div>
 
-            {/* LOT NUMBER */}
             <div className="form-group">
               <label className="label">Lot number</label>
               <input
@@ -206,7 +200,6 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               />
             </div>
 
-            {/* EXPIRY / QTY */}
             <div className="form-group">
               <label className="label">Expiry date</label>
               <input
@@ -233,7 +226,6 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               />
             </div>
 
-            {/* RECEIPT DATE / UNIT PRICE */}
             <div className="form-group">
               <label className="label">Receipt date</label>
               <input
@@ -245,109 +237,78 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">Unit price (£)</label>
+              <label className="label">Unit price (optional)</label>
               <input
                 className="input"
                 type="number"
                 min={0}
-                step="0.0001"
-                placeholder="e.g. 0.10"
+                step="0.01"
+                placeholder="e.g. 12.50"
                 value={unitPrice}
                 onChange={(e) => setUnitPrice(e.target.value)}
               />
             </div>
 
-            {/* SUPPLIER / MANUFACTURER */}
             <div className="form-group">
-              <label className="label">Supplier</label>
+              <label className="label">Supplier (optional)</label>
               <input
                 className="input"
-                placeholder="e.g. Medi Health"
+                placeholder="e.g. Supplier Ltd"
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
               />
             </div>
 
             <div className="form-group">
-              <label className="label">Manufacturer</label>
+              <label className="label">
+                Manufacturer {hasApproved ? "(approved only)" : "(optional)"}
+              </label>
 
-              {isTabletsCaps ? (
-                hasApproved ? (
-                  <select
-                    className="input"
-                    value={manufacturer}
-                    onChange={(e) => setManufacturer(e.target.value)}
-                  >
-                    <option value="">Select manufacturer…</option>
-                    {approvedForMaterial.map((am) => (
-                      <option key={am.id} value={am.manufacturer_name}>
-                        {am.manufacturer_name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <select className="input" disabled>
-                    <option>
-                      No approved manufacturers set. Configure in Materials
-                      Library.
+              {hasApproved ? (
+                <select
+                  className="input"
+                  value={manufacturer}
+                  onChange={(e) => setManufacturer(e.target.value)}
+                >
+                  <option value="">Select…</option>
+                  {approvedForMaterial.map((am) => (
+                    <option key={am.id} value={am.name}>
+                      {am.name}
                     </option>
-                  </select>
-                )
+                  ))}
+                </select>
               ) : (
                 <input
                   className="input"
-                  placeholder="e.g. Zentiva"
+                  placeholder="e.g. Manufacturer Ltd"
                   value={manufacturer}
                   onChange={(e) => setManufacturer(e.target.value)}
                 />
               )}
             </div>
 
-            {/* ES CRITERIA */}
-            <div className="form-group form-group-full">
-              <label className="label">ES criteria</label>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  fontSize: 13,
-                }}
-              >
+            <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+              <label className="label">Compliance check</label>
+              <label className="checkbox-row">
                 <input
-                  id="receipt-es-checkbox"
                   type="checkbox"
                   checked={compliesEs}
                   onChange={(e) => setCompliesEs(e.target.checked)}
-                  style={{ width: 16, height: 16 }}
                 />
-                <label
-                  htmlFor="receipt-es-checkbox"
-                  style={{ cursor: "pointer" }}
-                >
-                  Goods-in checks confirm this lot complies with ES criteria
-                </label>
-              </div>
+                <span>
+                  Goods in comply with ES criteria specified in ES.SOP.112
+                </span>
+              </label>
             </div>
           </div>
 
-          {submitError && <div className="form-error">{submitError}</div>}
+          {submitError && <div className="error-row">{submitError}</div>}
 
           <div className="modal-footer">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={onClose}
-              disabled={submitting}
-            >
+            <button type="button" className="btn secondary" onClick={onClose}>
               Cancel
             </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={submitting}
-            >
+            <button className="btn" disabled={submitting}>
               {submitting ? "Posting…" : "Post receipt"}
             </button>
           </div>

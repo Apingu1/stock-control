@@ -1,28 +1,26 @@
-// src/types.ts
+// web/src/types.ts
 
-export type LotBalance = {
-  material_lot_id: number;
-  material_code: string;
-  category_code: string;
-  type_code: string;
-  material_name: string;
-  lot_number: string;
-  expiry_date: string | null;
-  status: string;
-  manufacturer: string | null;
-  supplier: string | null;
-  balance_qty: number;
-  uom_code: string;
-  last_status_reason?: string | null;
-  last_status_changed_at?: string | null;
+export type ViewMode =
+  | "dashboard"
+  | "materials"
+  | "receipts"
+  | "consumption"
+  | "lots"
+  | "admin";
+
+export type Role = "OPERATOR" | "SENIOR" | "ADMIN";
+
+export type UserMe = {
+  id: number;
+  username: string;
+  role: Role;
+  is_active: boolean;
 };
 
 export type ApprovedManufacturer = {
   id: number;
   manufacturer_name: string;
   is_active: boolean;
-  created_at: string;
-  created_by: string | null;
 };
 
 export type Material = {
@@ -34,59 +32,86 @@ export type Material = {
   base_uom_code: string;
   manufacturer: string | null;
   supplier: string | null;
-  complies_es_criteria: boolean;
   status: string;
-  // optional list from backend
+
+  // tablets/capsules support (optional)
   approved_manufacturers?: ApprovedManufacturer[];
 };
 
-// Matches enriched ReceiptOut
 export type Receipt = {
   id: number;
+  created_at: string;
+  receipt_date?: string | null;
+
   material_code: string;
   material_name: string;
+
   lot_number: string;
   expiry_date: string | null;
+
   qty: number;
   uom_code: string;
+
   unit_price: number | null;
   total_value: number | null;
-  target_ref: string | null;
+
   supplier: string | null;
   manufacturer: string | null;
-  created_at: string;
-  created_by: string;
-  comment: string | null;
 
-  // NEW: ES criteria status for this receipt (optional so older data is fine)
   complies_es_criteria?: boolean | null;
+
+  comment: string | null;
+  target_ref: string | null;
+
+  created_by: string | null;
 };
 
-// Matches enriched IssueOut
 export type Issue = {
   id: number;
+  created_at: string;
+
   material_code: string;
   material_name: string;
+
   lot_number: string;
   expiry_date: string | null;
+
   qty: number;
   uom_code: string;
+
+  consumption_type: string | null;
+
   product_batch_no: string | null;
-  manufacturer: string | null;
-  supplier: string | null;
   product_manufacture_date: string | null;
-  target_ref?: string | null;
-  created_at: string;
-  created_by: string;
+
+  manufacturer: string | null;
   comment: string | null;
 
-  // NEW: to support consumption type filters/column
-  consumption_type?: string | null;
+  created_by: string | null;
 };
 
-export type ViewMode =
-  | "dashboard"
-  | "materials"
-  | "receipts"
-  | "issues"
-  | "lots";
+export type LotBalance = {
+  // IMPORTANT: used for split-lot traceability + status change endpoint
+  material_lot_id: number;
+
+  material_code: string;
+  material_name: string;
+
+  category_code?: string | null;
+  type_code?: string | null;
+
+  lot_number: string;
+  expiry_date: string | null;
+
+  status: string;
+
+  manufacturer?: string | null;
+  supplier?: string | null;
+
+  balance_qty: number;
+  uom_code: string;
+
+  // status-change audit preview (optional, depends on your view)
+  last_status_reason?: string | null;
+  last_status_changed_at?: string | null;
+};
