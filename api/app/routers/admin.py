@@ -3,6 +3,7 @@ from typing import List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from ..db import get_db
 from ..models import User, Role, Permission, RolePermission
@@ -20,6 +21,37 @@ from ..schemas import (
 from ..security import hash_password, require_admin_access
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+# ---------------------------------------------------------------------------
+# Safety helpers
+# ---------------------------------------------------------------------------
+
+SYSTEM_ROLES = {"ADMIN", "SENIOR", "OPERATOR"}
+PROTECTED_ADMIN_USERNAME = "admin"
+
+
+def _active_admin_count(db: Session) -> int:
+    return (
+        db.query(func.count(User.id))
+        .filter(User.role == "ADMIN", User.is_active.is_(True))
+        .scalar()
+        or 0
+    )
+
+
+def _is_demoting_or_disabling_admin(u: User, payload: UserUpdate) -> bool:
+    """
+    True if the change would cause this user to stop being an ACTIVE ADMIN.
+    """
+    current_is_admin = (u.role or "").upper() == "ADMIN"
+    current_active = bool(u.is_active)
+
+    new_role = (payload.role.strip().upper() if payload.role is not None else (u.role or "").upper())
+    new_active = (bool(payload.is_active) if payload.is_active is not None else current_active)
+
+    # If they end up not ADMIN, or inactive, then they are not an active admin.
+    return current_is_admin and current_active and (new_role != "ADMIN" or not new_active)
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +117,26 @@ def update_user(
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # -----------------------------------------------------------------------
+    # HARD SAFETY: the built-in 'admin' account can NEVER be disabled or demoted
+    # -----------------------------------------------------------------------
+    if u.username == PROTECTED_ADMIN_USERNAME:
+        if payload.is_active is not None and payload.is_active is False:
+            raise HTTPException(status_code=400, detail="The 'admin' user cannot be made inactive")
+        if payload.role is not None and payload.role.strip().upper() != "ADMIN":
+            raise HTTPException(status_code=400, detail="The 'admin' user role cannot be changed")
+
+    # -----------------------------------------------------------------------
+    # SAFETY: never allow the system to end up with 0 active ADMIN users
+    # (blocks disabling/demoting the last active admin)
+    # -----------------------------------------------------------------------
+    if _is_demoting_or_disabling_admin(u, payload):
+        active_admins = _active_admin_count(db)
+        # since this user is currently an active admin, removing them would reduce by 1
+        if active_admins <= 1:
+            raise HTTPException(status_code=400, detail="Cannot disable/demote the last active ADMIN user")
+
+    # Role change
     if payload.role is not None:
         role_name = payload.role.strip().upper()
         role = db.query(Role).filter(Role.name == role_name).one_or_none()
@@ -94,10 +146,11 @@ def update_user(
             raise HTTPException(status_code=400, detail="Role is inactive")
         u.role = role_name
 
+    # Active flag
     if payload.is_active is not None:
         u.is_active = bool(payload.is_active)
 
-    # Password management (admin)
+    # Password reset (admin)
     if payload.password is not None:
         if len(payload.password) < 6:
             raise HTTPException(status_code=400, detail="password must be at least 6 chars")
@@ -141,7 +194,7 @@ def create_role(
     )
     db.add(r)
 
-    # Create default entries in role_permissions for all permissions as FALSE (granted = False)
+    # Default role_permissions rows for all permissions set FALSE
     perms = db.query(Permission).all()
     for p in perms:
         db.add(RolePermission(role_name=name, permission_key=p.key, granted=False))
@@ -163,6 +216,10 @@ def update_role(
     if not r:
         raise HTTPException(status_code=404, detail="Role not found")
 
+    # safety: don’t allow system roles to be deactivated
+    if rn in SYSTEM_ROLES and payload.is_active is not None and payload.is_active is False:
+        raise HTTPException(status_code=400, detail="System roles cannot be deactivated")
+
     if payload.description is not None:
         r.description = payload.description
 
@@ -174,6 +231,36 @@ def update_role(
     return r
 
 
+@router.delete("/roles/{role_name}", status_code=204)
+def delete_role(
+    role_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin_access),
+):
+    rn = role_name.strip().upper()
+
+    # never allow deleting core roles
+    if rn in SYSTEM_ROLES:
+        raise HTTPException(status_code=400, detail="Cannot delete system role")
+
+    role = db.query(Role).filter(Role.name == rn).one_or_none()
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    # Block delete if any users currently have this role
+    user_count = db.query(func.count(User.id)).filter(User.role == rn).scalar() or 0
+    if user_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete role '{rn}' because {user_count} user(s) are assigned to it. Reassign users first.",
+        )
+
+    # Safe to delete: cascades role_permissions via FK ON DELETE CASCADE
+    db.delete(role)
+    db.commit()
+    return
+
+
 # ---------------------------------------------------------------------------
 # Permissions
 # ---------------------------------------------------------------------------
@@ -183,7 +270,6 @@ def list_permissions(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin_access),
 ) -> List[PermissionOut]:
-    # Your DB schema uses permissions.key + permissions.description
     return db.query(Permission).order_by(Permission.key.asc()).all()
 
 
@@ -198,7 +284,7 @@ def get_role_permissions_matrix(
     if not r:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    # Ensure we return ALL permissions (even if missing rows) for a stable UI matrix
+    # Return ALL permissions for stable matrix (even if missing rows)
     perms = db.query(Permission).order_by(Permission.key.asc()).all()
     rp_rows = db.query(RolePermission).filter(RolePermission.role_name == rn).all()
     rp_map: Dict[str, bool] = {rp.permission_key: bool(rp.granted) for rp in rp_rows}
@@ -214,14 +300,17 @@ def set_role_permissions_matrix(
     role_name: str,
     payload: RolePermissionSet,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin_access),
+    admin: User = Depends(require_admin_access),
 ) -> List[RolePermissionOut]:
     rn = role_name.strip().upper()
     r = db.query(Role).filter(Role.name == rn).one_or_none()
     if not r:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    # Validate and map incoming toggles
+    # Optional: sanity check the body role_name if present
+    if payload.role_name and payload.role_name.strip().upper() != rn:
+        raise HTTPException(status_code=400, detail="role_name mismatch")
+
     if not payload.permissions:
         raise HTTPException(status_code=400, detail="No permissions provided")
 
@@ -252,4 +341,4 @@ def set_role_permissions_matrix(
             rp.granted = granted
 
     db.commit()
-    return get_role_permissions_matrix(rn, db, _)
+    return get_role_permissions_matrix(rn, db, admin)

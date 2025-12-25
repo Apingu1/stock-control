@@ -12,6 +12,7 @@ type AdminUserRow = {
 type Tab = "users" | "roles";
 
 const FALLBACK_ROLES: Role[] = ["OPERATOR", "SENIOR", "ADMIN"];
+const SYSTEM_ROLES = new Set<string>(["ADMIN", "SENIOR", "OPERATOR"]);
 
 function groupForPermissionKey(key: string): string {
   if (key.startsWith("materials.")) return "Materials";
@@ -46,6 +47,7 @@ export default function AdminUsersView() {
   const [selectedRole, setSelectedRole] = useState<string>("ADMIN");
   const [rolePerms, setRolePerms] = useState<Record<string, boolean>>({});
   const [savingPerms, setSavingPerms] = useState(false);
+  const [deletingRole, setDeletingRole] = useState(false);
 
   // create role
   const [roleName, setRoleName] = useState("");
@@ -58,15 +60,14 @@ export default function AdminUsersView() {
   };
 
   const loadRoles = async () => {
-    // If backend supports it, use it; otherwise fallback.
     try {
       const res = await apiFetch("/admin/roles");
       const data = (await res.json()) as AdminRole[];
       setAdminRoles(data);
-      const names = data.map((r) => r.name).filter(Boolean);
-      setRoles(names.length ? names : FALLBACK_ROLES);
 
-      // keep selected role sane
+      const names = data.map((r) => r.name).filter(Boolean);
+      setRoles(names.length ? (names as Role[]) : FALLBACK_ROLES);
+
       if (names.length && !names.includes(selectedRole)) setSelectedRole(names[0]);
     } catch {
       setAdminRoles(FALLBACK_ROLES.map((n) => ({ name: n })));
@@ -80,8 +81,9 @@ export default function AdminUsersView() {
       const data = (await res.json()) as PermissionDef[];
       setPermissions(data);
     } catch {
-      // fallback to your known list if endpoint not present
+      // fallback list (keeps UI usable if endpoint ever missing)
       setPermissions([
+        { key: "admin.full" },
         { key: "materials.view" },
         { key: "materials.create" },
         { key: "materials.edit" },
@@ -96,54 +98,18 @@ export default function AdminUsersView() {
         { key: "issues.delete" },
         { key: "lots.view" },
         { key: "lots.status_change" },
-        { key: "admin.full" },
       ]);
     }
   };
 
-  const loadRolePermissions = async (role: string) => {
-    setRolePerms({});
-    setErr(null);
+  const loadRolePermissions = async (roleName: string) => {
+    const res = await apiFetch(`/admin/roles/${encodeURIComponent(roleName)}/permissions`);
+    const data = (await res.json()) as RolePermissionRow[];
 
-    // Preferred endpoint: /admin/roles/{role}/permissions
-    // We accept a few shapes so it won’t break if backend differs slightly.
-    try {
-      const res = await apiFetch(`/admin/roles/${encodeURIComponent(role)}/permissions`);
-      const data = (await res.json()) as any;
-
-      // shape A: { role: "X", permissions: [{permission_key, granted}] }
-      if (data?.permissions && Array.isArray(data.permissions)) {
-        const map: Record<string, boolean> = {};
-        for (const row of data.permissions as RolePermissionRow[]) {
-          map[row.permission_key] = !!row.granted;
-        }
-        setRolePerms(map);
-        return;
-      }
-
-      // shape B: [{permission_key, granted}, ...]
-      if (Array.isArray(data)) {
-        const map: Record<string, boolean> = {};
-        for (const row of data as RolePermissionRow[]) {
-          map[row.permission_key] = !!row.granted;
-        }
-        setRolePerms(map);
-        return;
-      }
-
-      // shape C: { "materials.view": true, ... }
-      if (data && typeof data === "object") {
-        const map: Record<string, boolean> = {};
-        for (const k of Object.keys(data)) map[k] = !!data[k];
-        setRolePerms(map);
-        return;
-      }
-
-      setRolePerms({});
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load role permissions");
-      setRolePerms({});
-    }
+    // Backend returns list of {permission_key, granted}
+    const map: Record<string, boolean> = {};
+    for (const row of data) map[row.permission_key] = !!row.granted;
+    setRolePerms(map);
   };
 
   const loadAll = async () => {
@@ -151,25 +117,29 @@ export default function AdminUsersView() {
     setErr(null);
     try {
       await Promise.all([loadUsers(), loadRoles(), loadPermissionDefs()]);
+      await loadRolePermissions(selectedRole);
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to load admin data");
+      setErr(e?.message ?? "Failed to fetch");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadAll();
+    loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (tab === "roles") void loadRolePermissions(selectedRole);
+    // when role changes, refresh its perms
+    if (!selectedRole) return;
+    loadRolePermissions(selectedRole).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, selectedRole]);
+  }, [selectedRole]);
 
   const createUser = async () => {
-    if (!newUsername.trim()) return setErr("Username is required");
+    const username = newUsername.trim();
+    if (!username) return setErr("Username is required");
     if (!newPassword || newPassword.length < 6) return setErr("Password must be at least 6 characters");
 
     setCreating(true);
@@ -179,7 +149,7 @@ export default function AdminUsersView() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: newUsername.trim(),
+          username,
           password: newPassword,
           role: newRole,
           is_active: newActive,
@@ -188,9 +158,8 @@ export default function AdminUsersView() {
 
       setNewUsername("");
       setNewPassword("");
-      setNewRole(roles[0] ?? "OPERATOR");
+      setNewRole("OPERATOR");
       setNewActive(true);
-
       await loadUsers();
     } catch (e: any) {
       setErr(e?.message ?? "Failed to create user");
@@ -199,7 +168,7 @@ export default function AdminUsersView() {
     }
   };
 
-  const updateUser = async (id: number, patch: Partial<Pick<AdminUserRow, "role" | "is_active">> & { password?: string }) => {
+  const updateUser = async (id: number, patch: Partial<{ role: string; is_active: boolean; password: string }>) => {
     setErr(null);
     try {
       await apiFetch(`/admin/users/${id}`, {
@@ -242,6 +211,32 @@ export default function AdminUsersView() {
     }
   };
 
+  const deleteSelectedRole = async () => {
+    const rn = (selectedRole || "").trim().toUpperCase();
+    if (!rn) return;
+    if (SYSTEM_ROLES.has(rn)) return setErr("System roles cannot be deleted.");
+
+    const ok = window.confirm(
+      `Delete role "${rn}"?\n\nThis will only work if no users are assigned to it.`
+    );
+    if (!ok) return;
+
+    setDeletingRole(true);
+    setErr(null);
+    try {
+      await apiFetch(`/admin/roles/${encodeURIComponent(rn)}`, { method: "DELETE" });
+      await loadRoles();
+
+      // choose a safe next role
+      setSelectedRole("ADMIN");
+      await loadRolePermissions("ADMIN");
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to delete role");
+    } finally {
+      setDeletingRole(false);
+    }
+  };
+
   const togglePerm = (key: string) => {
     setRolePerms((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -250,10 +245,10 @@ export default function AdminUsersView() {
     setSavingPerms(true);
     setErr(null);
 
-    // We send a clean, explicit payload the backend can easily consume:
-    // { permissions: [{permission_key, granted}, ...] }
+    // Backend expects:
+    // { role_name, permissions: [{permission_key, granted}, ...] }
     const payload = {
-      role: selectedRole,
+      role_name: selectedRole,
       permissions: permissions.map((p) => ({
         permission_key: p.key,
         granted: !!rolePerms[p.key],
@@ -283,10 +278,14 @@ export default function AdminUsersView() {
       if (!groups[g]) groups[g] = [];
       groups[g].push(p);
     }
-    // stable order within group
     for (const g of Object.keys(groups)) groups[g].sort((a, b) => a.key.localeCompare(b.key));
     return groups;
   }, [permissions]);
+
+  const canDeleteRole = useMemo(() => {
+    const rn = (selectedRole || "").trim().toUpperCase();
+    return rn.length > 0 && !SYSTEM_ROLES.has(rn);
+  }, [selectedRole]);
 
   return (
     <section className="content">
@@ -395,6 +394,8 @@ export default function AdminUsersView() {
                               style={{ maxWidth: 220 }}
                               value={u.role}
                               onChange={(e) => updateUser(u.id, { role: e.target.value })}
+                              // frontend safety too (backend is authoritative)
+                              disabled={u.username === "admin"}
                             >
                               {roles.map((r) => (
                                 <option key={r} value={r}>
@@ -409,6 +410,8 @@ export default function AdminUsersView() {
                               style={{ maxWidth: 160 }}
                               value={u.is_active ? "true" : "false"}
                               onChange={(e) => updateUser(u.id, { is_active: e.target.value === "true" })}
+                              // frontend safety too
+                              disabled={u.username === "admin"}
                             >
                               <option value="true">Active</option>
                               <option value="false">Inactive</option>
@@ -486,7 +489,15 @@ export default function AdminUsersView() {
                 </div>
 
                 <div className="card-body">
-                  <div className="form-grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+                  {/* tidy action row: dropdown + delete + save (uniform height) */}
+                  <div
+                    className="form-grid"
+                    style={{
+                      gridTemplateColumns: "minmax(0,1fr) auto auto",
+                      alignItems: "end",
+                      gap: 12,
+                    }}
+                  >
                     <div className="form-group">
                       <label className="label">Select role</label>
                       <select className="input" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}>
@@ -496,6 +507,23 @@ export default function AdminUsersView() {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div className="form-group" style={{ justifyContent: "flex-end" }}>
+                      <button
+                        className="btn"
+                        onClick={deleteSelectedRole}
+                        disabled={!canDeleteRole || deletingRole}
+                        style={{
+                          background: canDeleteRole ? "#ff4d4f" : "rgba(255,255,255,0.08)",
+                          color: "#000",
+                          border: "1px solid rgba(0,0,0,0.25)",
+                          minWidth: 140,
+                        }}
+                        title={canDeleteRole ? "Delete selected role" : "System roles cannot be deleted"}
+                      >
+                        {deletingRole ? "Deleting…" : "Delete role"}
+                      </button>
                     </div>
 
                     <div className="form-group" style={{ justifyContent: "flex-end" }}>
@@ -548,7 +576,6 @@ export default function AdminUsersView() {
                                     type="checkbox"
                                     checked={!!rolePerms[p.key]}
                                     onChange={() => togglePerm(p.key)}
-                                    style={{ width: 18, height: 18 }}
                                   />
                                 </label>
                               ))}
