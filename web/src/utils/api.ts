@@ -2,30 +2,36 @@
 
 const TOKEN_KEY = "sc_jwt";
 
+function normalizeBase(base: string): string {
+  // remove trailing slash
+  return base.replace(/\/+$/, "");
+}
+
 function getApiBase(): string {
-  // Prefer explicit env
+  // Prefer explicit env (recommended):
+  // VITE_API_BASE="http://localhost:8080/api"
   const envBase = (import.meta as any).env?.VITE_API_BASE as string | undefined;
-  if (envBase && envBase.trim().length > 0) return envBase.trim();
+  if (envBase && envBase.trim().length > 0) return normalizeBase(envBase.trim());
 
   if (typeof window !== "undefined") {
     const host = window.location.hostname || "localhost";
     const protocol = window.location.protocol || "http:";
 
-    // Codespaces: host includes the port in the SUBDOMAIN like:
-    //   super-engine-xxxx-5173.app.github.dev
-    // API via nginx is:
-    //   super-engine-xxxx-8080.app.github.dev
+    // Codespaces Vite host like:
+    //   <name>-5173.app.github.dev
+    // nginx is:
+    //   <name>-8080.app.github.dev
     if (host.endsWith(".app.github.dev")) {
-      // Replace ONLY the trailing "-5173.app.github.dev"
       const apiHost = host.replace(/-5173\.app\.github\.dev$/, "-8080.app.github.dev");
-      return `${protocol}//${apiHost}`;
+      return normalizeBase(`${protocol}//${apiHost}/api`);
     }
 
-    // Local dev default
-    return `http://${host}:8000`;
+    // Local dev: prefer nginx gateway on 8080 with /api
+    // (Your nginx is already set up to rewrite /api/* to FastAPI)
+    return normalizeBase(`http://${host}:8080/api`);
   }
 
-  return "http://localhost:8000";
+  return "http://localhost:8080/api";
 }
 
 export function setToken(token: string) {
@@ -42,17 +48,18 @@ export function clearToken() {
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
   const base = getApiBase();
-  const url = path.startsWith("http") ? path : `${base}${path}`;
+
+  // ensure path starts with /
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const url = path.startsWith("http") ? path : `${base}${p}`;
 
   const token = getToken();
-
   const headers = new Headers(init.headers || {});
+
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
   }
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
+  if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(url, { ...init, headers });
 
@@ -64,7 +71,6 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
     } catch {
       // ignore
     }
-
     const err = new Error(`HTTP ${res.status} ${res.statusText}${detail}`);
     (err as any).status = res.status;
     throw err;
@@ -88,7 +94,16 @@ export async function fetchMe() {
   return (await res.json()) as {
     id: number;
     username: string;
-    role: "OPERATOR" | "SENIOR" | "ADMIN";
+    role: string;
     is_active: boolean;
+  };
+}
+
+// Phase B: permissions for logged-in user
+export async function fetchMyPermissions() {
+  const res = await apiFetch("/auth/my-permissions");
+  return (await res.json()) as {
+    role: string;
+    permissions: string[];
   };
 }

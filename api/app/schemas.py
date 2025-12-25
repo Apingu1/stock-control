@@ -235,3 +235,73 @@ class LotStatusChangeCreate(BaseModel):
 
     whole_lot: bool = True
     move_qty: Optional[float] = None
+
+
+# --- RBAC (Phase B) ----------------------------------------------------------
+# Compatibility note:
+# admin.py expects RolePermissionOut / RolePermissionsOut etc.
+# We define these explicitly and also keep "Item" naming for UI convenience.
+
+class RoleOut(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+    class Config:
+        from_attributes = True
+
+
+class RoleCreate(BaseModel):
+    name: str = Field(..., description="Role name (will be uppercased)")
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class RoleUpdate(BaseModel):
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class PermissionOut(BaseModel):
+    key: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Single permission toggle row (what admin.py likely wants)
+class RolePermissionOut(BaseModel):
+    permission_key: str
+    granted: bool
+
+
+# Alias (some UI code prefers this name)
+RolePermissionItem = RolePermissionOut
+
+
+class RolePermissionsOut(BaseModel):
+    role_name: str
+    permissions: List[RolePermissionOut]
+
+
+class RolePermissionsUpdate(BaseModel):
+    permissions: List[RolePermissionOut]
+
+
+class RolePermissionSet(BaseModel):
+    """
+    UI currently sends: { role: "READ ONLY", permissions: [...] }
+    But the canonical role name is taken from the URL:
+      PUT /admin/roles/{role_name}/permissions
+
+    So we do NOT require role_name in the body.
+    We accept optional role for UI/backwards compatibility.
+    """
+    role: Optional[str] = None
+    permissions: List[RolePermissionOut]
+
+
+class MyPermissionsOut(BaseModel):
+    role: str
+    permissions: List[str]

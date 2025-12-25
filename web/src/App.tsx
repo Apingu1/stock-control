@@ -1,5 +1,5 @@
 // web/src/App.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { LotBalance, Material, ViewMode, Receipt, Issue, UserMe } from "./types";
 import { apiFetch, clearToken, fetchMe, getToken } from "./utils/api";
 
@@ -16,14 +16,27 @@ import MaterialModal from "./components/modals/MaterialModal";
 import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
 
+type MyPermissionsResponse = {
+  role: string;
+  permissions: string[];
+};
+
 const App: React.FC = () => {
   // --- Auth -----------------------------------------------------------------
   const [me, setMe] = useState<UserMe | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
 
-  const isAdmin = me?.role === "ADMIN";
-  const canChangeStatus = me?.role === "SENIOR" || me?.role === "ADMIN";
+  // Phase B: permissions (UX only; server enforces)
+  const [myPermissions, setMyPermissions] = useState<string[]>([]);
+
+  const hasPerm = useMemo(() => {
+    const s = new Set(myPermissions);
+    return (p: string) => s.has(p);
+  }, [myPermissions]);
+
+  const isAdmin = hasPerm("admin.full");
+  const canChangeStatus = hasPerm("lots.status_change");
 
   // --- Data -----------------------------------------------------------------
   const [lotBalances, setLotBalances] = useState<LotBalance[]>([]);
@@ -113,6 +126,18 @@ const App: React.FC = () => {
     await Promise.all([loadLotBalances(), loadMaterials(), loadReceipts(), loadIssues()]);
   };
 
+  // Phase B: permissions fetch
+  const loadMyPermissions = async () => {
+    try {
+      const res = await apiFetch("/auth/my-permissions");
+      const data = (await res.json()) as MyPermissionsResponse;
+      setMyPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+    } catch {
+      // Non-blocking: if endpoint missing or user not authed, just blank it
+      setMyPermissions([]);
+    }
+  };
+
   // --- Auth bootstrap -------------------------------------------------------
 
   useEffect(() => {
@@ -120,6 +145,7 @@ const App: React.FC = () => {
       const token = getToken();
       if (!token) {
         setMe(null);
+        setMyPermissions([]);
         setAuthChecked(true);
         setShowLogin(true);
         return;
@@ -128,12 +154,14 @@ const App: React.FC = () => {
       try {
         const u = await fetchMe();
         setMe(u);
+        await loadMyPermissions();
         setAuthChecked(true);
         setShowLogin(false);
         await loadAll();
       } catch (e) {
         clearToken();
         setMe(null);
+        setMyPermissions([]);
         setAuthChecked(true);
         setShowLogin(true);
       }
@@ -146,12 +174,14 @@ const App: React.FC = () => {
   const handleLoggedIn = async (u: UserMe) => {
     setMe(u);
     setShowLogin(false);
+    await loadMyPermissions();
     await loadAll();
   };
 
   const logout = () => {
     clearToken();
     setMe(null);
+    setMyPermissions([]);
     setShowLogin(true);
     setView("dashboard");
     setLotBalances([]);

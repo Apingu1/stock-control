@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..schemas import LotBalanceOut, LotStatusChangeCreate
 from ..models import MaterialLot, LotStatusChange, StockTransaction, Material, User
-from ..security import require_senior
+from ..security import require_permission  # ✅ Phase B: permission guard (server enforced)
 
 router = APIRouter(prefix="/lot-balances", tags=["lot-balances"])
 
@@ -23,6 +23,7 @@ STATUS_ALIASES = {
 @router.get("/", response_model=List[LotBalanceOut])
 def list_lot_balances(
     db: Session = Depends(get_db),
+    _: User = Depends(require_permission("lots.view")),  # ✅ Phase B: view permission
     material_code: Optional[str] = Query(None, description="Filter by material_code"),
     search: Optional[str] = Query(None, description="Search code/name/lot (ILIKE)"),
     include_zero: bool = Query(False, description="Include lots with zero balance"),
@@ -110,12 +111,14 @@ def change_lot_status(
     material_lot_id: int,
     payload: LotStatusChangeCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_senior),  # SENIOR/ADMIN enforced server-side
+    user: User = Depends(require_permission("lots.status_change")),  # ✅ Phase B permission
 ) -> LotBalanceOut:
     """
-    Phase A:
-    - Requires SENIOR/ADMIN
+    Phase A (kept behaviour):
     - changed_by is enforced from authenticated user (server-side)
+
+    Phase B:
+    - Requires lots.status_change permission (server-side)
     """
     lot = db.query(MaterialLot).filter(MaterialLot.id == material_lot_id).one_or_none()
     if lot is None:

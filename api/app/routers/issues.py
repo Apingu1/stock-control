@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import Material, MaterialLot, StockTransaction, User
 from ..schemas import IssueCreate, IssueOut
-from ..security import get_current_user
+from ..security import require_permission
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/issues", tags=["issues"])
 def create_issue(
     payload: IssueCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("issues.create")),
 ) -> IssueOut:
     """
     Log a consumption / goods issue against a specific lot.
@@ -162,6 +162,7 @@ def create_issue(
 def list_issues(
     limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db),
+    _: User = Depends(require_permission("issues.view")),
 ) -> List[IssueOut]:
     stmt = (
         select(StockTransaction, MaterialLot, Material)

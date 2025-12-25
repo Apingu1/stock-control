@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Callable
+from typing import Optional, Callable, Set
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -12,14 +12,14 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import User
+from .models import User, Role, RolePermission
 
 
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
 
-JWT_SECRET = os.getenv("JWT_SECRET", "change_me_stock")  # from env.txt :contentReference[oaicite:3]{index=3}
+JWT_SECRET = os.getenv("JWT_SECRET", "change_me_stock")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRES_MINUTES = int(os.getenv("JWT_EXPIRES_MINUTES", "480"))  # 8h default
 
@@ -98,6 +98,10 @@ def get_current_user(
     return user
 
 
+# ---------------------------------------------------------------------------
+# Role-based guards (kept for backward compatibility)
+# ---------------------------------------------------------------------------
+
 def require_role(*allowed_roles: str) -> Callable[[User], User]:
     allowed = {r.upper() for r in allowed_roles}
 
@@ -109,6 +113,68 @@ def require_role(*allowed_roles: str) -> Callable[[User], User]:
     return _dep
 
 
-# Convenience deps
+# Convenience deps (existing)
 require_admin = require_role("ADMIN")
 require_senior = require_role("SENIOR", "ADMIN")
+
+
+# ---------------------------------------------------------------------------
+# Permission-based guards (Phase B)
+# ---------------------------------------------------------------------------
+
+def _get_permissions_for_role(db: Session, role_name: str) -> Set[str]:
+    role = (role_name or "").strip().upper()
+    if not role:
+        return set()
+
+    # If role row missing, treat as no perms (FK should prevent this)
+    exists = db.query(Role).filter(Role.name == role).count()
+    if not exists:
+        return set()
+
+    rows = (
+        db.query(RolePermission.permission_key)
+        .filter(
+            RolePermission.role_name == role,
+            RolePermission.granted.is_(True),
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def require_permission(permission_key: str) -> Callable[[User], User]:
+    perm = permission_key.strip()
+
+    def _dep(
+        user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        perms = _get_permissions_for_role(db, user.role)
+        if perm not in perms:
+            raise _forbidden("Missing permission")
+        return user
+
+    return _dep
+
+
+def require_any_permission(*permission_keys: str) -> Callable[[User], User]:
+    wanted = {p.strip() for p in permission_keys if p and p.strip()}
+
+    def _dep(
+        user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        perms = _get_permissions_for_role(db, user.role)
+        if not (perms & wanted):
+            raise _forbidden("Missing permission")
+        return user
+
+    return _dep
+
+
+# Admin gate for /admin/*
+require_admin_full = require_permission("admin.full")
+
+# Backwards-compatible alias (admin.py expects this name)
+require_admin_access = require_admin_full

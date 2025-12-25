@@ -8,7 +8,7 @@ export type ViewMode =
   | "lots"
   | "admin";
 
-export type Role = "OPERATOR" | "SENIOR" | "ADMIN";
+export type Role = string;
 
 export type UserMe = {
   id: number;
@@ -114,4 +114,22 @@ export type LotBalance = {
   // status-change audit preview (optional, depends on your view)
   last_status_reason?: string | null;
   last_status_changed_at?: string | null;
+};
+
+// --- Phase B admin typing (frontend only) -----------------------------------
+
+export type AdminRole = {
+  name: string;
+  description?: string | null;
+  is_active?: boolean;
+};
+
+export type PermissionDef = {
+  key: string;
+  description?: string | null;
+};
+
+export type RolePermissionRow = {
+  permission_key: string;
+  granted: boolean;
 };

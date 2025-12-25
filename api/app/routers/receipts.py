@@ -15,7 +15,7 @@ from ..models import (
     User,
 )
 from ..schemas import ReceiptCreate, ReceiptOut
-from ..security import get_current_user
+from ..security import require_permission
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -35,7 +35,7 @@ def _normalise_receipt_datetime(value: datetime | date) -> datetime:
 def create_receipt(
     payload: ReceiptCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("receipts.create")),
 ) -> ReceiptOut:
     """
     Create a new goods receipt.
@@ -44,7 +44,6 @@ def create_receipt(
     - Requires auth
     - created_by is enforced from authenticated user (server-side)
     """
-
     created_by = user.username
 
     # 0. Enforce ES criteria checkbox (must be ticked)
@@ -176,6 +175,7 @@ def create_receipt(
 def list_receipts(
     limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db),
+    _: User = Depends(require_permission("receipts.view")),
 ) -> List[ReceiptOut]:
     """
     List the most recent goods receipts.

@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import User
-from ..schemas import LoginRequest, TokenOut, UserMeOut
+from ..schemas import LoginRequest, TokenOut, UserMeOut, MyPermissionsOut
 from ..security import verify_password, create_access_token, get_current_user
+from ..security import _get_permissions_for_role  # internal helper from security.py
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,3 +52,22 @@ def me_slash(user: User = Depends(get_current_user)) -> UserMeOut:
         role=user.role,
         is_active=user.is_active,
     )
+
+
+# Phase B: permissions for current user's role (UX + client gating)
+@router.get("/my-permissions", response_model=MyPermissionsOut)
+def my_permissions(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MyPermissionsOut:
+    perms = sorted(_get_permissions_for_role(db, user.role))
+    return MyPermissionsOut(role=user.role, permissions=perms)
+
+
+@router.get("/my-permissions/", response_model=MyPermissionsOut, include_in_schema=False)
+def my_permissions_slash(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MyPermissionsOut:
+    perms = sorted(_get_permissions_for_role(db, user.role))
+    return MyPermissionsOut(role=user.role, permissions=perms)

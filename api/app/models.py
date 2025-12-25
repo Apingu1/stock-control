@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    Text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -36,8 +37,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    # OPERATOR / SENIOR / ADMIN
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default="OPERATOR")
+    # dynamic role string (FK enforced in DB: users.role -> roles.name)
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="OPERATOR")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -45,12 +46,7 @@ class User(Base):
     )
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    __table_args__ = (
-        CheckConstraint(
-            "role IN ('OPERATOR','SENIOR','ADMIN')",
-            name="ck_users_role_valid",
-        ),
-    )
+    # NOTE: removed fixed-role CheckConstraint to allow dynamic roles (Phase B)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User username={self.username!r} role={self.role!r} active={self.is_active}>"
@@ -321,3 +317,45 @@ class LotStatusChange(Base):
             f"<LotStatusChange lot_id={self.material_lot_id} "
             f"{self.old_status}->{self.new_status}>"
         )
+
+
+# --- Roles & Permissions (Phase B) ------------------------------------------
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Permission(Base):
+    __tablename__ = "permissions"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+
+    role_name: Mapped[str] = mapped_column(
+        Text, ForeignKey("roles.name", ondelete="CASCADE"), primary_key=True
+    )
+    permission_key: Mapped[str] = mapped_column(
+        Text, ForeignKey("permissions.key", ondelete="CASCADE"), primary_key=True
+    )
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

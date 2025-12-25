@@ -22,7 +22,7 @@ from ..schemas import (
     ApprovedManufacturerCreate,
     ApprovedManufacturerOut,
 )
-from ..security import get_current_user
+from ..security import require_permission
 
 router = APIRouter(prefix="/materials", tags=["materials"])
 
@@ -74,7 +74,7 @@ def _ensure_lookup_exists(db: Session, model, code: str, kind: str) -> None:
 def create_material(
     body: MaterialCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("materials.create")),
 ):
     created_by = user.username
 
@@ -119,6 +119,7 @@ def create_material(
 @router.get("/", response_model=List[MaterialOut])
 def list_materials(
     db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.view")),
     search: Optional[str] = Query(None, description="Search by material_code or name"),
     limit: int = Query(200, ge=1, le=2000),
     offset: int = Query(0, ge=0),
@@ -134,7 +135,11 @@ def list_materials(
 
 
 @router.get("/{material_code}", response_model=MaterialOut)
-def get_material(material_code: str, db: Session = Depends(get_db)):
+def get_material(
+    material_code: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.view")),
+):
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
@@ -146,6 +151,7 @@ def update_material(
     material_code: str,
     body: MaterialUpdate,
     db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.edit")),
 ):
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
@@ -178,7 +184,11 @@ def update_material(
     "/{material_code}/approved-manufacturers",
     response_model=List[ApprovedManufacturerOut],
 )
-def list_approved_manufacturers(material_code: str, db: Session = Depends(get_db)) -> List[ApprovedManufacturerOut]:
+def list_approved_manufacturers(
+    material_code: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.view")),
+) -> List[ApprovedManufacturerOut]:
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
@@ -195,6 +205,7 @@ def add_approved_manufacturer(
     material_code: str,
     body: ApprovedManufacturerCreate,
     db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.edit")),
 ):
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
@@ -236,7 +247,12 @@ def add_approved_manufacturer(
     "/{material_code}/approved-manufacturers/{am_id}",
     status_code=204,
 )
-def delete_approved_manufacturer(material_code: str, am_id: int, db: Session = Depends(get_db)) -> None:
+def delete_approved_manufacturer(
+    material_code: str,
+    am_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.edit")),
+) -> None:
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
