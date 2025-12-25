@@ -7,8 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Material, MaterialLot, StockTransaction, User
-from ..schemas import IssueCreate, IssueOut
+from ..models import Material, MaterialLot, StockTransaction, User, StockTransactionEdit
+from ..schemas import IssueCreate, IssueOut, IssueUpdate
 from ..security import require_permission
 
 router = APIRouter(prefix="/issues", tags=["issues"])
@@ -20,20 +20,8 @@ def create_issue(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("issues.create")),
 ) -> IssueOut:
-    """
-    Log a consumption / goods issue against a specific lot.
-
-    Phase A:
-    - Requires auth
-    - created_by is enforced from authenticated user (server-side)
-
-    Split-lots:
-    - Prefer payload.material_lot_id
-    - Fallback to (material_code + lot_number) ONLY if it resolves uniquely
-    """
     created_by = user.username
 
-    # 1. Locate material
     material = (
         db.query(Material)
         .filter(Material.material_code == payload.material_code)
@@ -42,9 +30,7 @@ def create_issue(
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    # 2. Locate lot segment
     lot = None
-
     if payload.material_lot_id is not None:
         lot = (
             db.query(MaterialLot)
@@ -88,7 +74,6 @@ def create_issue(
                 ),
             )
 
-    # 3. Check current balance for this lot segment
     current_balance = (
         db.query(
             func.coalesce(
@@ -109,9 +94,7 @@ def create_issue(
             ),
         )
 
-    # 4. Create issue transaction
     now = datetime.utcnow()
-
     txn = StockTransaction(
         material_lot_id=lot.id,
         txn_type="ISSUE",
@@ -125,6 +108,7 @@ def create_issue(
         product_batch_no=payload.product_batch_no,
         product_manufacture_date=payload.product_manufacture_date,
         comment=payload.comment,
+        material_status_at_txn=lot.status,  # snapshot at time of usage
         created_at=now,
         created_by=created_by,
     )
@@ -155,6 +139,7 @@ def create_issue(
         created_at=txn.created_at,
         created_by=txn.created_by or created_by,
         comment=txn.comment,
+        material_status_at_txn=txn.material_status_at_txn,
     )
 
 
@@ -174,8 +159,8 @@ def list_issues(
     )
 
     rows = db.execute(stmt).all()
-
     results: List[IssueOut] = []
+
     for txn, lot, material in rows:
         manufacturer = lot.manufacturer or material.manufacturer
         supplier = lot.supplier or material.supplier
@@ -198,7 +183,92 @@ def list_issues(
                 created_at=txn.created_at,
                 created_by=txn.created_by or "—",
                 comment=txn.comment,
+                material_status_at_txn=txn.material_status_at_txn,
             )
         )
 
     return results
+
+
+@router.put("/{issue_id}", response_model=IssueOut)
+def update_issue(
+    issue_id: int,
+    payload: IssueUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("issues.edit")),
+) -> IssueOut:
+    reason = (payload.edit_reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="edit_reason is required")
+
+    txn: StockTransaction | None = (
+        db.query(StockTransaction).filter(StockTransaction.id == issue_id).one_or_none()
+    )
+    if txn is None or txn.txn_type != "ISSUE":
+        raise HTTPException(status_code=404, detail="Issue not found")
+
+    lot = db.query(MaterialLot).filter(MaterialLot.id == txn.material_lot_id).one()
+    material = db.query(Material).filter(Material.id == lot.material_id).one()
+
+    before_json = StockTransactionEdit.snapshot_txn(txn)
+
+    current_balance = (
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
+        .filter(StockTransaction.material_lot_id == txn.material_lot_id)
+        .scalar()
+    )
+    current_balance = float(current_balance or 0.0)
+
+    # remove old issue (adds stock back), then apply new qty
+    balance_without_old = current_balance + float(txn.qty or 0.0)
+    if float(payload.qty) > balance_without_old + 1e-9:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Insufficient stock in lot {lot.lot_number} "
+                f"(available {balance_without_old}, requested {payload.qty})"
+            ),
+        )
+
+    txn.qty = float(payload.qty)
+    txn.consumption_type = payload.consumption_type or "USAGE"
+    txn.target_ref = payload.target_ref
+    txn.product_batch_no = payload.product_batch_no
+    txn.product_manufacture_date = payload.product_manufacture_date
+    txn.comment = payload.comment
+    # Keep txn.material_status_at_txn unchanged (historical snapshot)
+
+    after_json = StockTransactionEdit.snapshot_txn(txn)
+
+    audit = StockTransactionEdit(
+        stock_transaction_id=txn.id,
+        edited_by=user.username,
+        edit_reason=reason,
+        before_json=before_json,
+        after_json=after_json,
+    )
+    db.add(audit)
+    db.commit()
+
+    manufacturer = lot.manufacturer or material.manufacturer
+    supplier = lot.supplier or material.supplier
+
+    return IssueOut(
+        id=txn.id,
+        material_code=material.material_code,
+        material_name=material.name,
+        lot_number=lot.lot_number,
+        expiry_date=lot.expiry_date,
+        qty=txn.qty,
+        uom_code=txn.uom_code,
+        product_batch_no=txn.product_batch_no,
+        manufacturer=manufacturer,
+        supplier=supplier,
+        product_manufacture_date=txn.product_manufacture_date,
+        consumption_type=txn.consumption_type or "USAGE",
+        target_ref=txn.target_ref,
+        created_at=txn.created_at,
+        created_by=txn.created_by or "—",
+        comment=txn.comment,
+        material_status_at_txn=txn.material_status_at_txn,
+    )

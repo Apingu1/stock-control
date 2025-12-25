@@ -74,6 +74,18 @@ const LiveLotsView: React.FC<{
 
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
+  // ✅ NEW: Total available per material (AVAILABLE only)
+  const totalAvailableByMaterial = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of lotBalances) {
+      const st = normalizeStatus(l.status);
+      if (st !== "AVAILABLE") continue;
+      const key = l.material_code;
+      map.set(key, (map.get(key) || 0) + (Number(l.balance_qty) || 0));
+    }
+    return map;
+  }, [lotBalances]);
+
   const uniqueStatuses = useMemo(() => {
     return Array.from(
       new Set(lotBalances.map((l) => normalizeStatus(l.status)).filter((x) => x))
@@ -150,6 +162,7 @@ const LiveLotsView: React.FC<{
       "Expiry",
       "Manufacturer",
       "Balance",
+      "Total Available (All lots)",
       "UOM",
       "Status",
       "Last Status Reason",
@@ -165,6 +178,7 @@ const LiveLotsView: React.FC<{
       l.expiry_date ?? "",
       l.manufacturer ?? "",
       l.balance_qty,
+      totalAvailableByMaterial.get(l.material_code) ?? 0,
       l.uom_code,
       l.status,
       l.last_status_reason ?? "",
@@ -271,6 +285,7 @@ const LiveLotsView: React.FC<{
                   <th>Expiry</th>
                   <th>Manufacturer</th>
                   <th className="numeric">Balance</th>
+                  <th className="numeric">Total available</th>
                   <th>UOM</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -280,7 +295,7 @@ const LiveLotsView: React.FC<{
               <tbody>
                 {filteredLots.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="empty-row">
+                    <td colSpan={12} className="empty-row">
                       No lots match your filters.
                     </td>
                   </tr>
@@ -294,6 +309,8 @@ const LiveLotsView: React.FC<{
                   if (st === "AVAILABLE") tagClass = "tag tag-success";
                   if (st === "QUARANTINE") tagClass = "tag tag-warning";
 
+                  const totalAvail = totalAvailableByMaterial.get(lot.material_code) ?? 0;
+
                   return (
                     <tr key={lot.material_lot_id}>
                       <td>{lot.material_code}</td>
@@ -304,6 +321,7 @@ const LiveLotsView: React.FC<{
                       <td>{formatDate(lot.expiry_date)}</td>
                       <td>{lot.manufacturer || "—"}</td>
                       <td className="numeric">{lot.balance_qty}</td>
+                      <td className="numeric">{totalAvail}</td>
                       <td>{lot.uom_code}</td>
                       <td>
                         <span className={tagClass} title={buildStatusTooltip(lot)}>

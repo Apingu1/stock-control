@@ -11,6 +11,10 @@ interface GoodsReceiptsViewProps {
   loadingReceipts: boolean;
   receiptsError: string | null;
   onNewReceipt: () => void; // kept for now, not used
+
+  // ✅ NEW
+  canEdit?: boolean;
+  onEditReceipt?: (r: Receipt) => void;
 }
 
 type CsvExportParams = {
@@ -50,6 +54,8 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
   receipts,
   loadingReceipts,
   receiptsError,
+  canEdit = false,
+  onEditReceipt,
 }) => {
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
@@ -191,6 +197,8 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
     setExportModalOpen(false);
   };
 
+  const showActions = !!canEdit;
+
   return (
     <section className="content">
       <section className="card">
@@ -292,12 +300,13 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                   <th>Manufacturer</th>
                   <th>ES Criteria</th>
                   <th>Created By</th>
+                  {showActions && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {filteredReceipts.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="empty-row">
+                    <td colSpan={showActions ? 14 : 13} className="empty-row">
                       No receipts match your filters.
                     </td>
                   </tr>
@@ -328,9 +337,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                         {r.unit_price != null ? r.unit_price.toFixed(2) : "—"}
                       </td>
                       <td className="numeric">
-                        {r.total_value != null
-                          ? r.total_value.toFixed(2)
-                          : "—"}
+                        {r.total_value != null ? r.total_value.toFixed(2) : "—"}
                       </td>
                       <td>{r.supplier || "—"}</td>
                       <td>{r.manufacturer || "—"}</td>
@@ -338,6 +345,23 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                         <span className={esClass}>{esLabel}</span>
                       </td>
                       <td>{r.created_by}</td>
+
+                      {showActions && (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              borderRadius: 999,
+                            }}
+                            onClick={() => onEditReceipt?.(r)}
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

@@ -16,6 +16,10 @@ interface ConsumptionViewProps {
   loadingIssues: boolean;
   issuesError: string | null;
   onNewIssue: () => void;
+
+  // ✅ NEW
+  canEdit?: boolean;
+  onEditIssue?: (i: Issue) => void;
 }
 
 type CsvExportParams = {
@@ -62,6 +66,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   issues,
   loadingIssues,
   issuesError,
+  canEdit = false,
+  onEditIssue,
 }) => {
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
@@ -111,10 +117,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         if (dateFilter === "365" && diffDays > 365) return false;
       }
 
-      if (
-        manufacturerFilter !== "ALL" &&
-        i.manufacturer !== manufacturerFilter
-      ) {
+      if (manufacturerFilter !== "ALL" && i.manufacturer !== manufacturerFilter) {
         return false;
       }
 
@@ -133,6 +136,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.product_batch_no ?? "",
         i.comment ?? "",
         i.consumption_type ?? "",
+        i.material_status_at_txn ?? "",
       ]
         .join(" ")
         .toLowerCase();
@@ -179,6 +183,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Qty",
       "UOM",
       "Manufacturer",
+      "Status @ Use",
       "Comment",
       "Created By",
     ];
@@ -190,9 +195,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
 
       return [
         i.created_at ? formatDate(i.created_at) : "",
-        i.product_manufacture_date
-          ? formatDate(i.product_manufacture_date)
-          : "",
+        i.product_manufacture_date ? formatDate(i.product_manufacture_date) : "",
         renderConsumptionType(i.consumption_type),
         esRef,
         i.material_code,
@@ -202,6 +205,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.qty,
         i.uom_code,
         i.manufacturer || "",
+        i.material_status_at_txn || "",
         i.comment && i.comment.trim().length > 0 ? i.comment : "",
         i.created_by,
       ];
@@ -210,6 +214,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
     exportToCsv("consumption_history.csv", [header, ...rows]);
     setExportModalOpen(false);
   };
+
+  const showActions = !!canEdit;
 
   return (
     <section className="content">
@@ -286,19 +292,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
           <div className="error-row">{issuesError}</div>
         )}
         {!loadingIssues && !issuesError && (
-          <div
-            className="table-wrapper"
-            style={{ maxHeight: 480, overflowY: "auto" }}
-          >
+          <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
             <table className="table">
-              <thead
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 1,
-                  background: "#050816",
-                }}
-              >
+              <thead style={{ position: "sticky", top: 0, zIndex: 1, background: "#050816" }}>
                 <tr>
                   <th>Issue Date</th>
                   <th>Product Mfg Date</th>
@@ -311,14 +307,16 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th className="numeric">Qty</th>
                   <th>UOM</th>
                   <th>Manufacturer</th>
+                  <th>Status @ use</th>
                   <th>Comment</th>
                   <th>Created By</th>
+                  {showActions && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {filteredIssues.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="empty-row">
+                    <td colSpan={showActions ? 15 : 14} className="empty-row">
                       No issues match your filters.
                     </td>
                   </tr>
@@ -326,12 +324,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
 
                 {filteredIssues.map((i) => {
                   const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
-                  const isBatchRelevant =
-                    ct === "USAGE" || ct === "R_AND_D";
-
-                  const esRef = isBatchRelevant
-                    ? i.product_batch_no || "—"
-                    : "N/A";
+                  const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D";
+                  const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
 
                   return (
                     <tr key={i.id}>
@@ -346,12 +340,22 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td className="numeric">{i.qty}</td>
                       <td>{i.uom_code}</td>
                       <td>{i.manufacturer || "—"}</td>
-                      <td>
-                        {i.comment && i.comment.trim().length > 0
-                          ? i.comment
-                          : "—"}
-                      </td>
+                      <td>{i.material_status_at_txn || "—"}</td>
+                      <td>{i.comment && i.comment.trim().length > 0 ? i.comment : "—"}</td>
                       <td>{i.created_by}</td>
+
+                      {showActions && (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ padding: "4px 10px", fontSize: 12, borderRadius: 999 }}
+                            onClick={() => onEditIssue?.(i)}
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

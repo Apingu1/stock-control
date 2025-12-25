@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from typing import Optional
+import json
 
 from sqlalchemy import (
     Boolean,
@@ -45,8 +46,6 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-
-    # NOTE: removed fixed-role CheckConstraint to allow dynamic roles (Phase B)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User username={self.username!r} role={self.role!r} active={self.is_active}>"
@@ -179,12 +178,6 @@ class MaterialApprovedManufacturer(Base):
         ),
     )
 
-    def __repr__(self) -> str:  # pragma: no cover
-        return (
-            f"<MaterialApprovedManufacturer material_id={self.material_id} "
-            f"name={self.manufacturer_name!r}>"
-        )
-
 
 # --- Material lots & stock transactions -------------------------------------
 
@@ -231,9 +224,6 @@ class MaterialLot(Base):
         cascade="all, delete-orphan",
     )
 
-    def __repr__(self) -> str:  # pragma: no cover
-        return f"<MaterialLot material_id={self.material_id} lot={self.lot_number!r}>"
-
 
 class StockTransaction(Base):
     __tablename__ = "stock_transactions"
@@ -265,6 +255,11 @@ class StockTransaction(Base):
 
     comment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
+    # Snapshot of the lot status at the time this transaction was created.
+    # Added by migration (you already applied):
+    #   ALTER TABLE stock_transactions ADD COLUMN material_status_at_txn TEXT NULL;
+    material_status_at_txn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -281,11 +276,64 @@ class StockTransaction(Base):
         "MaterialLot", back_populates="transactions"
     )
 
-    def __repr__(self) -> str:  # pragma: no cover
-        return (
-            f"<StockTransaction id={self.id} "
-            f"lot_id={self.material_lot_id} qty={self.qty} dir={self.direction}>"
-        )
+    edits: Mapped[list["StockTransactionEdit"]] = relationship(
+        "StockTransactionEdit",
+        back_populates="transaction",
+        cascade="all, delete-orphan",
+        order_by="StockTransactionEdit.edited_at.asc()",
+    )
+
+
+# --- Transaction edit audit trail -------------------------------------------
+
+
+class StockTransactionEdit(Base):
+    """Immutable audit trail for edits to stock_transactions rows."""
+    __tablename__ = "stock_transaction_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    stock_transaction_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stock_transactions.id", ondelete="CASCADE"), nullable=False
+    )
+
+    edited_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    edited_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    edit_reason: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    before_json: Mapped[str] = mapped_column(Text, nullable=False)
+    after_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+    transaction: Mapped["StockTransaction"] = relationship(
+        "StockTransaction", back_populates="edits"
+    )
+
+    @staticmethod
+    def snapshot_txn(txn: "StockTransaction") -> str:
+        payload = {
+            "id": txn.id,
+            "material_lot_id": txn.material_lot_id,
+            "txn_type": txn.txn_type,
+            "consumption_type": txn.consumption_type,
+            "qty": txn.qty,
+            "uom_code": txn.uom_code,
+            "direction": txn.direction,
+            "unit_price": txn.unit_price,
+            "total_value": txn.total_value,
+            "target_ref": txn.target_ref,
+            "product_batch_no": txn.product_batch_no,
+            "product_manufacture_date": (
+                txn.product_manufacture_date.isoformat() if txn.product_manufacture_date else None
+            ),
+            "comment": txn.comment,
+            "created_at": txn.created_at.isoformat() if txn.created_at else None,
+            "created_by": txn.created_by,
+            "material_status_at_txn": txn.material_status_at_txn,
+        }
+        return json.dumps(payload, sort_keys=True)
 
 
 # --- Lot status change history ----------------------------------------------
@@ -311,12 +359,6 @@ class LotStatusChange(Base):
     material_lot: Mapped["MaterialLot"] = relationship(
         "MaterialLot", back_populates="status_changes"
     )
-
-    def __repr__(self) -> str:  # pragma: no cover
-        return (
-            f"<LotStatusChange lot_id={self.material_lot_id} "
-            f"{self.old_status}->{self.new_status}>"
-        )
 
 
 # --- Roles & Permissions (Phase B) ------------------------------------------

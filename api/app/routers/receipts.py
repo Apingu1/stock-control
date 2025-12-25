@@ -3,7 +3,7 @@ from datetime import datetime, date, time
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -13,17 +13,15 @@ from ..models import (
     StockTransaction,
     MaterialApprovedManufacturer,
     User,
+    StockTransactionEdit,
 )
-from ..schemas import ReceiptCreate, ReceiptOut
+from ..schemas import ReceiptCreate, ReceiptOut, ReceiptUpdate
 from ..security import require_permission
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
 
 def _normalise_receipt_datetime(value: datetime | date) -> datetime:
-    """
-    Normalise a date/datetime into a full datetime for created_at.
-    """
     if isinstance(value, datetime):
         return value
     if isinstance(value, date):
@@ -37,23 +35,14 @@ def create_receipt(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("receipts.create")),
 ) -> ReceiptOut:
-    """
-    Create a new goods receipt.
-
-    Phase A:
-    - Requires auth
-    - created_by is enforced from authenticated user (server-side)
-    """
     created_by = user.username
 
-    # 0. Enforce ES criteria checkbox (must be ticked)
     if not payload.complies_es_criteria:
         raise HTTPException(
             status_code=400,
             detail="Ensure goods in comply with ES criteria specified in ES.SOP.112",
         )
 
-    # 1. Locate the material
     material = (
         db.query(Material)
         .filter(Material.material_code == payload.material_code)
@@ -62,7 +51,6 @@ def create_receipt(
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    # 2. For TABLETS_CAPSULES, enforce approved manufacturer list (if configured)
     if material.category_code == "TABLETS_CAPSULES":
         approved_rows = (
             db.query(MaterialApprovedManufacturer)
@@ -90,7 +78,6 @@ def create_receipt(
                     ),
                 )
 
-    # 3. Find or create the lot for this material + lot_number
     lot = (
         db.query(MaterialLot)
         .filter(
@@ -121,13 +108,11 @@ def create_receipt(
         if payload.supplier and not lot.supplier:
             lot.supplier = payload.supplier
 
-    # 4. Optionally set default manufacturer/supplier on material only if blank
     if payload.manufacturer and not material.manufacturer:
         material.manufacturer = payload.manufacturer
     if payload.supplier and not material.supplier:
         material.supplier = payload.supplier
 
-    # 5. Use the provided receipt_date as the transaction timestamp
     created_at = _normalise_receipt_datetime(payload.receipt_date)
 
     txn = StockTransaction(
@@ -177,9 +162,6 @@ def list_receipts(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("receipts.view")),
 ) -> List[ReceiptOut]:
-    """
-    List the most recent goods receipts.
-    """
     stmt = (
         select(StockTransaction, MaterialLot, Material)
         .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
@@ -215,3 +197,88 @@ def list_receipts(
         )
 
     return results
+
+
+@router.put("/{receipt_id}", response_model=ReceiptOut)
+def update_receipt(
+    receipt_id: int,
+    payload: ReceiptUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("receipts.edit")),
+) -> ReceiptOut:
+    reason = (payload.edit_reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="edit_reason is required")
+
+    txn: StockTransaction | None = (
+        db.query(StockTransaction).filter(StockTransaction.id == receipt_id).one_or_none()
+    )
+    if txn is None or txn.txn_type != "RECEIPT":
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    lot = db.query(MaterialLot).filter(MaterialLot.id == txn.material_lot_id).one()
+    material = db.query(Material).filter(Material.id == lot.material_id).one()
+
+    before_json = StockTransactionEdit.snapshot_txn(txn)
+
+    current_balance = (
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
+        .filter(StockTransaction.material_lot_id == txn.material_lot_id)
+        .scalar()
+    )
+    current_balance = float(current_balance or 0.0)
+
+    # Remove old receipt, apply new qty, ensure non-negative
+    balance_without_old = current_balance - float(txn.qty or 0.0)
+    new_balance = balance_without_old + float(payload.qty)
+    if new_balance < -1e-9:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Edit would make lot balance negative. "
+                f"Lot {lot.lot_number} would become {new_balance:.3f}."
+            ),
+        )
+
+    txn.qty = float(payload.qty)
+    txn.unit_price = payload.unit_price
+    txn.total_value = payload.total_value
+    txn.target_ref = payload.target_ref
+    txn.comment = payload.comment
+
+    if payload.receipt_date is not None:
+        txn.created_at = _normalise_receipt_datetime(payload.receipt_date)
+
+    after_json = StockTransactionEdit.snapshot_txn(txn)
+
+    audit = StockTransactionEdit(
+        stock_transaction_id=txn.id,
+        edited_by=user.username,
+        edit_reason=reason,
+        before_json=before_json,
+        after_json=after_json,
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(txn)
+    db.refresh(lot)
+    db.refresh(material)
+
+    return ReceiptOut(
+        id=txn.id,
+        material_code=material.material_code,
+        material_name=material.name,
+        lot_number=lot.lot_number,
+        expiry_date=lot.expiry_date,
+        qty=txn.qty,
+        uom_code=txn.uom_code,
+        unit_price=txn.unit_price,
+        total_value=txn.total_value,
+        target_ref=txn.target_ref,
+        supplier=lot.supplier or material.supplier,
+        manufacturer=lot.manufacturer or material.manufacturer,
+        complies_es_criteria=True,
+        created_at=txn.created_at,
+        created_by=txn.created_by or "—",
+        comment=txn.comment,
+    )

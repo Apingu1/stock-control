@@ -37,18 +37,18 @@ body {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 230px 1fr; /* ✅ narrower sidebar */
   min-height: 100vh;
 }
 
 /* Sidebar */
 .sidebar {
   background: var(--bg-dark);
-  padding: 24px 18px;
+  padding: 20px 14px; /* ✅ slightly tighter */
   border-right: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .sidebar-brand {
@@ -81,11 +81,11 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-top: 6px;
-  margin-bottom: 8px; /* ✅ was -14px (caused squashing) */
+  margin-bottom: 8px;
 }
 
 .sidebar-section-label-admin {
-  margin-top: 14px; /* keep admin block spaced like others */
+  margin-top: 14px;
 }
 
 .nav-list {
@@ -147,6 +147,7 @@ body {
   justify-content: space-between;
   margin-bottom: 26px;
 }
+
 
 .page-tag {
   font-size: 12px;

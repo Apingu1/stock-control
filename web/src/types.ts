@@ -34,7 +34,6 @@ export type Material = {
   supplier: string | null;
   status: string;
 
-  // tablets/capsules support (optional)
   approved_manufacturers?: ApprovedManufacturer[];
 };
 
@@ -85,13 +84,17 @@ export type Issue = {
   product_manufacture_date: string | null;
 
   manufacturer: string | null;
+  supplier?: string | null;
+
   comment: string | null;
+
+  // Snapshot: lot status at time of usage
+  material_status_at_txn?: string | null;
 
   created_by: string | null;
 };
 
 export type LotBalance = {
-  // IMPORTANT: used for split-lot traceability + status change endpoint
   material_lot_id: number;
 
   material_code: string;
@@ -111,12 +114,9 @@ export type LotBalance = {
   balance_qty: number;
   uom_code: string;
 
-  // status-change audit preview (optional, depends on your view)
   last_status_reason?: string | null;
   last_status_changed_at?: string | null;
 };
-
-// --- Phase B admin typing (frontend only) -----------------------------------
 
 export type AdminRole = {
   name: string;

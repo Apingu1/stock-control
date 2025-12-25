@@ -134,6 +134,21 @@ class ReceiptCreate(BaseModel):
     comment: Optional[str] = None
 
 
+# ✅ NEW: used for edits (PUT /receipts/{id})
+class ReceiptUpdate(BaseModel):
+    """
+    Edit an existing RECEIPT transaction.
+    Audit reason is mandatory.
+    """
+    qty: float
+    unit_price: Optional[float] = None
+    total_value: Optional[float] = None
+    target_ref: Optional[str] = None
+    comment: Optional[str] = None
+    receipt_date: Optional[date] = None
+    edit_reason: str
+
+
 class ReceiptOut(BaseModel):
     id: int
     material_code: str
@@ -181,6 +196,22 @@ class IssueCreate(BaseModel):
     comment: Optional[str] = None
 
 
+# ✅ NEW: used for edits (PUT /issues/{id})
+class IssueUpdate(BaseModel):
+    """
+    Edit an existing ISSUE transaction.
+    Audit reason is mandatory.
+    """
+    qty: float
+    uom_code: Optional[str] = None  # optional; most sites keep UOM fixed on edit, but safe.
+    product_batch_no: Optional[str] = None
+    product_manufacture_date: Optional[datetime] = None
+    consumption_type: str = "USAGE"
+    target_ref: Optional[str] = None
+    comment: Optional[str] = None
+    edit_reason: str
+
+
 class IssueOut(BaseModel):
     id: int
     material_code: str
@@ -198,6 +229,9 @@ class IssueOut(BaseModel):
     created_at: datetime
     created_by: str
     comment: Optional[str] = None
+
+    # ✅ NEW: snapshot column so UI can show "Status at time of usage"
+    material_status_at_txn: Optional[str] = None
 
     class Config:
         from_attributes = True

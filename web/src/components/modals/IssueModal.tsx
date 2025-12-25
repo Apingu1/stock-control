@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
-import type { LotBalance, Material } from "../../types";
+import type { LotBalance, Material, Issue } from "../../types";
 import { CONSUMPTION_TYPES } from "../../constants";
 
 type ConsumptionTypeCode = "USAGE" | "WASTAGE" | "DESTRUCTION" | "R_AND_D";
@@ -24,6 +24,10 @@ export default function IssueModal({
   materials,
   lotBalances,
   createdBy,
+
+  // ✅ NEW
+  mode = "create",
+  initial,
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,14 +35,17 @@ export default function IssueModal({
   materials: Material[];
   lotBalances: LotBalance[];
   createdBy: string; // ✅ from authenticated user
+
+  mode?: "create" | "edit";
+  initial?: Issue;
 }) {
+  const isEdit = mode === "edit" && !!initial;
+
   const [consumptionType, setConsumptionType] =
     useState<ConsumptionTypeCode>("USAGE");
 
   const [materialSearch, setMaterialSearch] = useState("");
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
-    null
-  );
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [selectedLot, setSelectedLot] = useState<LotBalance | null>(null);
 
   const [qty, setQty] = useState("");
@@ -47,24 +54,52 @@ export default function IssueModal({
   const [comment, setComment] = useState("");
   const [manufacturer, setManufacturer] = useState("");
 
+  // ✅ NEW: edit reason
+  const [editReason, setEditReason] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setConsumptionType("USAGE");
-      setMaterialSearch("");
-      setSelectedMaterial(null);
-      setSelectedLot(null);
-      setQty("");
-      setProductBatchNo("");
-      setProductManufactureDate("");
-      setComment("");
-      setManufacturer("");
-      setSubmitting(false);
-      setSubmitError(null);
+    if (!open) return;
+
+    setSubmitting(false);
+    setSubmitError(null);
+
+    if (isEdit && initial) {
+      setConsumptionType((initial.consumption_type as ConsumptionTypeCode) || "USAGE");
+
+      setMaterialSearch(`${initial.material_name} (${initial.material_code})`);
+      const mat = materials.find((m) => m.material_code === initial.material_code) || null;
+      setSelectedMaterial(mat);
+
+      // Select lot by lot_number match (we don't have material_lot_id in Issue currently)
+      const lot = lotBalances.find(
+        (l) => l.material_code === initial.material_code && l.lot_number === initial.lot_number
+      ) || null;
+      setSelectedLot(lot);
+
+      setQty(String(initial.qty ?? ""));
+      setProductBatchNo(initial.product_batch_no || "");
+      setProductManufactureDate(initial.product_manufacture_date ? String(initial.product_manufacture_date).slice(0, 10) : "");
+      setComment(initial.comment || "");
+      setManufacturer(initial.manufacturer || "");
+      setEditReason("");
+      return;
     }
-  }, [open]);
+
+    // Create reset (existing behaviour)
+    setConsumptionType("USAGE");
+    setMaterialSearch("");
+    setSelectedMaterial(null);
+    setSelectedLot(null);
+    setQty("");
+    setProductBatchNo("");
+    setProductManufactureDate("");
+    setComment("");
+    setManufacturer("");
+    setEditReason("");
+  }, [open, isEdit, initial, materials, lotBalances]);
 
   const filteredMaterials = useMemo(() => {
     const q = materialSearch.trim().toLowerCase();
@@ -143,9 +178,7 @@ export default function IssueModal({
     }
 
     if (consumptionType === "DESTRUCTION" && !comment.trim()) {
-      setSubmitError(
-        "Please enter a comment explaining the destruction of stock."
-      );
+      setSubmitError("Please enter a comment explaining the destruction of stock.");
       return;
     }
 
@@ -154,45 +187,71 @@ export default function IssueModal({
       return;
     }
 
+    if (isEdit && !editReason.trim()) {
+      setSubmitError("Edit reason is required for audit trail.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
 
     try {
-      const payload = {
-        material_code: selectedMaterial.material_code,
-        lot_number: selectedLot.lot_number,
+      if (!isEdit) {
+        const payload = {
+          material_code: selectedMaterial.material_code,
+          lot_number: selectedLot.lot_number,
 
-        // split-lot safe selection
-        material_lot_id: selectedLot.material_lot_id,
+          // split-lot safe selection
+          material_lot_id: selectedLot.material_lot_id,
 
-        qty: Number(qty),
-        uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
+          qty: Number(qty),
+          uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
 
-        product_batch_no:
-          isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
-        product_manufacture_date:
-          isBatchRequired || isBatchOptional ? productManufactureDate || null : null,
+          product_batch_no:
+            isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
+          product_manufacture_date:
+            isBatchRequired || isBatchOptional ? productManufactureDate || null : null,
 
-        consumption_type: consumptionType,
+          consumption_type: consumptionType,
 
-        // ✅ derived from authenticated user (passed down)
-        created_by: createdBy,
+          // ✅ derived from authenticated user (passed down)
+          created_by: createdBy,
 
-        comment: comment || null,
-        manufacturer: manufacturer || null,
-        target_ref: null,
-      };
+          comment: comment || null,
+          manufacturer: manufacturer || null,
+          target_ref: null,
+        };
 
-      await apiFetch("/issues/", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+        await apiFetch("/issues/", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // Edit existing issue (traceability fields locked)
+        const payload = {
+          qty: Number(qty),
+          uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
+          product_batch_no:
+            isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
+          product_manufacture_date:
+            isBatchRequired || isBatchOptional ? productManufactureDate || null : null,
+          consumption_type: consumptionType,
+          comment: comment || null,
+          target_ref: null,
+          edit_reason: editReason.trim(),
+        };
+
+        await apiFetch(`/issues/${initial!.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+      }
 
       onIssuePosted();
       onClose();
     } catch (err: any) {
       console.error(err);
-      setSubmitError(err.message ?? "Failed to post issue");
+      setSubmitError(err.message ?? "Failed to save issue");
     } finally {
       setSubmitting(false);
     }
@@ -211,9 +270,11 @@ export default function IssueModal({
       <div className="modal">
         <div className="modal-header">
           <div>
-            <div className="modal-title">New Consumption</div>
+            <div className="modal-title">{isEdit ? "Edit Consumption" : "New Consumption"}</div>
             <div className="modal-subtitle">
-              Issue material from a specific lot with GMP-style traceability.
+              {isEdit
+                ? "Edits are audit-trailed. Provide a reason for change."
+                : "Issue material from a specific lot with GMP-style traceability."}
             </div>
           </div>
           <button className="icon-btn" type="button" onClick={onClose}>
@@ -247,6 +308,7 @@ export default function IssueModal({
                   className="input"
                   placeholder="Start typing material or code…"
                   value={materialSearch}
+                  disabled={isEdit}
                   onChange={(e) => {
                     setMaterialSearch(e.target.value);
                     setSelectedMaterial(null);
@@ -254,7 +316,7 @@ export default function IssueModal({
                     setManufacturer("");
                   }}
                 />
-                {filteredMaterials.length > 0 && !selectedMaterial && (
+                {filteredMaterials.length > 0 && !selectedMaterial && !isEdit && (
                   <div className="typeahead-dropdown">
                     {filteredMaterials.map((m) => (
                       <button
@@ -282,7 +344,7 @@ export default function IssueModal({
                 className="input"
                 value={selectedLot ? String(selectedLot.material_lot_id) : ""}
                 onChange={(e) => handleSelectLot(e.target.value)}
-                disabled={!selectedMaterial}
+                disabled={!selectedMaterial || isEdit}
               >
                 <option value="">Select lot…</option>
                 {lotsForMaterial.map((lot) => {
@@ -366,7 +428,10 @@ export default function IssueModal({
 
             <div className="form-group form-group-full">
               <label className="label">
-                Comment {consumptionType === "DESTRUCTION" ? "(required)" : ""}
+                Comment {consumptionType === "DESTRUCTION" ? "(required)" : ""}{" "}
+                <span style={{ opacity: 0.7, fontWeight: 400 }}>
+                  {isEdit ? "(optional)" : "(optional unless destruction)"}
+                </span>
               </label>
               <textarea
                 className="input textarea"
@@ -375,6 +440,20 @@ export default function IssueModal({
                 placeholder="Optional unless destruction…"
               />
             </div>
+
+            {isEdit && (
+              <div className="form-group form-group-full">
+                <label className="label">
+                  Edit reason <span style={{ color: "#fca5a5" }}>(required)</span>
+                </label>
+                <textarea
+                  className="input textarea"
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="Explain what changed and why (audit trail)…"
+                />
+              </div>
+            )}
           </div>
 
           {submitError && <div className="form-error">{submitError}</div>}
@@ -389,7 +468,7 @@ export default function IssueModal({
               Cancel
             </button>
             <button className="btn-primary" type="submit" disabled={submitting}>
-              {submitting ? "Posting…" : "Post consumption"}
+              {submitting ? "Saving…" : isEdit ? "Save changes" : "Post consumption"}
             </button>
           </div>
         </form>

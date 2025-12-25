@@ -1,7 +1,6 @@
 // src/components/receipts/NewReceiptModal.tsx
-
 import React, { useEffect, useMemo, useState } from "react";
-import type { Material, ApprovedManufacturer } from "../../types";
+import type { Material, ApprovedManufacturer, Receipt } from "../../types";
 import { apiFetch } from "../../utils/api";
 
 type NewReceiptModalProps = {
@@ -9,6 +8,9 @@ type NewReceiptModalProps = {
   onClose: () => void;
   materials: Material[];
   onReceiptPosted: () => void;
+
+  mode?: "create" | "edit";
+  initial?: Receipt;
 };
 
 const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
@@ -16,7 +18,11 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   onClose,
   materials,
   onReceiptPosted,
+  mode = "create",
+  initial,
 }) => {
+  const isEdit = mode === "edit" && !!initial;
+
   const [materialSearch, setMaterialSearch] = useState("");
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
 
@@ -29,25 +35,48 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const [manufacturer, setManufacturer] = useState("");
   const [compliesEs, setCompliesEs] = useState(false);
 
+  // ✅ Edit-only audit reason
+  const [editReason, setEditReason] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setMaterialSearch("");
-      setSelectedMaterial(null);
-      setLotNumber("");
-      setExpiryDate("");
-      setReceiptDate("");
-      setQty("");
-      setUnitPrice("");
-      setSupplier("");
-      setManufacturer("");
-      setCompliesEs(false);
-      setSubmitting(false);
-      setSubmitError(null);
+    if (!open) return;
+
+    setSubmitting(false);
+    setSubmitError(null);
+
+    if (isEdit && initial) {
+      setMaterialSearch(`${initial.material_name} (${initial.material_code})`);
+      const mat = materials.find((m) => m.material_code === initial.material_code) || null;
+      setSelectedMaterial(mat);
+
+      setLotNumber(initial.lot_number || "");
+      setExpiryDate(initial.expiry_date ? String(initial.expiry_date).slice(0, 10) : "");
+      setReceiptDate(initial.created_at ? String(initial.created_at).slice(0, 10) : "");
+      setQty(String(initial.qty ?? ""));
+      setUnitPrice(initial.unit_price != null ? String(initial.unit_price) : "");
+      setSupplier(initial.supplier || "");
+      setManufacturer(initial.manufacturer || "");
+      setCompliesEs(initial.complies_es_criteria === true);
+      setEditReason("");
+      return;
     }
-  }, [open]);
+
+    // Create reset
+    setMaterialSearch("");
+    setSelectedMaterial(null);
+    setLotNumber("");
+    setExpiryDate("");
+    setReceiptDate("");
+    setQty("");
+    setUnitPrice("");
+    setSupplier("");
+    setManufacturer("");
+    setCompliesEs(false);
+    setEditReason("");
+  }, [open, isEdit, initial, materials]);
 
   const filteredMaterials = useMemo(() => {
     const q = materialSearch.trim().toLowerCase();
@@ -79,7 +108,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedMaterial) {
+    if (!selectedMaterial && !isEdit) {
       setSubmitError("Please select a material.");
       return;
     }
@@ -87,7 +116,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       setSubmitError("Please enter a quantity.");
       return;
     }
-    if (!receiptDate) {
+    if (!receiptDate && !isEdit) {
       setSubmitError("Please enter a receipt date.");
       return;
     }
@@ -95,10 +124,13 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       setSubmitError("Please select an approved manufacturer.");
       return;
     }
-    if (!compliesEs) {
-      setSubmitError(
-        "Ensure goods in comply with ES criteria specified in ES.SOP.112"
-      );
+    if (!compliesEs && !isEdit) {
+      setSubmitError("Ensure goods in comply with ES criteria specified in ES.SOP.112");
+      return;
+    }
+
+    if (isEdit && !editReason.trim()) {
+      setSubmitError("Edit reason is required for audit trail.");
       return;
     }
 
@@ -106,31 +138,46 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
     setSubmitError(null);
 
     try {
-      const payload = {
-        material_code: selectedMaterial.material_code,
-        lot_number: lotNumber || null,
-        expiry_date: expiryDate || null,
-        receipt_date: receiptDate,
-        qty: Number(qty),
-        uom_code: selectedMaterial.base_uom_code,
-        unit_price: unitPrice ? Number(unitPrice) : null,
-        supplier: supplier || null,
-        manufacturer: manufacturer || null,
-        complies_es_criteria: compliesEs,
-        // created_by is set server-side from JWT user
-      };
+      if (!isEdit) {
+        const payload = {
+          material_code: selectedMaterial!.material_code,
+          lot_number: lotNumber || null,
+          expiry_date: expiryDate || null,
+          receipt_date: receiptDate,
+          qty: Number(qty),
+          uom_code: selectedMaterial!.base_uom_code,
+          unit_price: unitPrice ? Number(unitPrice) : null,
+          supplier: supplier || null,
+          manufacturer: manufacturer || null,
+          complies_es_criteria: compliesEs,
+        };
 
-      await apiFetch("/receipts/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+        await apiFetch("/receipts/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const payload = {
+          qty: Number(qty),
+          unit_price: unitPrice ? Number(unitPrice) : null,
+          supplier: supplier || null,
+          manufacturer: manufacturer || null,
+          edit_reason: editReason.trim(),
+        };
+
+        await apiFetch(`/receipts/${initial!.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
 
       onReceiptPosted();
       onClose();
     } catch (err: any) {
       console.error(err);
-      setSubmitError(err?.message ?? "Failed to post receipt.");
+      setSubmitError(err?.message ?? "Failed to save receipt.");
     } finally {
       setSubmitting(false);
     }
@@ -143,9 +190,9 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       <div className="modal">
         <div className="modal-header">
           <div>
-            <div className="modal-title">New goods receipt</div>
+            <div className="modal-title">{isEdit ? "Edit goods receipt" : "New goods receipt"}</div>
             <div className="modal-subtitle">
-              Post an incoming delivery into ES stock.
+              {isEdit ? "Edits are audit-trailed. Provide a reason for change." : "Post an incoming delivery into ES stock."}
             </div>
           </div>
 
@@ -163,13 +210,14 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                   className="input"
                   placeholder="Start typing material or code…"
                   value={materialSearch}
+                  disabled={isEdit}
                   onChange={(e) => {
                     setMaterialSearch(e.target.value);
                     setSelectedMaterial(null);
                     setManufacturer("");
                   }}
                 />
-                {filteredMaterials.length > 0 && !selectedMaterial && (
+                {filteredMaterials.length > 0 && !selectedMaterial && !isEdit && (
                   <div className="typeahead-dropdown">
                     {filteredMaterials.map((m) => (
                       <button
@@ -180,8 +228,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                       >
                         <div className="typeahead-main">{m.name}</div>
                         <div className="typeahead-meta">
-                          {m.material_code} •{" "}
-                          {m.manufacturer || m.supplier || "No supplier set"}
+                          {m.material_code} • {m.manufacturer || m.supplier || "No supplier set"}
                         </div>
                       </button>
                     ))}
@@ -196,6 +243,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                 className="input"
                 placeholder="e.g. A43621"
                 value={lotNumber}
+                disabled={isEdit}
                 onChange={(e) => setLotNumber(e.target.value)}
               />
             </div>
@@ -206,14 +254,14 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
                 className="input"
                 type="date"
                 value={expiryDate}
+                disabled={isEdit}
                 onChange={(e) => setExpiryDate(e.target.value)}
               />
             </div>
 
             <div className="form-group">
               <label className="label">
-                Quantity{" "}
-                {selectedMaterial ? `(${selectedMaterial.base_uom_code})` : ""}
+                Quantity {selectedMaterial ? `(${selectedMaterial.base_uom_code})` : ""}
               </label>
               <input
                 className="input"
@@ -227,11 +275,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">Receipt date</label>
+              <label className="label">{isEdit ? "Goods receipt date (locked)" : "Receipt date"}</label>
               <input
                 className="input"
                 type="date"
                 value={receiptDate}
+                disabled={isEdit}
                 onChange={(e) => setReceiptDate(e.target.value)}
               />
             </div>
@@ -260,20 +309,14 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">
-                Manufacturer {hasApproved ? "(approved only)" : "(optional)"}
-              </label>
+              <label className="label">Manufacturer {hasApproved ? "(approved only)" : "(optional)"}</label>
 
               {hasApproved ? (
-                <select
-                  className="input"
-                  value={manufacturer}
-                  onChange={(e) => setManufacturer(e.target.value)}
-                >
+                <select className="input" value={manufacturer} onChange={(e) => setManufacturer(e.target.value)}>
                   <option value="">Select…</option>
                   {approvedForMaterial.map((am) => (
-                    <option key={am.id} value={am.name}>
-                      {am.name}
+                    <option key={am.id} value={am.manufacturer_name}>
+                      {am.manufacturer_name}
                     </option>
                   ))}
                 </select>
@@ -287,29 +330,39 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
               )}
             </div>
 
-            <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-              <label className="label">Compliance check</label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={compliesEs}
-                  onChange={(e) => setCompliesEs(e.target.checked)}
+            {!isEdit && (
+              <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                <label className="label">Compliance check</label>
+                <label className="checkbox-row">
+                  <input type="checkbox" checked={compliesEs} onChange={(e) => setCompliesEs(e.target.checked)} />
+                  <span>Goods in comply with ES criteria specified in ES.SOP.112</span>
+                </label>
+              </div>
+            )}
+
+            {isEdit && (
+              <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                <label className="label">
+                  Edit reason <span style={{ color: "#fca5a5" }}>(required)</span>
+                </label>
+                <textarea
+                  className="input textarea"
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="Explain what changed and why (audit trail)…"
                 />
-                <span>
-                  Goods in comply with ES criteria specified in ES.SOP.112
-                </span>
-              </label>
-            </div>
+              </div>
+            )}
           </div>
 
           {submitError && <div className="error-row">{submitError}</div>}
 
           <div className="modal-footer">
-            <button type="button" className="btn secondary" onClick={onClose}>
+            <button type="button" className="btn secondary" onClick={onClose} disabled={submitting}>
               Cancel
             </button>
             <button className="btn" disabled={submitting}>
-              {submitting ? "Posting…" : "Post receipt"}
+              {submitting ? "Saving…" : isEdit ? "Save changes" : "Post receipt"}
             </button>
           </div>
         </form>

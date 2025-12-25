@@ -38,6 +38,10 @@ const App: React.FC = () => {
   const isAdmin = hasPerm("admin.full");
   const canChangeStatus = hasPerm("lots.status_change");
 
+  // ✅ Edit permissions
+  const canEditReceipts = hasPerm("receipts.edit");
+  const canEditIssues = hasPerm("issues.edit");
+
   // --- Data -----------------------------------------------------------------
   const [lotBalances, setLotBalances] = useState<LotBalance[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -60,10 +64,13 @@ const App: React.FC = () => {
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
 
+  // ✅ Editing states
+  const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
+  const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
+
   const [view, setView] = useState<ViewMode>("dashboard");
 
   // --- Loaders --------------------------------------------------------------
-
   const loadLotBalances = async () => {
     try {
       setLoadingLots(true);
@@ -81,12 +88,11 @@ const App: React.FC = () => {
 
   const loadMaterials = async () => {
     try {
-      const res = await apiFetch("/materials/?limit=500");
+      const res = await apiFetch("/materials/");
       const data = (await res.json()) as Material[];
       setMaterials(data);
-    } catch (e: any) {
-      console.error("Failed to load materials", e);
-      // keep existing list
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -94,13 +100,12 @@ const App: React.FC = () => {
     try {
       setLoadingReceipts(true);
       setReceiptsError(null);
-      const res = await apiFetch("/receipts/?limit=500");
+      const res = await apiFetch("/receipts/");
       const data = (await res.json()) as Receipt[];
       setReceipts(data);
     } catch (e: any) {
-      console.error("Failed to load receipts", e);
-      setReceipts([]);
-      setReceiptsError(e?.message ?? "Failed to load receipts");
+      console.error(e);
+      setReceiptsError(e?.message ?? "Failed to load goods receipts");
     } finally {
       setLoadingReceipts(false);
     }
@@ -110,13 +115,12 @@ const App: React.FC = () => {
     try {
       setLoadingIssues(true);
       setIssuesError(null);
-      const res = await apiFetch("/issues/?limit=500");
+      const res = await apiFetch("/issues/");
       const data = (await res.json()) as Issue[];
       setIssues(data);
     } catch (e: any) {
-      console.error("Failed to load issues", e);
-      setIssues([]);
-      setIssuesError(e?.message ?? "Failed to load issues");
+      console.error(e);
+      setIssuesError(e?.message ?? "Failed to load consumption history");
     } finally {
       setLoadingIssues(false);
     }
@@ -126,20 +130,18 @@ const App: React.FC = () => {
     await Promise.all([loadLotBalances(), loadMaterials(), loadReceipts(), loadIssues()]);
   };
 
-  // Phase B: permissions fetch
   const loadMyPermissions = async () => {
     try {
       const res = await apiFetch("/auth/my-permissions");
       const data = (await res.json()) as MyPermissionsResponse;
-      setMyPermissions(Array.isArray(data.permissions) ? data.permissions : []);
-    } catch {
-      // Non-blocking: if endpoint missing or user not authed, just blank it
+      setMyPermissions(data.permissions || []);
+    } catch (e) {
+      console.error(e);
       setMyPermissions([]);
     }
   };
 
   // --- Auth bootstrap -------------------------------------------------------
-
   useEffect(() => {
     const boot = async () => {
       const token = getToken();
@@ -188,10 +190,11 @@ const App: React.FC = () => {
     setMaterials([]);
     setReceipts([]);
     setIssues([]);
+    setEditingReceipt(null);
+    setEditingIssue(null);
   };
 
   // --- Modal handlers -------------------------------------------------------
-
   const handleMaterialSaved = async () => {
     setShowNewMaterialModal(false);
     setEditingMaterial(null);
@@ -200,16 +203,39 @@ const App: React.FC = () => {
 
   const handleReceiptPosted = async () => {
     setShowReceiptModal(false);
+    setEditingReceipt(null);
     await Promise.all([loadLotBalances(), loadReceipts()]);
   };
 
   const handleIssuePosted = async () => {
     setShowIssueModal(false);
+    setEditingIssue(null);
     await Promise.all([loadLotBalances(), loadIssues()]);
   };
 
-  // --- Loading gate ---------------------------------------------------------
+  // --- Header helpers (old style) ------------------------------------------
+  const header = useMemo(() => {
+    const signed = me ? `Signed in as ${me.username} (${me.role})` : "Please sign in to continue.";
 
+    switch (view) {
+      case "dashboard":
+        return { tag: "Workspace", title: "Dashboard", subtitle: signed };
+      case "materials":
+        return { tag: "Workspace", title: "Materials Library", subtitle: signed };
+      case "receipts":
+        return { tag: "Workspace", title: "Goods Receipts", subtitle: signed };
+      case "consumption":
+        return { tag: "Workspace", title: "Consumption", subtitle: signed };
+      case "lots":
+        return { tag: "Workspace", title: "Live Lots", subtitle: signed };
+      case "admin":
+        return { tag: "Admin", title: "Users & Roles", subtitle: signed };
+      default:
+        return { tag: "Workspace", title: "Dashboard", subtitle: signed };
+    }
+  }, [view, me]);
+
+  // --- Loading gate ---------------------------------------------------------
   if (!authChecked) {
     return (
       <div className="app-shell">
@@ -223,7 +249,6 @@ const App: React.FC = () => {
   }
 
   // --- Render ---------------------------------------------------------------
-
   return (
     <div className="app-shell">
       <LoginModal open={showLogin} onLoggedIn={handleLoggedIn} />
@@ -308,9 +333,7 @@ const App: React.FC = () => {
 
           {isAdmin && (
             <>
-              <div className="sidebar-section-label" style={{ marginTop: 14 }}>
-                Admin
-              </div>
+              <div className="sidebar-section-label sidebar-section-label-admin">Admin</div>
               <li className="nav-item">
                 <button
                   type="button"
@@ -325,6 +348,7 @@ const App: React.FC = () => {
           )}
         </ul>
 
+        {/* placeholders */}
         <div className="sidebar-section-label">Risk &amp; Quality</div>
         <ul className="nav-list">
           <li className="nav-item">
@@ -349,82 +373,42 @@ const App: React.FC = () => {
           </li>
         </ul>
 
-        <div style={{ flex: 1 }} />
-
         <div className="sidebar-footer" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
           {me ? (
-            <div style={{ width: "100%" }}>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>
-                Signed in as <b>{me.username}</b> ({me.role})
+            <>
+              <div className="avatar-pill" style={{ justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div className="avatar-img">{me.username.slice(0, 2).toUpperCase()}</div>
+                  <div className="avatar-meta">
+                    <div className="avatar-name">{me.username}</div>
+                    <div className="avatar-role">{me.role}</div>
+                  </div>
+                </div>
+
+                <button className="btn btn-ghost" type="button" onClick={logout}>
+                  Logout
+                </button>
               </div>
-              <button className="btn" style={{ marginTop: 10, width: "100%" }} onClick={logout}>
-                Logout
-              </button>
-            </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>GMP Mode</span>
+                <span className="pill-muted">Pilot • On-prem</span>
+              </div>
+            </>
           ) : (
             <div className="info-row">Please sign in.</div>
           )}
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>GMP Mode</span>
-            <span className="pill-muted">Pilot • On-prem</span>
-          </div>
         </div>
       </aside>
 
-      {/* MAIN AREA */}
+      {/* MAIN */}
       <main className="main">
-        {/* TOP BAR */}
+        {/* ✅ OLD HEADER STYLE */}
         <header className="top-bar">
           <div>
-            <div className="page-tag">Stock Control • Live Pilot</div>
-
-            <div className="page-title">
-              {view === "dashboard" && (
-                <>
-                  Inventory Command Centre{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ ES Specials</span>
-                </>
-              )}
-              {view === "materials" && (
-                <>
-                  Materials Library{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ ES Master Data</span>
-                </>
-              )}
-              {view === "receipts" && (
-                <>
-                  Goods Receipts{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ Historic Purchases</span>
-                </>
-              )}
-              {view === "consumption" && (
-                <>
-                  Issues &amp; Consumption{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ ES Batch Usage</span>
-                </>
-              )}
-              {view === "lots" && (
-                <>
-                  Live Lot Balances{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ On-hand Stock</span>
-                </>
-              )}
-              {view === "admin" && (
-                <>
-                  Admin — Users &amp; Roles{" "}
-                  <span style={{ fontSize: "13px", color: "#a5b4fc" }}>/ Access Control</span>
-                </>
-              )}
-            </div>
-
-            <div className="page-subtitle">
-              {view === "dashboard"
-                ? "See your materials, expiries and locations in one boujee, high-trust view."
-                : view === "admin"
-                ? "Create users, assign roles and control access (server-enforced)."
-                : "Search, filter and drill into the ES stock ledger with GMP-style traceability."}
-            </div>
+            <div className="page-tag">{header.tag}</div>
+            <div className="page-title">{header.title}</div>
+            <div className="page-subtitle">{header.subtitle}</div>
           </div>
 
           <div className="top-bar-actions">
@@ -478,6 +462,11 @@ const App: React.FC = () => {
             loadingReceipts={loadingReceipts}
             receiptsError={receiptsError}
             onNewReceipt={() => setShowReceiptModal(true)}
+            canEdit={!!canEditReceipts}
+            onEditReceipt={(r) => {
+              setEditingReceipt(r);
+              setShowReceiptModal(true);
+            }}
           />
         )}
 
@@ -487,6 +476,11 @@ const App: React.FC = () => {
             loadingIssues={loadingIssues}
             issuesError={issuesError}
             onNewIssue={() => setShowIssueModal(true)}
+            canEdit={!!canEditIssues}
+            onEditIssue={(i) => {
+              setEditingIssue(i);
+              setShowIssueModal(true);
+            }}
           />
         )}
 
@@ -506,18 +500,28 @@ const App: React.FC = () => {
       {/* MODALS */}
       <NewReceiptModal
         open={showReceiptModal}
-        onClose={() => setShowReceiptModal(false)}
+        onClose={() => {
+          setShowReceiptModal(false);
+          setEditingReceipt(null);
+        }}
         materials={materials}
         onReceiptPosted={handleReceiptPosted}
+        mode={editingReceipt ? "edit" : "create"}
+        initial={editingReceipt || undefined}
       />
 
       <IssueModal
         open={showIssueModal}
-        onClose={() => setShowIssueModal(false)}
+        onClose={() => {
+          setShowIssueModal(false);
+          setEditingIssue(null);
+        }}
         materials={materials}
         lotBalances={lotBalances}
         onIssuePosted={handleIssuePosted}
         createdBy={me?.username || ""}
+        mode={editingIssue ? "edit" : "create"}
+        initial={editingIssue || undefined}
       />
 
       <MaterialModal
