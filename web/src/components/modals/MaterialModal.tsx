@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Material, ApprovedManufacturer } from "../../types";
 import {
   MATERIAL_CATEGORY_OPTIONS,
@@ -22,9 +22,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   mode,
   onSaved,
 }) => {
-  const [materialCode, setMaterialCode] = useState(
-    initial?.material_code ?? ""
-  );
+  const [materialCode, setMaterialCode] = useState(initial?.material_code ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryCode, setCategoryCode] = useState(
     initial?.category_code ?? MATERIAL_CATEGORY_OPTIONS[0]
@@ -35,11 +33,12 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   const [baseUomCode, setBaseUomCode] = useState(
     initial?.base_uom_code ?? MATERIAL_UOM_OPTIONS[0]
   );
-  const [manufacturer, setManufacturer] = useState(
-    initial?.manufacturer ?? ""
-  );
+  const [manufacturer, setManufacturer] = useState(initial?.manufacturer ?? "");
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
   const [status, setStatus] = useState(initial?.status ?? "ACTIVE");
+
+  // ✅ edit-only audit reason
+  const [editReason, setEditReason] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +50,12 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   const [newApprovedName, setNewApprovedName] = useState("");
   const [loadingApproved, setLoadingApproved] = useState(false);
   const [approvedError, setApprovedError] = useState<string | null>(null);
+
+  // ✅ stage changes to approved manufacturers until Save
+  const [pendingRemoveIds, setPendingRemoveIds] = useState<Set<number>>(
+    new Set()
+  );
+  const [pendingAddNames, setPendingAddNames] = useState<string[]>([]);
 
   const isEdit = mode === "edit";
   const isTabletsCaps = categoryCode === "TABLETS_CAPSULES";
@@ -66,9 +71,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       setApprovedManufacturers(data);
     } catch (err: any) {
       console.error(err);
-      setApprovedError(
-        err.message ?? "Failed to load approved manufacturers"
-      );
+      setApprovedError(err.message ?? "Failed to load approved manufacturers");
       setApprovedManufacturers([]);
     } finally {
       setLoadingApproved(false);
@@ -79,21 +82,23 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     if (open) {
       setMaterialCode(initial?.material_code ?? "");
       setName(initial?.name ?? "");
-      setCategoryCode(
-        initial?.category_code ?? MATERIAL_CATEGORY_OPTIONS[0]
-      );
+      setCategoryCode(initial?.category_code ?? MATERIAL_CATEGORY_OPTIONS[0]);
       setTypeCode(initial?.type_code ?? MATERIAL_TYPE_OPTIONS[0]);
-      setBaseUomCode(
-        initial?.base_uom_code ?? MATERIAL_UOM_OPTIONS[0]
-      );
+      setBaseUomCode(initial?.base_uom_code ?? MATERIAL_UOM_OPTIONS[0]);
       setManufacturer(initial?.manufacturer ?? "");
       setSupplier(initial?.supplier ?? "");
       setStatus(initial?.status ?? "ACTIVE");
       setSubmitting(false);
       setError(null);
 
+      setEditReason("");
+
       setNewApprovedName("");
       setApprovedError(null);
+
+      // reset staged manufacturer changes on open
+      setPendingRemoveIds(new Set());
+      setPendingAddNames([]);
 
       if (mode === "edit" && initial?.material_code) {
         void loadApproved(initial.material_code);
@@ -103,11 +108,27 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     }
   }, [open, initial, mode]);
 
+  // Helpers for staged changes
+  const normalize = (s: string) => s.trim().toUpperCase();
+
+  const approvedVisible = useMemo(() => {
+    // show DB-approved list but visually mark pending removals
+    return approvedManufacturers.slice().sort((a, b) =>
+      a.manufacturer_name.localeCompare(b.manufacturer_name)
+    );
+  }, [approvedManufacturers]);
+
+  const pendingAddsNormalized = useMemo(() => {
+    return new Set(pendingAddNames.map(normalize));
+  }, [pendingAddNames]);
+
+  // ✅ IMPORTANT: this must be BELOW hooks (useMemo/useEffect) to avoid hook order crash
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setApprovedError(null);
 
     if (!materialCode.trim() && mode === "create") {
       setError("Material code is required.");
@@ -119,6 +140,12 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     }
     if (!categoryCode.trim() || !typeCode.trim() || !baseUomCode.trim()) {
       setError("Category, type and base UOM are required.");
+      return;
+    }
+
+    // Require reason for edits
+    if (isEdit && !editReason.trim()) {
+      setError("Edit reason is required for audit trail.");
       return;
     }
 
@@ -145,6 +172,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           body: JSON.stringify(payload),
         });
       } else if (mode === "edit" && initial?.material_code) {
+        // 1) Save material (audit-trailed)
         const payload = {
           name: name.trim(),
           category_code: categoryCode.trim(),
@@ -154,16 +182,47 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           supplier: supplier || null,
           complies_es_criteria: true,
           status,
+          edit_reason: editReason.trim(),
         };
 
-        await apiFetch(
-          `/materials/${encodeURIComponent(initial.material_code)}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          }
-        );
+        await apiFetch(`/materials/${encodeURIComponent(initial.material_code)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        // 2) Apply staged approved-manufacturer removals
+        const removeIds = Array.from(pendingRemoveIds);
+        for (const id of removeIds) {
+          await apiFetch(
+            `/materials/${encodeURIComponent(
+              initial.material_code
+            )}/approved-manufacturers/${id}`,
+            { method: "DELETE" }
+          );
+        }
+
+        // 3) Apply staged approved-manufacturer adds
+        for (const manuName of pendingAddNames) {
+          const body = {
+            manufacturer_name: manuName.trim(),
+            is_active: true,
+            created_by: "apingu",
+          };
+          await apiFetch(
+            `/materials/${encodeURIComponent(initial.material_code)}/approved-manufacturers`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }
+          );
+        }
+
+        // 4) Refresh list and reset staged changes
+        await loadApproved(initial.material_code);
+        setPendingRemoveIds(new Set());
+        setPendingAddNames([]);
       }
 
       onSaved();
@@ -176,63 +235,80 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     }
   };
 
-  const handleAddApproved = async () => {
+  // Stage add (no API call)
+  const handleAddApproved = () => {
     if (!isEdit || !initial?.material_code) return;
+
     const name = newApprovedName.trim();
     if (!name) {
       setApprovedError("Manufacturer name is required.");
       return;
     }
 
-    try {
-      setApprovedError(null);
-      const payload = {
-        manufacturer_name: name,
-        is_active: true,
-        created_by: "apingu",
-      };
-      const res = await apiFetch(
-        `/materials/${encodeURIComponent(
-          initial.material_code
-        )}/approved-manufacturers`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-      const created = (await res.json()) as ApprovedManufacturer;
-      setApprovedManufacturers((prev) => [...prev, created]);
-      setNewApprovedName("");
-    } catch (err: any) {
-      console.error(err);
-      setApprovedError(
-        err.message ?? "Failed to add approved manufacturer"
-      );
+    const n = normalize(name);
+
+    // If it's already in DB list and pending removal, treat as "undo removal"
+    const existing = approvedManufacturers.find(
+      (a) => normalize(a.manufacturer_name) === n
+    );
+    if (existing) {
+      if (pendingRemoveIds.has(existing.id)) {
+        setPendingRemoveIds((prev) => {
+          const next = new Set(prev);
+          next.delete(existing.id);
+          return next;
+        });
+        setNewApprovedName("");
+        setApprovedError(null);
+        return;
+      }
+      setApprovedError("That manufacturer is already on the approved list.");
+      return;
     }
+
+    // Prevent duplicate pending adds
+    if (pendingAddsNormalized.has(n)) {
+      setApprovedError("That manufacturer is already pending add.");
+      return;
+    }
+
+    setPendingAddNames((prev) => [...prev, name]);
+    setNewApprovedName("");
+    setApprovedError(null);
   };
 
-  const handleDeleteApproved = async (id: number) => {
+  // Stage delete (no API call)
+  const handleDeleteApproved = (id: number) => {
     if (!isEdit || !initial?.material_code) return;
-    try {
-      setApprovedError(null);
-      await apiFetch(
-        `/materials/${encodeURIComponent(
-          initial.material_code
-        )}/approved-manufacturers/${id}`,
-        {
-          method: "DELETE",
-        }
-      );
-      setApprovedManufacturers((prev) =>
-        prev.filter((am) => am.id !== id)
-      );
-    } catch (err: any) {
-      console.error(err);
-      setApprovedError(
-        err.message ?? "Failed to remove manufacturer"
-      );
-    }
+    setApprovedError(null);
+
+    setPendingRemoveIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const undoDeleteApproved = (id: number) => {
+    setPendingRemoveIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const removePendingAdd = (nameToRemove: string) => {
+    const n = normalize(nameToRemove);
+    setPendingAddNames((prev) => prev.filter((x) => normalize(x) !== n));
+  };
+
+  const handleCancel = () => {
+    // Discard staged approved-manufacturer changes
+    setPendingRemoveIds(new Set());
+    setPendingAddNames([]);
+    setApprovedError(null);
+    setError(null);
+    onClose();
   };
 
   return (
@@ -249,7 +325,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 : "Register a new material into the ES master list."}
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose}>
+          <button type="button" className="icon-btn" onClick={handleCancel}>
             ✕
           </button>
         </div>
@@ -266,6 +342,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 disabled={isEdit}
               />
             </div>
+
             <div className="form-group">
               <label className="label">Name</label>
               <input
@@ -273,6 +350,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 placeholder="e.g. RAMIPRIL 10MG TABLETS"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                disabled={isEdit}
               />
             </div>
 
@@ -354,6 +432,21 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
               />
             </div>
 
+            {isEdit && (
+              <div className="form-group form-group-full">
+                <label className="label">
+                  Edit reason{" "}
+                  <span style={{ color: "#fca5a5" }}>(required)</span>
+                </label>
+                <textarea
+                  className="input textarea"
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="Explain what changed and why (audit trail)…"
+                />
+              </div>
+            )}
+
             {isEdit && isTabletsCaps && (
               <div className="form-group form-group-full">
                 <label className="label">
@@ -367,42 +460,85 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 {loadingApproved && (
                   <div className="info-row">Loading manufacturers…</div>
                 )}
-                {approvedError && (
-                  <div className="error-row">{approvedError}</div>
-                )}
+                {approvedError && <div className="error-row">{approvedError}</div>}
 
                 {!loadingApproved &&
-                  approvedManufacturers.length === 0 && (
+                  approvedVisible.length === 0 &&
+                  pendingAddNames.length === 0 && (
                     <div className="info-row">
                       No approved manufacturers configured yet.
                     </div>
                   )}
 
-                {approvedManufacturers.length > 0 && (
+                {approvedVisible.length > 0 && (
                   <ul className="pill-list">
-                    {approvedManufacturers.map((am) => (
-                      <li key={am.id} className="pill">
-                        <span>{am.manufacturer_name}</span>
-                        <button
-                          type="button"
-                          className="pill-remove-btn"
-                          onClick={() => handleDeleteApproved(am.id)}
-                          title="Remove manufacturer"
+                    {approvedVisible.map((am) => {
+                      const pendingRemove = pendingRemoveIds.has(am.id);
+                      return (
+                        <li
+                          key={am.id}
+                          className="pill"
+                          style={{ opacity: pendingRemove ? 0.5 : 1 }}
+                          title={
+                            pendingRemove
+                              ? "Pending removal (will apply on Save)"
+                              : undefined
+                          }
                         >
-                          ✕
-                        </button>
-                      </li>
-                    ))}
+                          <span>{am.manufacturer_name}</span>
+                          {!pendingRemove ? (
+                            <button
+                              type="button"
+                              className="pill-remove-btn"
+                              onClick={() => handleDeleteApproved(am.id)}
+                              title="Mark for removal (will apply on Save)"
+                            >
+                              ✕
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="pill-remove-btn"
+                              onClick={() => undoDeleteApproved(am.id)}
+                              title="Undo removal"
+                            >
+                              Undo
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    marginTop: 8,
-                  }}
-                >
+                {pendingAddNames.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="info-row" style={{ marginBottom: 6 }}>
+                      Pending add (applies on Save):
+                    </div>
+                    <ul className="pill-list">
+                      {pendingAddNames.map((n) => (
+                        <li
+                          key={normalize(n)}
+                          className="pill"
+                          title="Pending add (will apply on Save)"
+                        >
+                          <span>{n}</span>
+                          <button
+                            type="button"
+                            className="pill-remove-btn"
+                            onClick={() => removePendingAdd(n)}
+                            title="Remove from pending adds"
+                          >
+                            ✕
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <input
                     className="input"
                     placeholder="Add manufacturer name…"
@@ -437,7 +573,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
             <button
               type="button"
               className="btn btn-ghost"
-              onClick={onClose}
+              onClick={handleCancel}
               disabled={submitting}
             >
               Cancel

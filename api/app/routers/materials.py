@@ -10,6 +10,7 @@ from ..db import get_db
 from ..models import (
     Material,
     MaterialApprovedManufacturer,
+    MaterialEdit,  # ✅ NEW
     MaterialCategory,
     MaterialType,
     Uom,
@@ -106,6 +107,21 @@ def create_material(
     )
 
     db.add(m)
+
+    # ✅ Issue #1 fix: if TABLETS_CAPSULES and manufacturer provided at creation,
+    # automatically register it into the approved manufacturer list.
+    manu = (body.manufacturer or "").strip()
+    if body.category_code == "TABLETS_CAPSULES" and manu:
+        db.flush()  # ensure m.id is available
+        db.add(
+            MaterialApprovedManufacturer(
+                material_id=m.id,
+                manufacturer_name=manu,
+                is_active=True,
+                created_by=created_by,
+            )
+        )
+
     try:
         db.commit()
     except IntegrityError as e:
@@ -151,7 +167,7 @@ def update_material(
     material_code: str,
     body: MaterialUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("materials.edit")),
+    user: User = Depends(require_permission("materials.edit")),
 ):
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
@@ -161,6 +177,23 @@ def update_material(
     _ensure_lookup_exists(db, MaterialType, body.type_code, "Type")
     _ensure_lookup_exists(db, Uom, body.base_uom_code, "UOM")
 
+    # ✅ Issue #4 fix: require reason for edits (backend enforcement)
+    reason = (body.edit_reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="edit_reason is required for material edits")
+
+    # ✅ Issue #3 fix: block renaming via standard edit workflow
+    if body.name != m.name:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Material name cannot be changed once created. "
+                "If a rename is required, create a new material record."
+            ),
+        )
+
+    before_json = MaterialEdit.snapshot_material(m)
+
     m.name = body.name
     m.category_code = body.category_code
     m.type_code = body.type_code
@@ -169,6 +202,18 @@ def update_material(
     m.supplier = body.supplier
     m.complies_es_criteria = body.complies_es_criteria
     m.status = body.status
+
+    after_json = MaterialEdit.snapshot_material(m)
+
+    db.add(
+        MaterialEdit(
+            material_id=m.id,
+            edited_by=user.username,
+            edit_reason=reason,
+            before_json=before_json,
+            after_json=after_json,
+        )
+    )
 
     try:
         db.commit()

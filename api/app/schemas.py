@@ -99,6 +99,9 @@ class MaterialUpdate(BaseModel):
     complies_es_criteria: bool = True
     status: str = "ACTIVE"
 
+    # ✅ NEW: required for audit-trailed edits (PUT /materials/{material_code})
+    edit_reason: Optional[str] = None
+
 
 class MaterialOut(MaterialBase):
     id: int

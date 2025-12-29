@@ -143,8 +143,61 @@ class Material(Base):
         cascade="all, delete-orphan",
     )
 
+    # ✅ NEW: immutable audit trail for material edits
+    edits: Mapped[list["MaterialEdit"]] = relationship(
+        "MaterialEdit",
+        back_populates="material",
+        cascade="all, delete-orphan",
+        order_by="MaterialEdit.edited_at.asc()",
+    )
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Material code={self.material_code!r} name={self.name!r}>"
+
+
+# --- Material edit audit trail ----------------------------------------------
+
+
+class MaterialEdit(Base):
+    """Immutable audit trail for edits to materials rows."""
+    __tablename__ = "material_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    material_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("materials.id", ondelete="CASCADE"), nullable=False
+    )
+
+    edited_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    edited_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    edit_reason: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    before_json: Mapped[str] = mapped_column(Text, nullable=False)
+    after_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+    material: Mapped["Material"] = relationship("Material", back_populates="edits")
+
+    @staticmethod
+    def snapshot_material(m: "Material") -> str:
+        payload = {
+            "id": m.id,
+            "material_code": m.material_code,
+            "name": m.name,
+            "category_code": m.category_code,
+            "type_code": m.type_code,
+            "base_uom_code": m.base_uom_code,
+            "manufacturer": m.manufacturer,
+            "supplier": m.supplier,
+            "complies_es_criteria": m.complies_es_criteria,
+            "status": m.status,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "created_by": m.created_by,
+            "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+        }
+        return json.dumps(payload, sort_keys=True)
 
 
 # --- Approved manufacturers per material ------------------------------------

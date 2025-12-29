@@ -103,7 +103,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
     return selectedMaterial.approved_manufacturers.filter((am) => am.is_active);
   }, [selectedMaterial]);
 
-  const hasApproved = isTabletsCaps && approvedForMaterial.length > 0;
+  const hasApproved = approvedForMaterial.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,10 +120,19 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       setSubmitError("Please enter a receipt date.");
       return;
     }
-    if (hasApproved && !manufacturer) {
+
+    // ✅ TABLETS_CAPSULES always controlled: block if no approved manufacturers configured
+    if (isTabletsCaps && !hasApproved) {
+      setSubmitError(
+        "No approved manufacturers are configured for this TABLETS/CAPSULES material. Add one in Materials before booking in."
+      );
+      return;
+    }
+    if (isTabletsCaps && !manufacturer) {
       setSubmitError("Please select an approved manufacturer.");
       return;
     }
+
     if (!compliesEs && !isEdit) {
       setSubmitError("Ensure goods in comply with ES criteria specified in ES.SOP.112");
       return;
@@ -309,17 +318,33 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">Manufacturer {hasApproved ? "(approved only)" : "(optional)"}</label>
+              <label className="label">
+                Manufacturer {isTabletsCaps ? "(approved only)" : "(optional)"}
+              </label>
 
-              {hasApproved ? (
-                <select className="input" value={manufacturer} onChange={(e) => setManufacturer(e.target.value)}>
-                  <option value="">Select…</option>
-                  {approvedForMaterial.map((am) => (
-                    <option key={am.id} value={am.manufacturer_name}>
-                      {am.manufacturer_name}
-                    </option>
-                  ))}
-                </select>
+              {/* ✅ TABLETS_CAPSULES always dropdown */}
+              {isTabletsCaps ? (
+                <>
+                  <select
+                    className="input"
+                    value={manufacturer}
+                    onChange={(e) => setManufacturer(e.target.value)}
+                    disabled={!hasApproved}
+                  >
+                    <option value="">Select…</option>
+                    {approvedForMaterial.map((am) => (
+                      <option key={am.id} value={am.manufacturer_name}>
+                        {am.manufacturer_name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {!hasApproved && (
+                    <div className="info-row" style={{ marginTop: 6 }}>
+                      No approved manufacturers configured. Add one in Materials before booking in.
+                    </div>
+                  )}
+                </>
               ) : (
                 <input
                   className="input"
