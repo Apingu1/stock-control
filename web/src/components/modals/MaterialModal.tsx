@@ -143,7 +143,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       return;
     }
 
-    // Require reason for edits
+    // Require reason for edits (used for BOTH material edit + approved-manufacturer edits)
     if (isEdit && !editReason.trim()) {
       setError("Edit reason is required for audit trail.");
       return;
@@ -191,22 +191,24 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           body: JSON.stringify(payload),
         });
 
-        // 2) Apply staged approved-manufacturer removals
+        // 2) Apply staged approved-manufacturer removals (backend requires edit_reason as QUERY param)
         const removeIds = Array.from(pendingRemoveIds);
         for (const id of removeIds) {
+          const qs = `?edit_reason=${encodeURIComponent(editReason.trim())}`;
           await apiFetch(
             `/materials/${encodeURIComponent(
               initial.material_code
-            )}/approved-manufacturers/${id}`,
+            )}/approved-manufacturers/${id}${qs}`,
             { method: "DELETE" }
           );
         }
 
-        // 3) Apply staged approved-manufacturer adds
+        // 3) Apply staged approved-manufacturer adds (backend requires edit_reason in BODY)
         for (const manuName of pendingAddNames) {
           const body = {
             manufacturer_name: manuName.trim(),
-            is_active: true,
+            edit_reason: editReason.trim(),
+            // server enforces created_by from JWT, but harmless if present
             created_by: "apingu",
           };
           await apiFetch(
@@ -239,13 +241,13 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   const handleAddApproved = () => {
     if (!isEdit || !initial?.material_code) return;
 
-    const name = newApprovedName.trim();
-    if (!name) {
+    const nm = newApprovedName.trim();
+    if (!nm) {
       setApprovedError("Manufacturer name is required.");
       return;
     }
 
-    const n = normalize(name);
+    const n = normalize(nm);
 
     // If it's already in DB list and pending removal, treat as "undo removal"
     const existing = approvedManufacturers.find(
@@ -272,7 +274,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       return;
     }
 
-    setPendingAddNames((prev) => [...prev, name]);
+    setPendingAddNames((prev) => [...prev, nm]);
     setNewApprovedName("");
     setApprovedError(null);
   };
@@ -344,13 +346,13 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">Name</label>
+              <label className="label">Material name</label>
               <input
                 className="input"
-                placeholder="e.g. RAMIPRIL 10MG TABLETS"
+                placeholder="e.g. Paracetamol Powder"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                disabled={isEdit}
+                disabled={isEdit} // backend also blocks rename
               />
             </div>
 
@@ -407,8 +409,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 onChange={(e) => setStatus(e.target.value)}
               >
                 <option value="ACTIVE">ACTIVE</option>
-                <option value="OBSOLETE">OBSOLETE</option>
-                <option value="BLOCKED">BLOCKED</option>
+                <option value="INACTIVE">INACTIVE</option>
               </select>
             </div>
 
@@ -435,8 +436,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
             {isEdit && (
               <div className="form-group form-group-full">
                 <label className="label">
-                  Edit reason{" "}
-                  <span style={{ color: "#fca5a5" }}>(required)</span>
+                  Edit reason <span style={{ color: "#fca5a5" }}>(required)</span>
                 </label>
                 <textarea
                   className="input textarea"

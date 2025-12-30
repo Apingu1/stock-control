@@ -1,5 +1,5 @@
 # app/routers/auth.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -7,6 +7,7 @@ from ..models import User
 from ..schemas import LoginRequest, TokenOut, UserMeOut, MyPermissionsOut
 from ..security import verify_password, create_access_token, get_current_user
 from ..security import _get_permissions_for_role  # internal helper from security.py
+from ..audit_logger import log_security_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,14 +25,45 @@ def _login_impl(payload: LoginRequest, db: Session) -> TokenOut:
 
 
 @router.post("/login", response_model=TokenOut)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenOut:
-    return _login_impl(payload, db)
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent")
+
+    try:
+        tok = _login_impl(payload, db)
+        # success: we can resolve role from token payload input username
+        user = db.query(User).filter(User.username == payload.username).one_or_none()
+        log_security_event(
+            db,
+            event_type="LOGIN_SUCCESS",
+            actor_username=payload.username,
+            actor_role=(user.role if user else None),
+            target_type="AUTH",
+            target_ref=payload.username,
+            success=True,
+            ip_address=ip,
+            user_agent=ua,
+        )
+        db.commit()
+        return tok
+    except HTTPException:
+        log_security_event(
+            db,
+            event_type="LOGIN_FAIL",
+            actor_username=payload.username,
+            target_type="AUTH",
+            target_ref=payload.username,
+            success=False,
+            ip_address=ip,
+            user_agent=ua,
+        )
+        db.commit()
+        raise
 
 
-# Accept trailing slash too, WITHOUT redirect (prevents Codespaces weird host redirects)
 @router.post("/login/", response_model=TokenOut, include_in_schema=False)
-def login_slash(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenOut:
-    return _login_impl(payload, db)
+def login_slash(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+    return login(payload, request, db)
 
 
 @router.get("/me", response_model=UserMeOut)
@@ -54,7 +86,6 @@ def me_slash(user: User = Depends(get_current_user)) -> UserMeOut:
     )
 
 
-# Phase B: permissions for current user's role (UX + client gating)
 @router.get("/my-permissions", response_model=MyPermissionsOut)
 def my_permissions(
     db: Session = Depends(get_db),

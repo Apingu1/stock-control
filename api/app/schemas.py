@@ -1,6 +1,6 @@
 # app/schemas.py
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Optional, List, Any
 
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,8 @@ class ApprovedManufacturerBase(BaseModel):
 
 class ApprovedManufacturerCreate(ApprovedManufacturerBase):
     created_by: Optional[str] = None
+    # ✅ GMP: mandatory reason (enforced in backend) for add/remove changes
+    edit_reason: Optional[str] = None
 
 
 class ApprovedManufacturerOut(ApprovedManufacturerBase):
@@ -342,3 +344,15 @@ class RolePermissionSet(BaseModel):
 class MyPermissionsOut(BaseModel):
     role: str
     permissions: List[str]
+
+# --- Audit feed (unified view) ----------------------------------------------
+
+class AuditEventOut(BaseModel):
+    event_type: str
+    event_at: datetime
+    actor_username: Optional[str] = None
+    target_type: Optional[str] = None
+    target_ref: Optional[str] = None
+    reason: Optional[str] = None
+    before_json: Optional[Any] = None
+    after_json: Optional[Any] = None

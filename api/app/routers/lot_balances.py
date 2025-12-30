@@ -162,11 +162,15 @@ def change_lot_status(
             detail=f"move_qty exceeds current balance (balance {current_balance}, requested {move_qty_f})",
         )
 
-    reason = payload.reason.strip()
+    base_reason = payload.reason.strip()
     changed_by = user.username
 
     material = db.query(Material).filter(Material.id == lot.material_id).one()
     uom_code = material.base_uom_code
+
+    # ✅ Make sure audit details always include quantity
+    # This flows into LOT_STATUS_CHANGE audit "details" via reason/last_status_reason.
+    reason_with_qty = f"{base_reason} | qty={move_qty_f} {uom_code}"
 
     dest_statuses = [new_status]
     if new_status == "AVAILABLE":
@@ -193,7 +197,7 @@ def change_lot_status(
                 qty=move_qty_f,
                 uom_code=uom_code,
                 direction=-1,
-                comment=f"Moved {move_qty_f} to existing {new_status} segment. Reason: {reason}",
+                comment=f"Moved {move_qty_f} {uom_code} to existing {new_status} segment. Reason: {base_reason}",
                 created_by=changed_by,
             )
         )
@@ -204,7 +208,7 @@ def change_lot_status(
                 qty=move_qty_f,
                 uom_code=uom_code,
                 direction=+1,
-                comment=f"Received {move_qty_f} from {old_status} segment. Reason: {reason}",
+                comment=f"Received {move_qty_f} {uom_code} from {old_status} segment. Reason: {base_reason}",
                 created_by=changed_by,
             )
         )
@@ -214,7 +218,7 @@ def change_lot_status(
                 material_lot_id=lot.id,
                 old_status=old_status,
                 new_status=new_status,
-                reason=reason,
+                reason=reason_with_qty,
                 changed_by=changed_by,
             )
         )
@@ -223,7 +227,7 @@ def change_lot_status(
                 material_lot_id=dest_lot.id,
                 old_status=_normalise_status(dest_lot.status),
                 new_status=new_status,
-                reason=f"Merged in {move_qty_f} from {old_status} segment. {reason}",
+                reason=f"Merged in qty={move_qty_f} {uom_code} from {old_status}. {base_reason}",
                 changed_by=changed_by,
             )
         )
@@ -238,7 +242,7 @@ def change_lot_status(
                     material_lot_id=lot.id,
                     old_status=old_status,
                     new_status=new_status,
-                    reason=reason,
+                    reason=reason_with_qty,
                     changed_by=changed_by,
                 )
             )
@@ -264,7 +268,7 @@ def change_lot_status(
                     qty=move_qty_f,
                     uom_code=uom_code,
                     direction=-1,
-                    comment=f"Moved {move_qty_f} to new {new_status} segment. Reason: {reason}",
+                    comment=f"Moved {move_qty_f} {uom_code} to new {new_status} segment. Reason: {base_reason}",
                     created_by=changed_by,
                 )
             )
@@ -275,7 +279,7 @@ def change_lot_status(
                     qty=move_qty_f,
                     uom_code=uom_code,
                     direction=+1,
-                    comment=f"Received {move_qty_f} from {old_status} segment. Reason: {reason}",
+                    comment=f"Received {move_qty_f} {uom_code} from {old_status} segment. Reason: {base_reason}",
                     created_by=changed_by,
                 )
             )
@@ -285,7 +289,7 @@ def change_lot_status(
                     material_lot_id=lot.id,
                     old_status=old_status,
                     new_status=new_status,
-                    reason=reason,
+                    reason=reason_with_qty,
                     changed_by=changed_by,
                 )
             )
@@ -294,7 +298,7 @@ def change_lot_status(
                     material_lot_id=new_lot.id,
                     old_status=old_status,
                     new_status=new_status,
-                    reason=reason,
+                    reason=reason_with_qty,
                     changed_by=changed_by,
                 )
             )

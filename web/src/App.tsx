@@ -8,6 +8,7 @@ import MaterialsLibraryView from "./components/materials/MaterialsLibraryView";
 import GoodsReceiptsView from "./components/receipts/GoodsReceiptsView";
 import ConsumptionView from "./components/issues/ConsumptionView";
 import LiveLotsView from "./components/lots/LiveLotsView";
+import AuditTrailView from "./components/audit/AuditTrailView";
 
 import NewReceiptModal from "./components/modals/NewReceiptModal";
 import IssueModal from "./components/modals/IssueModal";
@@ -38,9 +39,10 @@ const App: React.FC = () => {
   const isAdmin = hasPerm("admin.full");
   const canChangeStatus = hasPerm("lots.status_change");
 
-  // ✅ Edit permissions
   const canEditReceipts = hasPerm("receipts.edit");
   const canEditIssues = hasPerm("issues.edit");
+
+  const canViewAudit = hasPerm("audit.view");
 
   // --- Data -----------------------------------------------------------------
   const [lotBalances, setLotBalances] = useState<LotBalance[]>([]);
@@ -64,7 +66,7 @@ const App: React.FC = () => {
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
 
-  // ✅ Editing states
+  // Editing states
   const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
   const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
 
@@ -213,7 +215,7 @@ const App: React.FC = () => {
     await Promise.all([loadLotBalances(), loadIssues()]);
   };
 
-  // --- Header helpers (old style) ------------------------------------------
+  // --- Header helpers -------------------------------------------------------
   const header = useMemo(() => {
     const signed = me ? `Signed in as ${me.username} (${me.role})` : "Please sign in to continue.";
 
@@ -228,6 +230,8 @@ const App: React.FC = () => {
         return { tag: "Workspace", title: "Consumption", subtitle: signed };
       case "lots":
         return { tag: "Workspace", title: "Live Lots", subtitle: signed };
+      case "audit":
+        return { tag: "Risk & Quality", title: "Audit Trail", subtitle: signed };
       case "admin":
         return { tag: "Admin", title: "Users & Roles", subtitle: signed };
       default:
@@ -235,7 +239,6 @@ const App: React.FC = () => {
     }
   }, [view, me]);
 
-  // --- Loading gate ---------------------------------------------------------
   if (!authChecked) {
     return (
       <div className="app-shell">
@@ -248,7 +251,6 @@ const App: React.FC = () => {
     );
   }
 
-  // --- Render ---------------------------------------------------------------
   return (
     <div className="app-shell">
       <LoginModal open={showLogin} onLoggedIn={handleLoggedIn} />
@@ -348,7 +350,6 @@ const App: React.FC = () => {
           )}
         </ul>
 
-        {/* placeholders */}
         <div className="sidebar-section-label">Risk &amp; Quality</div>
         <ul className="nav-list">
           <li className="nav-item">
@@ -365,11 +366,18 @@ const App: React.FC = () => {
               <span className="badge">4</span>
             </a>
           </li>
+
           <li className="nav-item">
-            <a href="#" className="nav-link">
+            <button
+              type="button"
+              className={"nav-link as-button " + (view === "audit" ? "active" : "")}
+              onClick={() => setView("audit")}
+              disabled={!me || !canViewAudit}
+              title={!me ? "Please sign in" : !canViewAudit ? "You do not have audit.view permission" : ""}
+            >
               <span className="icon">📑</span>
               Audit Trail
-            </a>
+            </button>
           </li>
         </ul>
 
@@ -403,7 +411,6 @@ const App: React.FC = () => {
 
       {/* MAIN */}
       <main className="main">
-        {/* ✅ OLD HEADER STYLE */}
         <header className="top-bar">
           <div>
             <div className="page-tag">{header.tag}</div>
@@ -449,7 +456,6 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* PAGE BODY */}
         {view === "dashboard" && <DashboardView materials={materials} />}
 
         {view === "materials" && (
@@ -493,6 +499,8 @@ const App: React.FC = () => {
             canChangeStatus={!!canChangeStatus}
           />
         )}
+
+        {view === "audit" && canViewAudit && <AuditTrailView />}
 
         {view === "admin" && isAdmin && <AdminUsersView />}
       </main>

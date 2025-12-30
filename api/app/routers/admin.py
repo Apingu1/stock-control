@@ -307,9 +307,10 @@ def set_role_permissions_matrix(
     if not r:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    # Optional: sanity check the body role_name if present
-    if payload.role_name and payload.role_name.strip().upper() != rn:
-        raise HTTPException(status_code=400, detail="role_name mismatch")
+# Role name is authoritative from the path param {rn}.
+# Payload may not include role_name (frontend sends only permissions list).
+# We deliberately do not accept role_name from client to avoid mismatches.
+
 
     if not payload.permissions:
         raise HTTPException(status_code=400, detail="No permissions provided")

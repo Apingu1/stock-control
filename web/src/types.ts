@@ -6,7 +6,8 @@ export type ViewMode =
   | "receipts"
   | "consumption"
   | "lots"
-  | "admin";
+  | "admin"
+  | "audit";
 
 export type Role = string;
 
@@ -88,7 +89,6 @@ export type Issue = {
 
   comment: string | null;
 
-  // Snapshot: lot status at time of usage
   material_status_at_txn?: string | null;
 
   created_by: string | null;
@@ -132,4 +132,15 @@ export type PermissionDef = {
 export type RolePermissionRow = {
   permission_key: string;
   granted: boolean;
+};
+
+export type AuditEvent = {
+  event_type: string;
+  event_at: string;
+  actor_username?: string | null;
+  target_type?: string | null;
+  target_ref?: string | null;
+  reason?: string | null;
+  before_json?: any;
+  after_json?: any;
 };

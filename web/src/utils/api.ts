@@ -3,13 +3,10 @@
 const TOKEN_KEY = "sc_jwt";
 
 function normalizeBase(base: string): string {
-  // remove trailing slash
   return base.replace(/\/+$/, "");
 }
 
 function getApiBase(): string {
-  // Prefer explicit env (recommended):
-  // VITE_API_BASE="http://localhost:8080/api"
   const envBase = (import.meta as any).env?.VITE_API_BASE as string | undefined;
   if (envBase && envBase.trim().length > 0) return normalizeBase(envBase.trim());
 
@@ -17,17 +14,11 @@ function getApiBase(): string {
     const host = window.location.hostname || "localhost";
     const protocol = window.location.protocol || "http:";
 
-    // Codespaces Vite host like:
-    //   <name>-5173.app.github.dev
-    // nginx is:
-    //   <name>-8080.app.github.dev
     if (host.endsWith(".app.github.dev")) {
       const apiHost = host.replace(/-5173\.app\.github\.dev$/, "-8080.app.github.dev");
       return normalizeBase(`${protocol}//${apiHost}/api`);
     }
 
-    // Local dev: prefer nginx gateway on 8080 with /api
-    // (Your nginx is already set up to rewrite /api/* to FastAPI)
     return normalizeBase(`http://${host}:8080/api`);
   }
 
@@ -48,8 +39,6 @@ export function clearToken() {
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
   const base = getApiBase();
-
-  // ensure path starts with /
   const p = path.startsWith("/") ? path : `/${path}`;
   const url = path.startsWith("http") ? path : `${base}${p}`;
 
@@ -99,11 +88,33 @@ export async function fetchMe() {
   };
 }
 
-// Phase B: permissions for logged-in user
 export async function fetchMyPermissions() {
   const res = await apiFetch("/auth/my-permissions");
   return (await res.json()) as {
     role: string;
     permissions: string[];
   };
+}
+
+// ✅ NEW: Audit events feed
+export async function fetchAuditEvents(params: {
+  date_from?: string;
+  date_to?: string;
+  event_type?: string;
+  actor_username?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params.date_from) qs.set("date_from", params.date_from);
+  if (params.date_to) qs.set("date_to", params.date_to);
+  if (params.event_type) qs.set("event_type", params.event_type);
+  if (params.actor_username) qs.set("actor_username", params.actor_username);
+  if (params.q) qs.set("q", params.q);
+  if (params.limit != null) qs.set("limit", String(params.limit));
+  if (params.offset != null) qs.set("offset", String(params.offset));
+
+  const res = await apiFetch(`/audit/events?${qs.toString()}`);
+  return await res.json();
 }

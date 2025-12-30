@@ -9,66 +9,37 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import (
     Material,
-    MaterialApprovedManufacturer,
-    MaterialEdit,  # ✅ NEW
     MaterialCategory,
     MaterialType,
     Uom,
+    MaterialEdit,
+    MaterialApprovedManufacturer,
     User,
 )
 from ..schemas import (
     MaterialCreate,
-    MaterialOut,
     MaterialUpdate,
-    ApprovedManufacturerCreate,
+    MaterialOut,
     ApprovedManufacturerOut,
+    ApprovedManufacturerCreate,
 )
 from ..security import require_permission
+from ..audit_logger import log_approved_manufacturer_edit
 
 router = APIRouter(prefix="/materials", tags=["materials"])
 
 
-def _translate_integrity_error(e: IntegrityError) -> None:
-    msg = str(e.orig) if e.orig else str(e)
-
-    if "materials_material_code_key" in msg or "materials_pkey" in msg:
-        raise HTTPException(
-            status_code=400,
-            detail="Material code already exists. Please choose a different code.",
-        )
-
-    if "materials_category_code_fkey" in msg:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid category_code. Must match an entry in material_categories.",
-        )
-    if "materials_type_code_fkey" in msg:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid type_code. Must match an entry in material_types.",
-        )
-    if "materials_base_uom_code_fkey" in msg:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid base_uom_code. Must match an entry in uoms.",
-        )
-
-    raise HTTPException(
-        status_code=400,
-        detail=f"Invalid material data (DB constraint failed): {msg}",
-    )
+def _ensure_lookup_exists(db: Session, model, key: str, label: str) -> None:
+    row = db.execute(select(model).where(model.code == key)).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=400, detail=f"{label} code '{key}' does not exist")
 
 
-def _ensure_lookup_exists(db: Session, model, code: str, kind: str) -> None:
-    if not code:
-        raise HTTPException(status_code=400, detail=f"{kind} code is required.")
-
-    row = db.execute(select(model).where(model.code == code)).scalar_one_or_none()
-    if row is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{kind} code '{code}' is not configured in the lookup table.",
-        )
+def _translate_integrity_error(e: IntegrityError):
+    msg = str(e.orig).lower() if e.orig else str(e).lower()
+    if "unique" in msg or "duplicate" in msg:
+        raise HTTPException(status_code=409, detail="Duplicate record (unique constraint hit)")
+    raise HTTPException(status_code=400, detail="Database integrity error")
 
 
 @router.post("/", response_model=MaterialOut, status_code=201)
@@ -77,51 +48,24 @@ def create_material(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("materials.create")),
 ):
-    created_by = user.username
-
-    existing = db.execute(
-        select(Material).where(Material.material_code == body.material_code)
-    ).scalar_one_or_none()
-
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Material with code {body.material_code} already exists",
-        )
-
     _ensure_lookup_exists(db, MaterialCategory, body.category_code, "Category")
     _ensure_lookup_exists(db, MaterialType, body.type_code, "Type")
     _ensure_lookup_exists(db, Uom, body.base_uom_code, "UOM")
 
     m = Material(
-        material_code=body.material_code,
-        name=body.name,
-        category_code=body.category_code,
-        type_code=body.type_code,
-        base_uom_code=body.base_uom_code,
+        material_code=body.material_code.strip(),
+        name=body.name.strip(),
+        category_code=body.category_code.strip(),
+        type_code=body.type_code.strip(),
+        base_uom_code=body.base_uom_code.strip(),
         manufacturer=body.manufacturer,
         supplier=body.supplier,
         complies_es_criteria=body.complies_es_criteria,
         status=body.status,
-        created_by=created_by,
+        created_by=user.username,  # ✅ enforce from JWT
     )
 
     db.add(m)
-
-    # ✅ Issue #1 fix: if TABLETS_CAPSULES and manufacturer provided at creation,
-    # automatically register it into the approved manufacturer list.
-    manu = (body.manufacturer or "").strip()
-    if body.category_code == "TABLETS_CAPSULES" and manu:
-        db.flush()  # ensure m.id is available
-        db.add(
-            MaterialApprovedManufacturer(
-                material_id=m.id,
-                manufacturer_name=manu,
-                is_active=True,
-                created_by=created_by,
-            )
-        )
-
     try:
         db.commit()
     except IntegrityError as e:
@@ -136,7 +80,7 @@ def create_material(
 def list_materials(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("materials.view")),
-    search: Optional[str] = Query(None, description="Search by material_code or name"),
+    search: Optional[str] = None,
     limit: int = Query(200, ge=1, le=2000),
     offset: int = Query(0, ge=0),
 ):
@@ -177,12 +121,10 @@ def update_material(
     _ensure_lookup_exists(db, MaterialType, body.type_code, "Type")
     _ensure_lookup_exists(db, Uom, body.base_uom_code, "UOM")
 
-    # ✅ Issue #4 fix: require reason for edits (backend enforcement)
     reason = (body.edit_reason or "").strip()
     if not reason:
         raise HTTPException(status_code=400, detail="edit_reason is required for material edits")
 
-    # ✅ Issue #3 fix: block renaming via standard edit workflow
     if body.name != m.name:
         raise HTTPException(
             status_code=400,
@@ -238,7 +180,9 @@ def list_approved_manufacturers(
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    return [ApprovedManufacturerOut.model_validate(am) for am in m.approved_manufacturers]
+    # ✅ Return active only (operational list)
+    active = [am for am in m.approved_manufacturers if am.is_active]
+    return [ApprovedManufacturerOut.model_validate(am) for am in active]
 
 
 @router.post(
@@ -250,13 +194,17 @@ def add_approved_manufacturer(
     material_code: str,
     body: ApprovedManufacturerCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("materials.edit")),
+    user: User = Depends(require_permission("materials.edit")),
 ):
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    manufacturer_name = body.manufacturer_name.strip()
+    reason = (body.edit_reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="edit_reason is required")
+
+    manufacturer_name = (body.manufacturer_name or "").strip()
     if not manufacturer_name:
         raise HTTPException(status_code=400, detail="Manufacturer name is required")
 
@@ -269,6 +217,36 @@ def add_approved_manufacturer(
         .one_or_none()
     )
     if existing:
+        # If it exists but inactive, re-activate (audited)
+        if not existing.is_active:
+            before = {
+                "id": existing.id,
+                "material_code": m.material_code,
+                "manufacturer_name": existing.manufacturer_name,
+                "is_active": existing.is_active,
+            }
+            existing.is_active = True
+            after = {
+                "id": existing.id,
+                "material_code": m.material_code,
+                "manufacturer_name": existing.manufacturer_name,
+                "is_active": existing.is_active,
+            }
+
+            log_approved_manufacturer_edit(
+                db,
+                edited_by=user.username,
+                material_code=m.material_code,
+                action="ADD",
+                manufacturer_name=existing.manufacturer_name,
+                edit_reason=reason,
+                before_json=before,
+                after_json=after,
+            )
+            db.commit()
+            db.refresh(existing)
+            return ApprovedManufacturerOut.model_validate(existing)
+
         raise HTTPException(
             status_code=409,
             detail=f"Manufacturer '{manufacturer_name}' already exists for this material",
@@ -277,14 +255,33 @@ def add_approved_manufacturer(
     am = MaterialApprovedManufacturer(
         material_id=m.id,
         manufacturer_name=manufacturer_name,
-        is_active=body.is_active,
-        created_by=body.created_by,
+        is_active=True,
+        created_by=user.username,  # ✅ enforce from JWT
     )
 
     db.add(am)
+    db.flush()
+
+    after = {
+        "id": am.id,
+        "material_code": m.material_code,
+        "manufacturer_name": am.manufacturer_name,
+        "is_active": am.is_active,
+    }
+
+    log_approved_manufacturer_edit(
+        db,
+        edited_by=user.username,
+        material_code=m.material_code,
+        action="ADD",
+        manufacturer_name=manufacturer_name,
+        edit_reason=reason,
+        before_json=None,
+        after_json=after,
+    )
+
     db.commit()
     db.refresh(am)
-
     return ApprovedManufacturerOut.model_validate(am)
 
 
@@ -295,12 +292,17 @@ def add_approved_manufacturer(
 def delete_approved_manufacturer(
     material_code: str,
     am_id: int,
+    edit_reason: str = Query(..., description="Mandatory GMP reason for removal"),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("materials.edit")),
+    user: User = Depends(require_permission("materials.edit")),
 ) -> None:
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
+
+    reason = (edit_reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="edit_reason is required")
 
     am = (
         db.query(MaterialApprovedManufacturer)
@@ -310,8 +312,36 @@ def delete_approved_manufacturer(
         )
         .one_or_none()
     )
-    if not am:
+    if not am or not am.is_active:
         raise HTTPException(status_code=404, detail="Approved manufacturer not found")
 
-    db.delete(am)
+    before = {
+        "id": am.id,
+        "material_code": m.material_code,
+        "manufacturer_name": am.manufacturer_name,
+        "is_active": am.is_active,
+    }
+
+    # ✅ Soft remove (deactivate) for traceability
+    am.is_active = False
+
+    after = {
+        "id": am.id,
+        "material_code": m.material_code,
+        "manufacturer_name": am.manufacturer_name,
+        "is_active": am.is_active,
+    }
+
+    log_approved_manufacturer_edit(
+        db,
+        edited_by=user.username,
+        material_code=m.material_code,
+        action="REMOVE",
+        manufacturer_name=am.manufacturer_name,
+        edit_reason=reason,
+        before_json=before,
+        after_json=after,
+    )
+
     db.commit()
+    return None
