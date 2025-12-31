@@ -35,28 +35,23 @@ def get_audit_events(
     event_type: Optional[str] = Query(None),
     actor_username: Optional[str] = Query(None),
     target_type: Optional[str] = Query(None),
-    q: Optional[str] = Query(None, description="Search target_ref and reason (ILIKE)"),
+    q: Optional[str] = Query(None, description="Free text search (partial match across refs, reason, JSON)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
     where = []
     params = {"limit": limit, "offset": offset}
 
-    dt_from, from_date_only = parse_iso_date_or_datetime(date_from)
+    dt_from, _from_date_only = parse_iso_date_or_datetime(date_from)
     dt_to, to_date_only = parse_iso_date_or_datetime(date_to)
 
     if dt_from is not None:
-        # date-only already at 00:00:00
         where.append("event_at >= :date_from")
         params["date_from"] = dt_from
 
     if dt_to is not None:
-        # If date-only include whole day by < next_day. If datetime use <=
         if to_date_only:
             where.append("event_at < :date_to")
-            # next day handled in audit_export util
-            # Here reuse the same helper by calling build_where_and_params would be cleaner,
-            # but keep minimal change to existing logic:
             from datetime import timedelta
 
             params["date_to"] = dt_to + timedelta(days=1)
@@ -76,9 +71,25 @@ def get_audit_events(
         where.append("target_type = :target_type")
         params["target_type"] = target_type
 
+    # ✅ Improved free-text search:
+    # - split on whitespace into terms
+    # - AND terms together
+    # - each term matches across target_ref/reason/event_type/actor/JSON text
     if q:
-        where.append("(target_ref ILIKE :q OR reason ILIKE :q)")
-        params["q"] = f"%{q}%"
+        terms = [t for t in q.strip().split() if t]
+        for i, term in enumerate(terms):
+            pname = f"q{i}"
+            where.append(
+                "("
+                f"target_ref ILIKE :{pname} "
+                f"OR reason ILIKE :{pname} "
+                f"OR event_type ILIKE :{pname} "
+                f"OR actor_username ILIKE :{pname} "
+                f"OR CAST(before_json AS TEXT) ILIKE :{pname} "
+                f"OR CAST(after_json AS TEXT) ILIKE :{pname}"
+                ")"
+            )
+            params[pname] = f"%{term}%"
 
     where_sql = ""
     if where:
@@ -115,7 +126,7 @@ def export_audit_events_csv(
     event_type: Optional[str] = Query(None),
     actor_username: Optional[str] = Query(None),
     target_type: Optional[str] = Query(None),
-    q: Optional[str] = Query(None, description="Search target_ref and reason (ILIKE)"),
+    q: Optional[str] = Query(None, description="Free text search (partial match across refs, reason, JSON)"),
     limit: int = Query(5000, ge=1, le=20000),
 ):
     where_sql, params = build_where_and_params(
@@ -179,7 +190,7 @@ def export_audit_events_pdf(
     event_type: Optional[str] = Query(None),
     actor_username: Optional[str] = Query(None),
     target_type: Optional[str] = Query(None),
-    q: Optional[str] = Query(None, description="Search target_ref and reason (ILIKE)"),
+    q: Optional[str] = Query(None, description="Free text search (partial match across refs, reason, JSON)"),
     include_json: bool = Query(False, description="Include full before/after JSON appendix"),
     limit: int = Query(2000, ge=1, le=5000),
 ):

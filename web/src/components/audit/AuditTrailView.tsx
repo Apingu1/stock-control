@@ -81,16 +81,31 @@ const AuditTrailView: React.FC = () => {
     return Array.from(s).sort();
   }, [events]);
 
-  const buildUrl = (override?: { limit?: number; offset?: number }) => {
+  // ✅ buildUrl now supports filter overrides, so Clear/Apply can force an immediate load
+  const buildUrl = (override?: {
+    limit?: number;
+    offset?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    eventType?: string;
+    actor?: string;
+    q?: string;
+  }) => {
     const params = new URLSearchParams();
     params.set("limit", String(override?.limit ?? limit));
     params.set("offset", String(override?.offset ?? offset));
 
-    if (dateFrom) params.set("date_from", dateFrom);
-    if (dateTo) params.set("date_to", dateTo);
-    if (eventType) params.set("event_type", eventType);
-    if (actor) params.set("actor_username", actor);
-    if (q) params.set("q", q);
+    const df = override?.dateFrom ?? dateFrom;
+    const dt = override?.dateTo ?? dateTo;
+    const et = override?.eventType ?? eventType;
+    const ac = override?.actor ?? actor;
+    const qq = override?.q ?? q;
+
+    if (df) params.set("date_from", df);
+    if (dt) params.set("date_to", dt);
+    if (et) params.set("event_type", et);
+    if (ac) params.set("actor_username", ac);
+    if (qq) params.set("q", qq);
 
     return `/audit/events?${params.toString()}`;
   };
@@ -107,7 +122,7 @@ const AuditTrailView: React.FC = () => {
     return params;
   };
 
-  // Keep download logic HERE (per your request)
+  // Keep download logic HERE
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -119,7 +134,16 @@ const AuditTrailView: React.FC = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  const load = async (override?: { limit?: number; offset?: number }) => {
+  // ✅ load now accepts optional filter overrides too (via buildUrl)
+  const load = async (override?: {
+    limit?: number;
+    offset?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    eventType?: string;
+    actor?: string;
+    q?: string;
+  }) => {
     setLoading(true);
     setError(null);
     try {
@@ -138,31 +162,57 @@ const AuditTrailView: React.FC = () => {
     }
   };
 
-  // ✅ Pagination fix: refetch when offset/limit change
+  // Pagination: refetch when offset/limit change
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offset, limit]);
 
+  // ✅ Apply forces reload using current inputs (no stale-state issues)
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
     setOpenRowKey(null);
-    // IMPORTANT: setOffset triggers load via useEffect
+
+    // Always start from page 1 and force reload with current filters now.
     setOffset(0);
+    load({
+      offset: 0,
+      limit,
+      dateFrom,
+      dateTo,
+      eventType,
+      actor,
+      q,
+    });
   };
 
+  // ✅ Clear works on single click: reload uses explicit default values
   const handleClear = () => {
     const d = new Date();
     const from = new Date();
     from.setDate(d.getDate() - 7);
-    setDateFrom(toIsoDateInput(from));
-    setDateTo(toIsoDateInput(d));
+
+    const df = toIsoDateInput(from);
+    const dt = toIsoDateInput(d);
+
+    setDateFrom(df);
+    setDateTo(dt);
     setEventType("");
     setActor("");
     setQ("");
     setLimit(20);
     setOpenRowKey(null);
+
     setOffset(0);
+    load({
+      offset: 0,
+      limit: 20,
+      dateFrom: df,
+      dateTo: dt,
+      eventType: "",
+      actor: "",
+      q: "",
+    });
   };
 
   const handleExportCsvConfirm = async ({ fromDate, toDate, respectFilters }: CsvExportParams) => {
@@ -198,7 +248,6 @@ const AuditTrailView: React.FC = () => {
     }
   };
 
-  // Small UI tidy
   const compactFontSize = 13;
   const compactLineHeight = 1.25;
 
@@ -277,14 +326,14 @@ const AuditTrailView: React.FC = () => {
 
           <div style={{ gridColumn: "span 2" }}>
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
-              Search (target / reason)
+              Search (partial match)
             </div>
             <input
               className="input"
               style={{ fontSize: compactFontSize }}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="e.g. ES000123, QUARANTINE, manufacturer"
+              placeholder="e.g. 54321, ramipril, ABC Pharma"
             />
           </div>
         </div>
@@ -307,8 +356,11 @@ const AuditTrailView: React.FC = () => {
               className="input"
               value={limit}
               onChange={(e) => {
-                setLimit(Number(e.target.value));
+                const next = Number(e.target.value);
+                setLimit(next);
                 setOffset(0);
+                // immediate refresh for UX consistency
+                load({ offset: 0, limit: next });
               }}
               style={{ width: 110, fontSize: compactFontSize }}
             >
