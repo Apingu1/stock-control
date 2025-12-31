@@ -1,6 +1,10 @@
 // web/src/components/audit/AuditTrailView.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
+import CsvExportModal from "../modals/CsvExportModal";
+import type { CsvExportParams } from "../modals/CsvExportModal";
+
+import { diffJson, summarizeDiff, formatScalar } from "../../utils/jsonDiff";
 
 type AuditEvent = {
   event_type: string;
@@ -64,6 +68,11 @@ const AuditTrailView: React.FC = () => {
   // Row expansion
   const [openRowKey, setOpenRowKey] = useState<string | null>(null);
 
+  // Export modals / downloads
+  const [exportCsvOpen, setExportCsvOpen] = useState<boolean>(false);
+  const [exportingCsv, setExportingCsv] = useState<boolean>(false);
+  const [exportingPdf, setExportingPdf] = useState<boolean>(false);
+
   const hasMore = useMemo(() => events.length === limit, [events.length, limit]);
 
   const eventTypeOptions = useMemo(() => {
@@ -72,12 +81,11 @@ const AuditTrailView: React.FC = () => {
     return Array.from(s).sort();
   }, [events]);
 
-  const buildUrl = () => {
+  const buildUrl = (override?: { limit?: number; offset?: number }) => {
     const params = new URLSearchParams();
-    params.set("limit", String(limit));
-    params.set("offset", String(offset));
+    params.set("limit", String(override?.limit ?? limit));
+    params.set("offset", String(override?.offset ?? offset));
 
-    // Backend filters (only include if present)
     if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
     if (eventType) params.set("event_type", eventType);
@@ -87,11 +95,35 @@ const AuditTrailView: React.FC = () => {
     return `/audit/events?${params.toString()}`;
   };
 
-  const load = async () => {
+  const buildExportParams = (dateFromArg: string | null, dateToArg: string | null, includeFilters: boolean) => {
+    const params = new URLSearchParams();
+    if (dateFromArg) params.set("date_from", dateFromArg);
+    if (dateToArg) params.set("date_to", dateToArg);
+    if (includeFilters) {
+      if (eventType) params.set("event_type", eventType);
+      if (actor) params.set("actor_username", actor);
+      if (q) params.set("q", q);
+    }
+    return params;
+  };
+
+  // Keep download logic HERE (per your request)
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const load = async (override?: { limit?: number; offset?: number }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(buildUrl());
+      const res = await apiFetch(buildUrl(override));
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(txt || `HTTP ${res.status}`);
@@ -99,28 +131,24 @@ const AuditTrailView: React.FC = () => {
       const data = (await res.json()) as AuditEvent[];
       setEvents(data);
     } catch (e: any) {
-      console.error(e);
+      setError(e?.message ?? String(e));
       setEvents([]);
-      setError(e?.message ?? "Failed to load audit events");
     } finally {
       setLoading(false);
     }
   };
 
-  // Load when filters/paging changes
+  // ✅ Pagination fix: refetch when offset/limit change
   useEffect(() => {
-    void load();
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, eventType, actor, q, limit, offset]);
+  }, [offset, limit]);
 
-  const resetPagingAndReload = () => {
-    // offset change triggers useEffect -> load()
+  const handleApply = (e: React.FormEvent) => {
+    e.preventDefault();
+    setOpenRowKey(null);
+    // IMPORTANT: setOffset triggers load via useEffect
     setOffset(0);
-  };
-
-  const handleApply = (ev: React.FormEvent) => {
-    ev.preventDefault();
-    resetPagingAndReload();
   };
 
   const handleClear = () => {
@@ -133,22 +161,49 @@ const AuditTrailView: React.FC = () => {
     setActor("");
     setQ("");
     setLimit(20);
-    setOffset(0);
     setOpenRowKey(null);
+    setOffset(0);
   };
 
-  // Small UI tidy: make fonts slightly smaller so rows fit better
-  const compactFontSize = 13; // px
+  const handleExportCsvConfirm = async ({ fromDate, toDate, respectFilters }: CsvExportParams) => {
+    setExportingCsv(true);
+    try {
+      const df = fromDate ?? (respectFilters ? (dateFrom || null) : null);
+      const dt = toDate ?? (respectFilters ? (dateTo || null) : null);
+      const params = buildExportParams(df, dt, respectFilters);
+      const res = await apiFetch(`/audit/events.csv?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      downloadBlob(blob, `audit_trail_${df ?? "all"}_${dt ?? "all"}.csv`);
+      setExportCsvOpen(false);
+    } catch (err: any) {
+      setError(err?.message ?? String(err));
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    try {
+      const params = buildExportParams(dateFrom || null, dateTo || null, true);
+      const res = await apiFetch(`/audit/events.pdf?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      downloadBlob(blob, `audit_trail_${dateFrom || "all"}_${dateTo || "all"}.pdf`);
+    } catch (err: any) {
+      setError(err?.message ?? String(err));
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  // Small UI tidy
+  const compactFontSize = 13;
   const compactLineHeight = 1.25;
 
   return (
-    <section
-      className="card"
-      style={{
-        fontSize: compactFontSize,
-        lineHeight: compactLineHeight,
-      }}
-    >
+    <section className="card" style={{ fontSize: compactFontSize, lineHeight: compactLineHeight }}>
       <div className="card-header" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <div>
           <div className="card-title">Audit Trail</div>
@@ -157,36 +212,41 @@ const AuditTrailView: React.FC = () => {
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className="pill-muted">{loading ? "Loading…" : `${events.length} events`}</span>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setExportCsvOpen(true)}
+            disabled={loading || exportingCsv}
+            style={{ fontSize: compactFontSize }}
+          >
+            {exportingCsv ? "Exporting…" : "Export CSV"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleExportPdf}
+            disabled={loading || exportingPdf}
+            style={{ fontSize: compactFontSize }}
+          >
+            {exportingPdf ? "Exporting…" : "Export PDF"}
+          </button>
         </div>
       </div>
 
-      {/* Filters (keep layout simple + consistent) */}
       <form onSubmit={handleApply} style={{ marginTop: 10 }}>
         <div className="filters" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
           <div>
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
               Date from
             </div>
-            <input
-              className="input"
-              style={{ fontSize: compactFontSize }}
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
+            <input className="input" style={{ fontSize: compactFontSize }} type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           </div>
 
           <div>
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
               Date to
             </div>
-            <input
-              className="input"
-              style={{ fontSize: compactFontSize }}
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
+            <input className="input" style={{ fontSize: compactFontSize }} type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
 
           <div>
@@ -210,43 +270,31 @@ const AuditTrailView: React.FC = () => {
 
           <div>
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
-              Actor
+              Actor username
             </div>
-            <input
-              className="input"
-              style={{ fontSize: compactFontSize }}
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
-              placeholder="e.g. admin"
-            />
+            <input className="input" style={{ fontSize: compactFontSize }} value={actor} onChange={(e) => setActor(e.target.value)} placeholder="e.g. admin" />
           </div>
 
           <div style={{ gridColumn: "span 2" }}>
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
-              Search
+              Search (target / reason)
             </div>
             <input
               className="input"
               style={{ fontSize: compactFontSize }}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="target_ref or reason"
+              placeholder="e.g. ES000123, QUARANTINE, manufacturer"
             />
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 10 }}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, gap: 10 }}>
+          <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-primary" type="submit" disabled={loading} style={{ fontSize: compactFontSize }}>
               Apply
             </button>
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={handleClear}
-              disabled={loading}
-              style={{ fontSize: compactFontSize }}
-            >
+            <button className="btn btn-ghost" type="button" onClick={handleClear} disabled={loading} style={{ fontSize: compactFontSize }}>
               Clear
             </button>
           </div>
@@ -274,13 +322,13 @@ const AuditTrailView: React.FC = () => {
       </form>
 
       {error && (
-        <div className="alert alert-error" style={{ marginTop: 12, fontSize: compactFontSize }}>
+        <div className="alert alert-error" style={{ marginTop: 10 }}>
           {error}
         </div>
       )}
 
-      <div style={{ marginTop: 12, overflowX: "auto" }}>
-        <table className="table" style={{ fontSize: compactFontSize }}>
+      <div style={{ marginTop: 10, overflowX: "auto" }}>
+        <table className="table" style={{ width: "100%" }}>
           <thead>
             <tr>
               <th style={{ width: 190 }}>Date/Time</th>
@@ -288,13 +336,14 @@ const AuditTrailView: React.FC = () => {
               <th style={{ width: 140 }}>Actor</th>
               <th>Target</th>
               <th>Reason</th>
+              <th style={{ width: 280 }}>Changes</th>
               <th style={{ width: 120 }} />
             </tr>
           </thead>
           <tbody>
             {!loading && events.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted" style={{ padding: "10px 12px" }}>
+                <td colSpan={7} className="muted" style={{ padding: "10px 12px" }}>
                   No audit events found for the selected filters.
                 </td>
               </tr>
@@ -305,39 +354,34 @@ const AuditTrailView: React.FC = () => {
               const isOpen = openRowKey === key;
 
               const hasDetails = !!e.before_json || !!e.after_json;
+              const diffEntries = hasDetails ? diffJson(e.before_json, e.after_json, 50) : [];
+              const changeSummary = summarizeDiff(diffEntries, 2);
 
               return (
                 <React.Fragment key={key}>
                   <tr style={{ verticalAlign: "top" }}>
                     <td style={{ padding: "10px 12px" }}>{formatDateTime(e.event_at)}</td>
-
                     <td style={{ padding: "10px 12px" }}>
-                      <span className="pill" style={{ fontSize: compactFontSize - 1, padding: "3px 8px" }}>
-                        {e.event_type}
-                      </span>
+                      <span className="pill">{e.event_type}</span>
                     </td>
-
                     <td style={{ padding: "10px 12px" }}>{e.actor_username ?? "—"}</td>
-
                     <td style={{ padding: "10px 12px" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <span style={{ fontSize: compactFontSize }}>
-                          <strong>{e.target_type ?? "—"}</strong>
+                        <span className="muted" style={{ fontSize: compactFontSize - 1 }}>
+                          {e.target_type ?? "—"}
                         </span>
-                        <span
-                          className="muted"
-                          style={{
-                            fontSize: compactFontSize - 1,
-                            wordBreak: "break-word",
-                            whiteSpace: "normal",
-                          }}
-                        >
+                        <span className="muted" style={{ fontSize: compactFontSize - 1, wordBreak: "break-word", whiteSpace: "normal" }}>
                           {e.target_ref ?? "—"}
                         </span>
                       </div>
                     </td>
 
                     <td style={{ padding: "10px 12px", wordBreak: "break-word" }}>{e.reason ?? "—"}</td>
+                    <td style={{ padding: "10px 12px", wordBreak: "break-word" }}>
+                      <span className="muted" style={{ fontSize: compactFontSize - 1 }}>
+                        {changeSummary}
+                      </span>
+                    </td>
 
                     <td style={{ textAlign: "right", padding: "10px 12px" }}>
                       <button
@@ -355,7 +399,7 @@ const AuditTrailView: React.FC = () => {
 
                   {isOpen && (
                     <tr>
-                      <td colSpan={6} style={{ padding: "0 12px 12px 12px" }}>
+                      <td colSpan={7} style={{ padding: "0 12px 12px 12px" }}>
                         <div
                           style={{
                             display: "grid",
@@ -383,6 +427,51 @@ const AuditTrailView: React.FC = () => {
                               {safeJson(e.after_json)}
                             </pre>
                           </div>
+
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <div className="label" style={{ fontSize: compactFontSize - 1 }}>
+                              Diff (changed keys)
+                            </div>
+                            {diffEntries.length === 0 ? (
+                              <div className="muted" style={{ fontSize: compactFontSize - 1 }}>
+                                No before/after differences detected.
+                              </div>
+                            ) : (
+                              <div style={{ overflowX: "auto" }}>
+                                <table className="table" style={{ width: "100%", fontSize: 12 }}>
+                                  <thead>
+                                    <tr>
+                                      <th style={{ width: 280 }}>Path</th>
+                                      <th style={{ width: 110 }}>Type</th>
+                                      <th>Before</th>
+                                      <th>After</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {diffEntries.map((d, i2) => {
+                                      const bg =
+                                        d.kind === "add"
+                                          ? "rgba(46, 204, 113, 0.10)"
+                                          : d.kind === "remove"
+                                          ? "rgba(231, 76, 60, 0.10)"
+                                          : "rgba(241, 196, 15, 0.10)";
+                                      return (
+                                        <tr key={`${d.path}-${i2}`} style={{ background: bg }}>
+                                          <td style={{ wordBreak: "break-word" }}>{d.path || "root"}</td>
+                                          <td>{d.kind}</td>
+                                          <td style={{ wordBreak: "break-word" }}>{formatScalar(d.before)}</td>
+                                          <td style={{ wordBreak: "break-word" }}>{formatScalar(d.after)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
+                                  Showing up to 50 differences.
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -394,7 +483,6 @@ const AuditTrailView: React.FC = () => {
         </table>
       </div>
 
-      {/* Pagination */}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
         <button
           className="btn btn-ghost"
@@ -421,6 +509,17 @@ const AuditTrailView: React.FC = () => {
           Next →
         </button>
       </div>
+
+      <CsvExportModal
+        open={exportCsvOpen}
+        title="Export Audit Trail"
+        helpText="Export audit events to CSV. Optionally limit by date range and choose whether to respect the current filters."
+        fromLabel="Event date from (optional)"
+        toLabel="Event date to (optional)"
+        defaultRespectFilters={true}
+        onClose={() => setExportCsvOpen(false)}
+        onConfirm={handleExportCsvConfirm}
+      />
     </section>
   );
 };
