@@ -92,6 +92,10 @@ export type Issue = {
   material_status_at_txn?: string | null;
 
   created_by: string | null;
+
+  // ✅ ADDITIVE (D2 costing): populated by backend on ISSUE transactions
+  unit_price?: number | null;
+  total_value?: number | null;
 };
 
 export type LotBalance = {
@@ -116,6 +120,10 @@ export type LotBalance = {
 
   last_status_reason?: string | null;
   last_status_changed_at?: string | null;
+
+  lot_unit_price?: number | null;
+  lot_value?: number | null;
+
 };
 
 export type AdminRole = {

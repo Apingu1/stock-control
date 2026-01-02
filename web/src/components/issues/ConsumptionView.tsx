@@ -62,6 +62,12 @@ const exportToCsv = (
   URL.revokeObjectURL(url);
 };
 
+const formatMoney = (v: number | null | undefined): string => {
+  if (v === null || v === undefined) return "—";
+  if (!Number.isFinite(v)) return "—";
+  return `£${v.toFixed(2)}`;
+};
+
 const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   issues,
   loadingIssues,
@@ -182,6 +188,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Expiry",
       "Qty",
       "UOM",
+      "Cost (£)",
+      "Unit Cost (£/UOM)",
       "Manufacturer",
       "Status @ Use",
       "Comment",
@@ -192,6 +200,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
       const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D";
       const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
+
+      const total = i.total_value ?? null;
+      const unit = i.unit_price ?? null;
 
       return [
         i.created_at ? formatDate(i.created_at) : "",
@@ -204,6 +215,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.expiry_date ? formatDate(i.expiry_date) : "",
         i.qty,
         i.uom_code,
+        total ?? "",
+        unit ?? "",
         i.manufacturer || "",
         i.material_status_at_txn || "",
         i.comment && i.comment.trim().length > 0 ? i.comment : "",
@@ -306,6 +319,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th>Expiry</th>
                   <th className="numeric">Qty</th>
                   <th>UOM</th>
+
+                  {/* ✅ D2: Cost column */}
+                  <th className="numeric">Cost (£)</th>
+
                   <th>Manufacturer</th>
                   <th>Status @ use</th>
                   <th>Comment</th>
@@ -316,7 +333,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
               <tbody>
                 {filteredIssues.length === 0 && (
                   <tr>
-                    <td colSpan={showActions ? 15 : 14} className="empty-row">
+                    <td colSpan={showActions ? 16 : 15} className="empty-row">
                       No issues match your filters.
                     </td>
                   </tr>
@@ -339,6 +356,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td>{formatDate(i.expiry_date)}</td>
                       <td className="numeric">{i.qty}</td>
                       <td>{i.uom_code}</td>
+
+                      <td className="numeric">{formatMoney(i.total_value ?? null)}</td>
+
                       <td>{i.manufacturer || "—"}</td>
                       <td>{i.material_status_at_txn || "—"}</td>
                       <td>{i.comment && i.comment.trim().length > 0 ? i.comment : "—"}</td>

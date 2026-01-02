@@ -14,6 +14,50 @@ from ..security import require_permission
 router = APIRouter(prefix="/issues", tags=["issues"])
 
 
+def _round_money(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(float(value) + 1e-12, 2)
+
+
+def _round_unit(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(float(value) + 1e-12, 4)
+
+
+def _lot_weighted_unit_price(db: Session, lot_id: int) -> float | None:
+    """
+    D2 (Option A): Use the lot's actual cost basis.
+    Weighted average of RECEIPT transactions for this lot:
+      unit = SUM(receipt_total_value) / SUM(receipt_qty)
+
+    If some old receipts have total_value NULL but unit_price present, we treat
+    total_value as (unit_price * qty) for the purpose of the weighting.
+    """
+    sum_value, sum_qty = (
+        db.query(
+            func.coalesce(
+                func.sum(func.coalesce(StockTransaction.total_value, StockTransaction.unit_price * StockTransaction.qty)),
+                0.0,
+            ),
+            func.coalesce(func.sum(StockTransaction.qty), 0.0),
+        )
+        .filter(
+            StockTransaction.material_lot_id == lot_id,
+            StockTransaction.txn_type == "RECEIPT",
+        )
+        .one()
+    )
+
+    sum_value = float(sum_value or 0.0)
+    sum_qty = float(sum_qty or 0.0)
+    if sum_qty <= 0:
+        return None
+
+    return _round_unit(sum_value / sum_qty)
+
+
 @router.post("/", response_model=IssueOut, status_code=201)
 def create_issue(
     payload: IssueCreate,
@@ -94,6 +138,10 @@ def create_issue(
             ),
         )
 
+    # ✅ D2 costing: derive issue unit cost from lot weighted receipts
+    lot_unit_price = _lot_weighted_unit_price(db, lot.id)
+    issue_total_value = _round_money(float(payload.qty) * lot_unit_price) if lot_unit_price is not None else None
+
     now = datetime.utcnow()
     txn = StockTransaction(
         material_lot_id=lot.id,
@@ -102,8 +150,8 @@ def create_issue(
         qty=payload.qty,
         uom_code=payload.uom_code,
         direction=-1,
-        unit_price=None,
-        total_value=None,
+        unit_price=lot_unit_price,
+        total_value=issue_total_value,
         target_ref=payload.target_ref,
         product_batch_no=payload.product_batch_no,
         product_manufacture_date=payload.product_manufacture_date,
@@ -130,6 +178,8 @@ def create_issue(
         expiry_date=lot.expiry_date,
         qty=txn.qty,
         uom_code=txn.uom_code,
+        unit_price=txn.unit_price,
+        total_value=txn.total_value,
         product_batch_no=txn.product_batch_no,
         manufacturer=manufacturer,
         supplier=supplier,
@@ -174,6 +224,8 @@ def list_issues(
                 expiry_date=lot.expiry_date,
                 qty=txn.qty,
                 uom_code=txn.uom_code,
+                unit_price=txn.unit_price,
+                total_value=txn.total_value,
                 product_batch_no=txn.product_batch_no,
                 manufacturer=manufacturer,
                 supplier=supplier,
@@ -238,6 +290,16 @@ def update_issue(
     txn.comment = payload.comment
     # Keep txn.material_status_at_txn unchanged (historical snapshot)
 
+    # ✅ Recompute costing for the edited qty.
+    # Prefer: keep the original unit_price on the txn if present (historical),
+    # otherwise compute from lot receipts.
+    unit_price = txn.unit_price
+    if unit_price is None:
+        unit_price = _lot_weighted_unit_price(db, lot.id)
+
+    txn.unit_price = unit_price
+    txn.total_value = _round_money(txn.qty * unit_price) if unit_price is not None else None
+
     after_json = StockTransactionEdit.snapshot_txn(txn)
 
     audit = StockTransactionEdit(
@@ -261,6 +323,8 @@ def update_issue(
         expiry_date=lot.expiry_date,
         qty=txn.qty,
         uom_code=txn.uom_code,
+        unit_price=txn.unit_price,
+        total_value=txn.total_value,
         product_batch_no=txn.product_batch_no,
         manufacturer=manufacturer,
         supplier=supplier,

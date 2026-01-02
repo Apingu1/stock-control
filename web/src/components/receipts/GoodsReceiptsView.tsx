@@ -39,7 +39,12 @@ const exportToCsv = (
   const csvContent =
     rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  // ✅ Fix Excel “Â£” issue: add UTF-8 BOM
+  const BOM = "\ufeff";
+  const blob = new Blob([BOM + csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -164,7 +169,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
       "Qty",
       "UOM",
       "Unit Price",
-      "Total",
+      "Total cost", // ✅ changed
       "Supplier",
       "Manufacturer",
       "ES Criteria",
@@ -185,7 +190,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
         r.qty,
         r.uom_code,
         r.unit_price != null ? r.unit_price.toFixed(2) : "",
-        r.total_value != null ? r.total_value.toFixed(2) : "",
+        r.total_value != null ? `£${r.total_value.toFixed(2)}` : "", // ✅ £ sign
         r.supplier || "",
         r.manufacturer || "",
         esLabel,
@@ -295,7 +300,10 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                   <th className="numeric">Qty</th>
                   <th>UOM</th>
                   <th>Unit Price</th>
-                  <th>Total</th>
+
+                  {/* ✅ changed */}
+                  <th>Total cost</th>
+
                   <th>Supplier</th>
                   <th>Manufacturer</th>
                   <th>ES Criteria</th>
@@ -336,9 +344,14 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                       <td className="numeric">
                         {r.unit_price != null ? r.unit_price.toFixed(2) : "—"}
                       </td>
+
+                      {/* ✅ £ sign */}
                       <td className="numeric">
-                        {r.total_value != null ? r.total_value.toFixed(2) : "—"}
+                        {r.total_value != null
+                          ? `£${r.total_value.toFixed(2)}`
+                          : "—"}
                       </td>
+
                       <td>{r.supplier || "—"}</td>
                       <td>{r.manufacturer || "—"}</td>
                       <td>

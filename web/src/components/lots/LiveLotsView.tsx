@@ -32,6 +32,12 @@ function buildStatusTooltip(lot: LotBalance) {
   return parts.join("\n") || "—";
 }
 
+function formatMoney(v: number | null | undefined) {
+  if (v === null || v === undefined) return "—";
+  if (!Number.isFinite(v)) return "—";
+  return `£${Number(v).toFixed(2)}`;
+}
+
 const exportToCsv = (filename: string, rows: (string | number | null | undefined)[][]) => {
   const escapeCell = (cell: string | number | null | undefined): string => {
     if (cell === null || cell === undefined) return "";
@@ -45,7 +51,10 @@ const exportToCsv = (filename: string, rows: (string | number | null | undefined
   const csvContent =
     rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  // ✅ Fix Excel “Â£” issue: add UTF-8 BOM
+  const BOM = "\ufeff";
+  const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -74,7 +83,7 @@ const LiveLotsView: React.FC<{
 
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
-  // ✅ NEW: Total available per material (AVAILABLE only)
+  // Total available per material (AVAILABLE only)
   const totalAvailableByMaterial = useMemo(() => {
     const map = new Map<string, number>();
     for (const l of lotBalances) {
@@ -104,7 +113,6 @@ const LiveLotsView: React.FC<{
       if (statusFilter !== "ALL" && st !== statusFilter) return false;
 
       if (dateFilter !== "ALL") {
-        // practical “expiring within” filter
         if (lot.expiry_date) {
           const dt = new Date(lot.expiry_date);
           const diffDays = (dt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
@@ -146,7 +154,7 @@ const LiveLotsView: React.FC<{
 
     const exportRowsSource = base.filter((l) => {
       if (!from && !toEnd) return true;
-      if (!l.expiry_date) return true; // keep rows w/o expiry
+      if (!l.expiry_date) return true;
       const dt = new Date(l.expiry_date);
       if (from && dt < from) return false;
       if (toEnd && dt >= toEnd) return false;
@@ -162,6 +170,7 @@ const LiveLotsView: React.FC<{
       "Expiry",
       "Manufacturer",
       "Balance",
+      "Total cost",               // ✅ moved before total available
       "Total Available (All lots)",
       "UOM",
       "Status",
@@ -169,21 +178,32 @@ const LiveLotsView: React.FC<{
       "Last Status Changed",
     ];
 
-    const rows = exportRowsSource.map((l) => [
-      l.material_code,
-      l.material_name,
-      l.category_code ?? "",
-      l.type_code ?? "",
-      l.lot_number,
-      l.expiry_date ?? "",
-      l.manufacturer ?? "",
-      l.balance_qty,
-      totalAvailableByMaterial.get(l.material_code) ?? 0,
-      l.uom_code,
-      l.status,
-      l.last_status_reason ?? "",
-      l.last_status_changed_at ?? "",
-    ]);
+    const rows = exportRowsSource.map((l) => {
+      const anyLot: any = l as any;
+      const lotValue =
+        anyLot.lot_value != null
+          ? Number(anyLot.lot_value)
+          : anyLot.lot_unit_price != null
+          ? Number(l.balance_qty) * Number(anyLot.lot_unit_price)
+          : null;
+
+      return [
+        l.material_code,
+        l.material_name,
+        l.category_code ?? "",
+        l.type_code ?? "",
+        l.lot_number,
+        l.expiry_date ?? "",
+        l.manufacturer ?? "",
+        l.balance_qty,
+        lotValue != null ? `£${lotValue.toFixed(2)}` : "",
+        totalAvailableByMaterial.get(l.material_code) ?? 0,
+        l.uom_code,
+        l.status,
+        l.last_status_reason ?? "",
+        l.last_status_changed_at ?? "",
+      ];
+    });
 
     exportToCsv("live_lots.csv", [header, ...rows]);
     setExportModalOpen(false);
@@ -285,7 +305,12 @@ const LiveLotsView: React.FC<{
                   <th>Expiry</th>
                   <th>Manufacturer</th>
                   <th className="numeric">Balance</th>
+
+                  {/* ✅ moved earlier */}
+                  <th className="numeric">Total cost</th>
+
                   <th className="numeric">Total available</th>
+
                   <th>UOM</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -295,7 +320,7 @@ const LiveLotsView: React.FC<{
               <tbody>
                 {filteredLots.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="empty-row">
+                    <td colSpan={13} className="empty-row">
                       No lots match your filters.
                     </td>
                   </tr>
@@ -311,6 +336,14 @@ const LiveLotsView: React.FC<{
 
                   const totalAvail = totalAvailableByMaterial.get(lot.material_code) ?? 0;
 
+                  const anyLot: any = lot as any;
+                  const lotValue =
+                    anyLot.lot_value != null
+                      ? Number(anyLot.lot_value)
+                      : anyLot.lot_unit_price != null
+                      ? Number(lot.balance_qty) * Number(anyLot.lot_unit_price)
+                      : null;
+
                   return (
                     <tr key={lot.material_lot_id}>
                       <td>{lot.material_code}</td>
@@ -321,7 +354,11 @@ const LiveLotsView: React.FC<{
                       <td>{formatDate(lot.expiry_date)}</td>
                       <td>{lot.manufacturer || "—"}</td>
                       <td className="numeric">{lot.balance_qty}</td>
+
+                      <td className="numeric">{formatMoney(lotValue)}</td>
+
                       <td className="numeric">{totalAvail}</td>
+
                       <td>{lot.uom_code}</td>
                       <td>
                         <span className={tagClass} title={buildStatusTooltip(lot)}>

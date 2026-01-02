@@ -30,7 +30,10 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   const [expiryDate, setExpiryDate] = useState("");
   const [receiptDate, setReceiptDate] = useState("");
   const [qty, setQty] = useState("");
-  const [unitPrice, setUnitPrice] = useState("");
+
+  // ✅ D1: Total cost input (line total), unit price is derived
+  const [totalCost, setTotalCost] = useState("");
+
   const [supplier, setSupplier] = useState("");
   const [manufacturer, setManufacturer] = useState("");
   const [compliesEs, setCompliesEs] = useState(false);
@@ -56,7 +59,10 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       setExpiryDate(initial.expiry_date ? String(initial.expiry_date).slice(0, 10) : "");
       setReceiptDate(initial.created_at ? String(initial.created_at).slice(0, 10) : "");
       setQty(String(initial.qty ?? ""));
-      setUnitPrice(initial.unit_price != null ? String(initial.unit_price) : "");
+
+      // ✅ load existing stored total_value if present
+      setTotalCost(initial.total_value != null ? String(initial.total_value) : "");
+
       setSupplier(initial.supplier || "");
       setManufacturer(initial.manufacturer || "");
       setCompliesEs(initial.complies_es_criteria === true);
@@ -71,7 +77,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
     setExpiryDate("");
     setReceiptDate("");
     setQty("");
-    setUnitPrice("");
+    setTotalCost("");
     setSupplier("");
     setManufacturer("");
     setCompliesEs(false);
@@ -105,6 +111,16 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
 
   const hasApproved = approvedForMaterial.length > 0;
 
+  const calculatedUnitCost = useMemo(() => {
+    const q = Number(qty);
+    const t = Number(totalCost);
+    if (!Number.isFinite(q) || q <= 0) return null;
+    if (!Number.isFinite(t) || t <= 0) return null;
+    const unit = t / q;
+    // show to 4 dp (same convention as backend)
+    return Math.round((unit + Number.EPSILON) * 10000) / 10000;
+  }, [qty, totalCost]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -118,6 +134,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
     }
     if (!receiptDate && !isEdit) {
       setSubmitError("Please enter a receipt date.");
+      return;
+    }
+
+    // ✅ Require total cost for create (invoice reality)
+    if (!totalCost || Number(totalCost) <= 0) {
+      setSubmitError("Please enter the total cost (£) for this receipt line.");
       return;
     }
 
@@ -155,7 +177,11 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
           receipt_date: receiptDate,
           qty: Number(qty),
           uom_code: selectedMaterial!.base_uom_code,
-          unit_price: unitPrice ? Number(unitPrice) : null,
+
+          // ✅ D1: send total_value; backend derives unit_price
+          total_value: totalCost ? Number(totalCost) : null,
+          unit_price: null,
+
           supplier: supplier || null,
           manufacturer: manufacturer || null,
           complies_es_criteria: compliesEs,
@@ -169,7 +195,11 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
       } else {
         const payload = {
           qty: Number(qty),
-          unit_price: unitPrice ? Number(unitPrice) : null,
+
+          // ✅ D1 edit: allow editing total line cost; backend derives unit_price
+          total_value: totalCost ? Number(totalCost) : null,
+          unit_price: null,
+
           supplier: supplier || null,
           manufacturer: manufacturer || null,
           edit_reason: editReason.trim(),
@@ -295,16 +325,21 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">Unit price (optional)</label>
+              <label className="label">Total cost (£)</label>
               <input
                 className="input"
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder="e.g. 12.50"
-                value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value)}
+                placeholder="e.g. 1250.00"
+                value={totalCost}
+                onChange={(e) => setTotalCost(e.target.value)}
               />
+              {calculatedUnitCost != null && (
+                <div className="info-row" style={{ marginTop: 6 }}>
+                  Calculated unit cost: <strong>£{calculatedUnitCost.toFixed(4)}</strong>
+                </div>
+              )}
             </div>
 
             <div className="form-group">

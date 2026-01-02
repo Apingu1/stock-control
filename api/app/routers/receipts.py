@@ -29,6 +29,43 @@ def _normalise_receipt_datetime(value: datetime | date) -> datetime:
     return datetime.utcnow()
 
 
+def _round_money(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(float(value) + 1e-12, 2)
+
+
+def _round_unit(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(float(value) + 1e-12, 4)
+
+
+def _derive_costs(qty: float, unit_price: float | None, total_value: float | None) -> tuple[float | None, float | None]:
+    """
+    Costing rules:
+    - If total_value provided: derive unit_price = total_value / qty (4dp), keep total_value (2dp)
+    - Else if unit_price provided: derive total_value = qty * unit_price (2dp), keep unit_price (4dp)
+    - Else: both None
+    """
+    q = float(qty or 0.0)
+    if q <= 0:
+        # qty is required/validated elsewhere, but guard anyway
+        return None, None
+
+    if total_value is not None:
+        tv = float(total_value)
+        up = tv / q
+        return _round_unit(up), _round_money(tv)
+
+    if unit_price is not None:
+        up = float(unit_price)
+        tv = q * up
+        return _round_unit(up), _round_money(tv)
+
+    return None, None
+
+
 @router.post("/", response_model=ReceiptOut, status_code=201)
 def create_receipt(
     payload: ReceiptCreate,
@@ -115,14 +152,21 @@ def create_receipt(
 
     created_at = _normalise_receipt_datetime(payload.receipt_date)
 
+    # ✅ D1 costing flip: accept total_value from UI, derive unit_price
+    derived_unit_price, derived_total_value = _derive_costs(
+        qty=float(payload.qty),
+        unit_price=payload.unit_price,
+        total_value=payload.total_value,
+    )
+
     txn = StockTransaction(
         material_lot_id=lot.id,
         txn_type="RECEIPT",
         qty=payload.qty,
         uom_code=payload.uom_code,
         direction=1,
-        unit_price=payload.unit_price,
-        total_value=payload.total_value,
+        unit_price=derived_unit_price,
+        total_value=derived_total_value,
         target_ref=payload.target_ref,
         comment=payload.comment,
         product_manufacture_date=None,
@@ -241,8 +285,30 @@ def update_receipt(
         )
 
     txn.qty = float(payload.qty)
-    txn.unit_price = payload.unit_price
-    txn.total_value = payload.total_value
+
+    # ✅ Costing edit logic:
+    # - If user supplies total_value -> derive unit_price from total/qty
+    # - Else if user supplies unit_price -> derive total_value from qty*unit
+    # - Else if qty changed and we already have unit_price -> recompute total_value
+    incoming_unit = payload.unit_price if payload.unit_price is not None else txn.unit_price
+    incoming_total = payload.total_value if payload.total_value is not None else txn.total_value
+
+    if payload.total_value is not None:
+        derived_unit_price, derived_total_value = _derive_costs(txn.qty, None, float(payload.total_value))
+        txn.unit_price = derived_unit_price
+        txn.total_value = derived_total_value
+    elif payload.unit_price is not None:
+        derived_unit_price, derived_total_value = _derive_costs(txn.qty, float(payload.unit_price), None)
+        txn.unit_price = derived_unit_price
+        txn.total_value = derived_total_value
+    else:
+        # no explicit costing fields provided; keep unit_price and recompute total_value if possible
+        txn.unit_price = _round_unit(incoming_unit) if incoming_unit is not None else None
+        if txn.unit_price is not None:
+            txn.total_value = _round_money(txn.qty * txn.unit_price)
+        else:
+            txn.total_value = _round_money(incoming_total) if incoming_total is not None else None
+
     txn.target_ref = payload.target_ref
     txn.comment = payload.comment
 

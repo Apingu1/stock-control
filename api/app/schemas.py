@@ -225,6 +225,11 @@ class IssueOut(BaseModel):
     expiry_date: Optional[datetime] = None
     qty: float
     uom_code: str
+
+    # ✅ Costing (stored on ISSUE txn at time of posting)
+    unit_price: Optional[float] = None
+    total_value: Optional[float] = None
+
     product_batch_no: Optional[str] = None
     manufacturer: Optional[str] = None
     supplier: Optional[str] = None
