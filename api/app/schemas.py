@@ -263,6 +263,10 @@ class LotBalanceOut(BaseModel):
     balance_qty: float
     uom_code: str
 
+    # ✅ Costing (per-lot; derived from receipts)
+    lot_unit_price: Optional[float] = None
+    lot_value: Optional[float] = None
+
     last_status_reason: Optional[str] = None
     last_status_changed_at: Optional[datetime] = None
 

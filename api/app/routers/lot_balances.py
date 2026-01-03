@@ -44,7 +44,9 @@ def list_lot_balances(
             v.balance_qty,
             v.uom_code,
             v.last_status_reason,
-            v.last_status_changed_at
+            v.last_status_changed_at,
+            v.lot_unit_price,
+            v.lot_value
         FROM lot_balances_view v
         WHERE 1 = 1
     """
@@ -87,6 +89,8 @@ def list_lot_balances(
             uom_code=row["uom_code"],
             last_status_reason=row.get("last_status_reason"),
             last_status_changed_at=row.get("last_status_changed_at"),
+            lot_unit_price=float(row["lot_unit_price"]) if row.get("lot_unit_price") is not None else None,
+            lot_value=float(row["lot_value"]) if row.get("lot_value") is not None else None,
         )
         for row in rows
     ]
@@ -322,7 +326,9 @@ def change_lot_status(
                 v.balance_qty,
                 v.uom_code,
                 v.last_status_reason,
-                v.last_status_changed_at
+                v.last_status_changed_at,
+                v.lot_unit_price,
+                v.lot_value
             FROM lot_balances_view v
             WHERE v.material_lot_id = :lot_id
             """
@@ -348,4 +354,6 @@ def change_lot_status(
         uom_code=row["uom_code"],
         last_status_reason=row.get("last_status_reason"),
         last_status_changed_at=row.get("last_status_changed_at"),
+        lot_unit_price=float(row["lot_unit_price"]) if row.get("lot_unit_price") is not None else None,
+        lot_value=float(row["lot_value"]) if row.get("lot_value") is not None else None,
     )
