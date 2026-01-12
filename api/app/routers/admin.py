@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from ..db import get_db
-from ..models import User, Role, Permission, RolePermission
+from ..models import User, Role, Permission, RolePermission, ExpiryThresholdSetting
 from ..schemas import (
     UserCreate,
     UserOut,
@@ -17,6 +17,9 @@ from ..schemas import (
     PermissionOut,
     RolePermissionOut,
     RolePermissionSet,
+    ExpiryThresholdSettingOut,
+    ExpiryThresholdSettingUpdate,
+
 )
 from ..security import hash_password, require_admin_access
 
@@ -343,3 +346,48 @@ def set_role_permissions_matrix(
 
     db.commit()
     return get_role_permissions_matrix(rn, db, admin)
+
+    # ---------------------------------------------------------------------------
+# Phase D3: Expiry auto-quarantine threshold settings (Admin -> Settings)
+# ---------------------------------------------------------------------------
+
+@router.get("/expiry-thresholds", response_model=List[ExpiryThresholdSettingOut])
+def list_expiry_thresholds(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin_access),
+):
+    rows = (
+        db.query(ExpiryThresholdSetting)
+        .order_by(ExpiryThresholdSetting.category_code.asc(), ExpiryThresholdSetting.type_code.asc())
+        .all()
+    )
+    return rows
+
+
+@router.patch("/expiry-thresholds/{threshold_id}", response_model=ExpiryThresholdSettingOut)
+def update_expiry_threshold(
+    threshold_id: int,
+    payload: ExpiryThresholdSettingUpdate,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin_access),
+):
+    row = db.query(ExpiryThresholdSetting).filter(ExpiryThresholdSetting.id == threshold_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Expiry threshold not found")
+
+    if payload.threshold_days is not None:
+        try:
+            v = int(payload.threshold_days)
+        except Exception:
+            raise HTTPException(status_code=400, detail="threshold_days must be an integer")
+        if v < 0:
+            raise HTTPException(status_code=400, detail="threshold_days must be >= 0")
+        row.threshold_days = v
+
+    if payload.is_active is not None:
+        row.is_active = bool(payload.is_active)
+
+    row.updated_by = admin_user.username
+    db.commit()
+    db.refresh(row)
+    return row

@@ -32,6 +32,40 @@ function buildStatusTooltip(lot: LotBalance) {
   return parts.join("\n") || "—";
 }
 
+/**
+ * Phase D3:
+ * Backend will return:
+ *  - days_to_expiry (int)
+ *  - expiry_threshold_days (int)
+ * This tooltip shows a simple explanation of the rule.
+ */
+function buildExpiryTooltip(lot: LotBalance) {
+  if (!lot.expiry_date) return "—";
+
+  const d: any = (lot as any).days_to_expiry;
+  const t: any = (lot as any).expiry_threshold_days;
+
+  const parts: string[] = [];
+
+  if (typeof d === "number") {
+    parts.push(`Days to expiry: ${d}`);
+  } else {
+    parts.push("Days to expiry: —");
+  }
+
+  if (typeof t === "number") {
+    parts.push(`Auto-quarantine threshold: ${t} day(s)`);
+  } else {
+    parts.push("Auto-quarantine threshold: —");
+  }
+
+  if (typeof d === "number" && typeof t === "number") {
+    parts.push("Auto-quarantine triggers when days_to_expiry ≤ threshold");
+  }
+
+  return parts.join("\n");
+}
+
 function formatMoney(v: number | null | undefined) {
   if (v === null || v === undefined) return "—";
   if (!Number.isFinite(v)) return "—";
@@ -351,7 +385,14 @@ const LiveLotsView: React.FC<{
                       <td>{lot.category_code}</td>
                       <td>{lot.type_code}</td>
                       <td>{lot.lot_number}</td>
-                      <td>{formatDate(lot.expiry_date)}</td>
+
+                      {/* ✅ Phase D3 hover tooltip */}
+                      <td>
+                        <span title={buildExpiryTooltip(lot)}>
+                          {formatDate(lot.expiry_date)}
+                        </span>
+                      </td>
+
                       <td>{lot.manufacturer || "—"}</td>
                       <td className="numeric">{lot.balance_qty}</td>
 

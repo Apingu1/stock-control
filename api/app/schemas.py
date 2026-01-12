@@ -270,6 +270,11 @@ class LotBalanceOut(BaseModel):
     last_status_reason: Optional[str] = None
     last_status_changed_at: Optional[datetime] = None
 
+    # ✅ Phase D3: expiry-derived helper fields (for UI tooltip + transparency)
+    days_to_expiry: Optional[int] = None
+    expiry_threshold_days: Optional[int] = None
+
+
     class Config:
         from_attributes = True
 
@@ -365,3 +370,22 @@ class AuditEventOut(BaseModel):
     reason: Optional[str] = None
     before_json: Optional[Any] = None
     after_json: Optional[Any] = None
+
+# --- Phase D3: Expiry threshold settings (admin page) -------------------------
+
+class ExpiryThresholdSettingOut(BaseModel):
+    id: int
+    category_code: str
+    type_code: str
+    threshold_days: int
+    is_active: bool
+    updated_at: datetime
+    updated_by: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExpiryThresholdSettingUpdate(BaseModel):
+    threshold_days: Optional[int] = None
+    is_active: Optional[bool] = None

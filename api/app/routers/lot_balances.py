@@ -1,6 +1,7 @@
 # app/routers/lot_balances.py
 from typing import List, Optional
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import text, func
@@ -8,16 +9,164 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..schemas import LotBalanceOut, LotStatusChangeCreate
-from ..models import MaterialLot, LotStatusChange, StockTransaction, Material, User
+from ..models import MaterialLot, LotStatusChange, StockTransaction, Material, User, ExpiryThresholdSetting
 from ..security import require_permission  # ✅ Phase B: permission guard (server enforced)
 
 router = APIRouter(prefix="/lot-balances", tags=["lot-balances"])
 
+logger = logging.getLogger(__name__)
+
 ALLOWED_LOT_STATUSES = {"AVAILABLE", "QUARANTINE", "REJECTED"}
+
+AUTO_QUARANTINE_REASON = "auto-quarantined due to low expiry"
+AUTO_QUARANTINE_CHANGED_BY = "system"
 
 STATUS_ALIASES = {
     "RELEASED": "AVAILABLE",
+    "AVAIL": "AVAILABLE",
+    "QUAR": "QUARANTINE",
 }
+
+
+def _normalise_status(s: Optional[str]) -> str:
+    val = (s or "").strip().upper()
+    return STATUS_ALIASES.get(val, val)
+
+
+def _get_lot_balance(db: Session, lot_id: int) -> float:
+    bal = (
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
+        .filter(StockTransaction.material_lot_id == lot_id)
+        .scalar()
+    )
+    return float(bal or 0.0)
+
+
+def _run_auto_quarantine_low_expiry(db: Session) -> None:
+    """
+    Phase D3:
+    - Request-time auto-quarantine (no cron yet).
+    - Idempotent: only processes AVAILABLE segments with positive balance.
+    - Does NOT block issues in this phase.
+    """
+    # Find AVAILABLE segments whose expiry is within configured threshold.
+    # We join MaterialLot -> Material to get category/type codes.
+    candidates = (
+        db.query(MaterialLot.id)
+        .join(Material, Material.id == MaterialLot.material_id)
+        .join(
+            ExpiryThresholdSetting,
+            (ExpiryThresholdSetting.category_code == Material.category_code)
+            & (ExpiryThresholdSetting.type_code == Material.type_code)
+            & (ExpiryThresholdSetting.is_active.is_(True)),
+        )
+        .filter(MaterialLot.status == "AVAILABLE")
+        .filter(MaterialLot.expiry_date.isnot(None))
+        .filter((MaterialLot.expiry_date - func.current_date()) <= ExpiryThresholdSetting.threshold_days)
+        .all()
+    )
+
+    if not candidates:
+        return
+
+    for (material_lot_id,) in candidates:
+        try:
+            lot = db.query(MaterialLot).filter(MaterialLot.id == material_lot_id).one_or_none()
+            if lot is None:
+                continue
+            if lot.status != "AVAILABLE":
+                continue
+
+            bal = _get_lot_balance(db, lot.id)
+            if bal <= 0:
+                continue
+
+            # See if a QUARANTINE segment already exists for same material + lot_number.
+            dest_lot = (
+                db.query(MaterialLot)
+                .filter(
+                    MaterialLot.material_id == lot.material_id,
+                    MaterialLot.lot_number == lot.lot_number,
+                    MaterialLot.status == "QUARANTINE",
+                    MaterialLot.id != lot.id,
+                )
+                .order_by(MaterialLot.id.asc())
+                .first()
+            )
+
+            material = db.query(Material).filter(Material.id == lot.material_id).one()
+            uom_code = material.base_uom_code
+            reason_with_qty = f"{AUTO_QUARANTINE_REASON} | qty={bal} {uom_code}"
+
+            if dest_lot:
+                # Merge: move full balance from AVAILABLE segment -> existing QUARANTINE segment
+                db.add(
+                    StockTransaction(
+                        material_lot_id=lot.id,
+                        txn_type="STATUS_MOVE",
+                        qty=bal,
+                        uom_code=uom_code,
+                        direction=-1,
+                        comment=f"Moved {bal} {uom_code} from AVAILABLE to QUARANTINE. Reason: {AUTO_QUARANTINE_REASON}",
+                        created_by=AUTO_QUARANTINE_CHANGED_BY,
+                    )
+                )
+                db.add(
+                    StockTransaction(
+                        material_lot_id=dest_lot.id,
+                        txn_type="STATUS_MOVE",
+                        qty=bal,
+                        uom_code=uom_code,
+                        direction=+1,
+                        comment=f"Received {bal} {uom_code} from AVAILABLE segment. Reason: {AUTO_QUARANTINE_REASON}",
+                        created_by=AUTO_QUARANTINE_CHANGED_BY,
+                    )
+                )
+
+                db.add(
+                    LotStatusChange(
+                        material_lot_id=lot.id,
+                        old_status="AVAILABLE",
+                        new_status="QUARANTINE",
+                        reason=reason_with_qty,
+                        changed_by=AUTO_QUARANTINE_CHANGED_BY,
+                    )
+                )
+                db.add(
+                    LotStatusChange(
+                        material_lot_id=dest_lot.id,
+                        old_status=_normalise_status(dest_lot.status),
+                        new_status="QUARANTINE",
+                        reason=f"Merged in qty={bal} {uom_code} from AVAILABLE. {AUTO_QUARANTINE_REASON}",
+                        changed_by=AUTO_QUARANTINE_CHANGED_BY,
+                    )
+                )
+
+                # IMPORTANT:
+                # We cannot set the source segment to QUARANTINE because of unique constraint
+                # (material_id, lot_number, status). A QUARANTINE segment already exists.
+                # The STATUS_MOVE txns drain this AVAILABLE segment to 0, and include_zero=False
+                # ensures it won't show in Live Lots.
+              
+                db.commit()
+            else:
+                # Whole segment: simply change status + log status change
+                db.add(
+                    LotStatusChange(
+                        material_lot_id=lot.id,
+                        old_status="AVAILABLE",
+                        new_status="QUARANTINE",
+                        reason=reason_with_qty,
+                        changed_by=AUTO_QUARANTINE_CHANGED_BY,
+                    )
+                )
+                lot.status = "QUARANTINE"
+                db.commit()
+
+        except Exception as e:
+            db.rollback()
+            logger.exception(f"Auto-quarantine failed for material_lot_id={material_lot_id}: {e}")
+            continue
 
 
 @router.get("/", response_model=List[LotBalanceOut])
@@ -29,6 +178,9 @@ def list_lot_balances(
     include_zero: bool = Query(False, description="Include lots with zero balance"),
     limit: int = Query(200, ge=1, le=1000),
 ):
+    # Phase D3: request-time auto-quarantine (idempotent)
+    _run_auto_quarantine_low_expiry(db)
+
     sql = """
         SELECT
             v.material_lot_id,
@@ -46,18 +198,26 @@ def list_lot_balances(
             v.last_status_reason,
             v.last_status_changed_at,
             v.lot_unit_price,
-            v.lot_value
+            v.lot_value,
+            CASE WHEN v.expiry_date IS NULL THEN NULL ELSE (v.expiry_date::date - CURRENT_DATE)::int END AS days_to_expiry,
+            s.threshold_days AS expiry_threshold_days
         FROM lot_balances_view v
-        WHERE 1 = 1
+        LEFT JOIN materials m ON m.material_code = v.material_code
+        LEFT JOIN expiry_threshold_settings s
+          ON s.category_code = m.category_code
+         AND s.type_code = m.type_code
+         AND s.is_active = TRUE
+        WHERE 1=1
     """
-    params: dict = {}
 
-    if not include_zero:
-        sql += " AND v.balance_qty <> 0"
+    params = {}
 
     if material_code:
         sql += " AND v.material_code = :material_code"
         params["material_code"] = material_code
+
+    if not include_zero:
+        sql += " AND v.balance_qty > 0"
 
     if search:
         sql += """
@@ -89,25 +249,13 @@ def list_lot_balances(
             uom_code=row["uom_code"],
             last_status_reason=row.get("last_status_reason"),
             last_status_changed_at=row.get("last_status_changed_at"),
+            days_to_expiry=row.get("days_to_expiry"),
+            expiry_threshold_days=row.get("expiry_threshold_days"),
             lot_unit_price=float(row["lot_unit_price"]) if row.get("lot_unit_price") is not None else None,
             lot_value=float(row["lot_value"]) if row.get("lot_value") is not None else None,
         )
         for row in rows
     ]
-
-
-def _get_lot_balance(db: Session, lot_id: int) -> float:
-    bal = (
-        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
-        .filter(StockTransaction.material_lot_id == lot_id)
-        .scalar()
-    )
-    return float(bal or 0.0)
-
-
-def _normalise_status(s: Optional[str]) -> str:
-    val = (s or "").strip().upper()
-    return STATUS_ALIASES.get(val, val)
 
 
 @router.post("/{material_lot_id}/status-change", response_model=LotBalanceOut)
@@ -178,7 +326,7 @@ def change_lot_status(
 
     dest_statuses = [new_status]
     if new_status == "AVAILABLE":
-        dest_statuses = ["AVAILABLE", "RELEASED"]
+        dest_statuses = ["AVAILABLE"]
 
     dest_lot = (
         db.query(MaterialLot)
@@ -192,8 +340,8 @@ def change_lot_status(
         .first()
     )
 
-    # --- MERGE path: destination segment already exists -----------------------
-    if dest_lot is not None:
+    # --- Destination segment exists ------------------------------------------
+    if dest_lot:
         db.add(
             StockTransaction(
                 material_lot_id=lot.id,
@@ -201,7 +349,7 @@ def change_lot_status(
                 qty=move_qty_f,
                 uom_code=uom_code,
                 direction=-1,
-                comment=f"Moved {move_qty_f} {uom_code} to existing {new_status} segment. Reason: {base_reason}",
+                comment=f"Moved {move_qty_f} {uom_code} from {old_status} to {new_status}. Reason: {base_reason}",
                 created_by=changed_by,
             )
         )
@@ -236,6 +384,9 @@ def change_lot_status(
             )
         )
 
+        if whole_lot:
+            lot.status = new_status
+
         db.commit()
 
     # --- NO destination segment exists ---------------------------------------
@@ -258,9 +409,6 @@ def change_lot_status(
                 lot_number=lot.lot_number,
                 expiry_date=lot.expiry_date,
                 status=new_status,
-                manufacturer=lot.manufacturer,
-                supplier=lot.supplier,
-                created_by=changed_by,
             )
             db.add(new_lot)
             db.flush()
@@ -272,7 +420,7 @@ def change_lot_status(
                     qty=move_qty_f,
                     uom_code=uom_code,
                     direction=-1,
-                    comment=f"Moved {move_qty_f} {uom_code} to new {new_status} segment. Reason: {base_reason}",
+                    comment=f"Moved {move_qty_f} {uom_code} from {old_status} to new {new_status} segment. Reason: {base_reason}",
                     created_by=changed_by,
                 )
             )
@@ -285,16 +433,6 @@ def change_lot_status(
                     direction=+1,
                     comment=f"Received {move_qty_f} {uom_code} from {old_status} segment. Reason: {base_reason}",
                     created_by=changed_by,
-                )
-            )
-
-            db.add(
-                LotStatusChange(
-                    material_lot_id=lot.id,
-                    old_status=old_status,
-                    new_status=new_status,
-                    reason=reason_with_qty,
-                    changed_by=changed_by,
                 )
             )
             db.add(
@@ -333,11 +471,8 @@ def change_lot_status(
             WHERE v.material_lot_id = :lot_id
             """
         ),
-        {"lot_id": lot.id},
-    ).mappings().first()
-
-    if row is None:
-        raise HTTPException(status_code=500, detail="Failed to load updated lot balance")
+        {"lot_id": material_lot_id},
+    ).mappings().one()
 
     return LotBalanceOut(
         material_lot_id=row["material_lot_id"],

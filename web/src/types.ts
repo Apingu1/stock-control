@@ -7,6 +7,7 @@ export type ViewMode =
   | "consumption"
   | "lots"
   | "admin"
+  | "admin-settings"
   | "audit";
 
 export type Role = string;
@@ -124,6 +125,9 @@ export type LotBalance = {
   lot_unit_price?: number | null;
   lot_value?: number | null;
 
+  // ✅ ADDITIVE (Phase D3): derived expiry helper fields for tooltip/transparency
+  days_to_expiry?: number | null;
+  expiry_threshold_days?: number | null;
 };
 
 export type AdminRole = {
@@ -151,4 +155,20 @@ export type AuditEvent = {
   reason?: string | null;
   before_json?: any;
   after_json?: any;
+};
+
+// ✅ ADDITIVE (Phase D3): Admin Settings -> expiry threshold rows
+export type ExpiryThresholdRow = {
+  id: number;
+  category_code: string;
+  type_code: string;
+  threshold_days: number;
+  is_active: boolean;
+  updated_at: string;
+  updated_by?: string | null;
+};
+
+export type ExpiryThresholdPatch = {
+  threshold_days?: number;
+  is_active?: boolean;
 };

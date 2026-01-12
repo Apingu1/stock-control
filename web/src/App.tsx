@@ -16,6 +16,8 @@ import MaterialModal from "./components/modals/MaterialModal";
 
 import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
+import AdminSettingsView from "./components/admin/AdminSettingsView";
+
 
 type MyPermissionsResponse = {
   role: string;
@@ -346,6 +348,18 @@ const App: React.FC = () => {
                   Users &amp; Roles
                 </button>
               </li>
+
+              <li className="nav-item">
+                <button
+                  type="button"
+                  className={"nav-link as-button " + (view === "admin-settings" ? "active" : "")}
+                  onClick={() => setView("admin-settings")}
+                >
+                  <span className="icon">⚙️</span>
+                  Settings
+                </button>
+              </li>
+
             </>
           )}
         </ul>
@@ -503,6 +517,8 @@ const App: React.FC = () => {
         {view === "audit" && canViewAudit && <AuditTrailView />}
 
         {view === "admin" && isAdmin && <AdminUsersView />}
+        {view === "admin-settings" && isAdmin && <AdminSettingsView />}
+
       </main>
 
       {/* MODALS */}

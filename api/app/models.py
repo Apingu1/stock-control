@@ -454,3 +454,25 @@ class RolePermission(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+# --- Phase D3: Admin-configurable expiry auto-quarantine thresholds ------------
+
+class ExpiryThresholdSetting(Base):
+    __tablename__ = "expiry_threshold_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    category_code: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    type_code: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+
+    threshold_days: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("category_code", "type_code", name="uq_expiry_threshold_cat_type"),
+    )
