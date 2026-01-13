@@ -6,6 +6,7 @@ export type ViewMode =
   | "receipts"
   | "consumption"
   | "lots"
+  | "alerts" // ✅ Phase D4: Low Stock & Expiry page
   | "admin"
   | "admin-settings"
   | "audit";
@@ -35,8 +36,10 @@ export type Material = {
   manufacturer: string | null;
   supplier: string | null;
   status: string;
-
   approved_manufacturers?: ApprovedManufacturer[];
+  low_stock_threshold_qty?: number | null;
+  expiry_alert_days?: number | null;
+  auto_quarantine_override_days?: number | null;
 };
 
 export type Receipt = {

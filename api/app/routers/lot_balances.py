@@ -54,15 +54,18 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
     candidates = (
         db.query(MaterialLot.id)
         .join(Material, Material.id == MaterialLot.material_id)
-        .join(
+        .outerjoin(
             ExpiryThresholdSetting,
             (ExpiryThresholdSetting.category_code == Material.category_code)
             & (ExpiryThresholdSetting.type_code == Material.type_code)
             & (ExpiryThresholdSetting.is_active.is_(True)),
         )
-        .filter(MaterialLot.status == "AVAILABLE")
+        .filter(func.upper(MaterialLot.status) == "AVAILABLE")
         .filter(MaterialLot.expiry_date.isnot(None))
-        .filter((MaterialLot.expiry_date - func.current_date()) <= ExpiryThresholdSetting.threshold_days)
+        .filter(
+            (MaterialLot.expiry_date - func.current_date())
+            <= func.coalesce(Material.auto_quarantine_override_days, ExpiryThresholdSetting.threshold_days)
+        )
         .all()
     )
 
@@ -74,7 +77,7 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
             lot = db.query(MaterialLot).filter(MaterialLot.id == material_lot_id).one_or_none()
             if lot is None:
                 continue
-            if lot.status != "AVAILABLE":
+            if _normalise_status(lot.status) != "AVAILABLE":
                 continue
 
             bal = _get_lot_balance(db, lot.id)
@@ -87,7 +90,7 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
                 .filter(
                     MaterialLot.material_id == lot.material_id,
                     MaterialLot.lot_number == lot.lot_number,
-                    MaterialLot.status == "QUARANTINE",
+                    func.upper(MaterialLot.status) == "QUARANTINE",
                     MaterialLot.id != lot.id,
                 )
                 .order_by(MaterialLot.id.asc())
@@ -200,7 +203,7 @@ def list_lot_balances(
             v.lot_unit_price,
             v.lot_value,
             CASE WHEN v.expiry_date IS NULL THEN NULL ELSE (v.expiry_date::date - CURRENT_DATE)::int END AS days_to_expiry,
-            s.threshold_days AS expiry_threshold_days
+            COALESCE(m.auto_quarantine_override_days, s.threshold_days) AS expiry_threshold_days
         FROM lot_balances_view v
         LEFT JOIN materials m ON m.material_code = v.material_code
         LEFT JOIN expiry_threshold_settings s

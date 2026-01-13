@@ -13,6 +13,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -113,6 +114,16 @@ class Material(Base):
     manufacturer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     supplier: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+        # Phase D4: per-material alerts & auto-quarantine overrides (nullable)
+    low_stock_threshold_qty: Mapped[Optional[float]] = mapped_column(
+        Numeric(18, 6), nullable=True
+    )  # CHECK >= 0 via migration
+    expiry_alert_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # CHECK >= 0
+    auto_quarantine_override_days: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )  # CHECK >= 0
+
+
     complies_es_criteria: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
 
@@ -196,6 +207,10 @@ class MaterialEdit(Base):
             "created_at": m.created_at.isoformat() if m.created_at else None,
             "created_by": m.created_by,
             "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+            "low_stock_threshold_qty": float(m.low_stock_threshold_qty) if m.low_stock_threshold_qty is not None else None,
+            "expiry_alert_days": m.expiry_alert_days,
+            "auto_quarantine_override_days": m.auto_quarantine_override_days,
+
         }
         return json.dumps(payload, sort_keys=True)
 

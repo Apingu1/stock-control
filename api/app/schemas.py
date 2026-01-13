@@ -85,6 +85,10 @@ class MaterialBase(BaseModel):
     supplier: Optional[str] = None
     complies_es_criteria: bool = True
     status: str = "ACTIVE"
+    # Phase D4: per-material alerts & auto-quarantine override (nullable)
+    low_stock_threshold_qty: Optional[float] = Field(None, ge=0)
+    expiry_alert_days: Optional[int] = Field(None, ge=0)
+    auto_quarantine_override_days: Optional[int] = Field(None, ge=0)
 
 
 class MaterialCreate(MaterialBase):
@@ -103,6 +107,12 @@ class MaterialUpdate(BaseModel):
 
     # ✅ NEW: required for audit-trailed edits (PUT /materials/{material_code})
     edit_reason: Optional[str] = None
+
+    # Phase D4: per-material alerts & auto-quarantine override (nullable)
+    low_stock_threshold_qty: Optional[float] = Field(None, ge=0)
+    expiry_alert_days: Optional[int] = Field(None, ge=0)
+    auto_quarantine_override_days: Optional[int] = Field(None, ge=0)
+
 
 
 class MaterialOut(MaterialBase):

@@ -15,6 +15,7 @@ from ..models import (
     MaterialEdit,
     MaterialApprovedManufacturer,
     User,
+    ExpiryThresholdSetting,
 )
 from ..schemas import (
     MaterialCreate,
@@ -22,6 +23,7 @@ from ..schemas import (
     MaterialOut,
     ApprovedManufacturerOut,
     ApprovedManufacturerCreate,
+    ExpiryThresholdSettingOut,
 )
 from ..security import require_permission
 from ..audit_logger import log_approved_manufacturer_edit
@@ -63,6 +65,10 @@ def create_material(
         complies_es_criteria=body.complies_es_criteria,
         status=body.status,
         created_by=user.username,  # ✅ enforce from JWT
+        low_stock_threshold_qty=body.low_stock_threshold_qty,
+        expiry_alert_days=body.expiry_alert_days,
+        auto_quarantine_override_days=body.auto_quarantine_override_days,
+
     )
 
     db.add(m)
@@ -91,6 +97,23 @@ def list_materials(
         stmt = stmt.where((Material.material_code.ilike(ilike)) | (Material.name.ilike(ilike)))
 
     stmt = stmt.order_by(Material.material_code).offset(offset).limit(limit)
+    return db.execute(stmt).scalars().all()
+
+@router.get("/expiry-thresholds", response_model=List[ExpiryThresholdSettingOut])
+def list_expiry_thresholds(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.view")),
+):
+    """
+    Phase D4:
+    Read-only list of active expiry threshold settings (category/type -> threshold_days),
+    used by non-admin screens to display defaults.
+    """
+    stmt = (
+        select(ExpiryThresholdSetting)
+        .where(ExpiryThresholdSetting.is_active.is_(True))
+        .order_by(ExpiryThresholdSetting.category_code, ExpiryThresholdSetting.type_code)
+    )
     return db.execute(stmt).scalars().all()
 
 
@@ -144,6 +167,10 @@ def update_material(
     m.supplier = body.supplier
     m.complies_es_criteria = body.complies_es_criteria
     m.status = body.status
+    m.low_stock_threshold_qty = body.low_stock_threshold_qty
+    m.expiry_alert_days = body.expiry_alert_days
+    m.auto_quarantine_override_days = body.auto_quarantine_override_days
+
 
     after_json = MaterialEdit.snapshot_material(m)
 

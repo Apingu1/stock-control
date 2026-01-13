@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { Material, ApprovedManufacturer } from "../../types";
+import type { Material, ApprovedManufacturer, ExpiryThresholdRow } from "../../types";
 import {
   MATERIAL_CATEGORY_OPTIONS,
   MATERIAL_TYPE_OPTIONS,
@@ -13,7 +13,16 @@ type MaterialFormProps = {
   initial?: Partial<Material>;
   mode: "create" | "edit";
   onSaved: () => void;
+
+  // Phase D4: defaults lookup (read-only endpoint /materials/expiry-thresholds)
+  expiryThresholds: ExpiryThresholdRow[];
 };
+
+function toNumOrEmpty(v: any): number | "" {
+  if (v === null || v === undefined || v === "") return "";
+  const n = Number(v);
+  return Number.isFinite(n) ? n : "";
+}
 
 const MaterialModal: React.FC<MaterialFormProps> = ({
   open,
@@ -21,6 +30,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   initial,
   mode,
   onSaved,
+  expiryThresholds,
 }) => {
   const [materialCode, setMaterialCode] = useState(initial?.material_code ?? "");
   const [name, setName] = useState(initial?.name ?? "");
@@ -36,6 +46,22 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   const [manufacturer, setManufacturer] = useState(initial?.manufacturer ?? "");
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
   const [status, setStatus] = useState(initial?.status ?? "ACTIVE");
+
+  // Phase D4 fields
+  const [lowStockThresholdQty, setLowStockThresholdQty] = useState<number | "">(
+    toNumOrEmpty((initial as any)?.low_stock_threshold_qty)
+  );
+  const [expiryAlertDays, setExpiryAlertDays] = useState<number | "">(
+    toNumOrEmpty((initial as any)?.expiry_alert_days)
+  );
+
+  const [overrideEnabled, setOverrideEnabled] = useState<boolean>(
+    (initial as any)?.auto_quarantine_override_days !== null &&
+      (initial as any)?.auto_quarantine_override_days !== undefined
+  );
+  const [overrideDays, setOverrideDays] = useState<number | "">(
+    toNumOrEmpty((initial as any)?.auto_quarantine_override_days)
+  );
 
   // ✅ edit-only audit reason
   const [editReason, setEditReason] = useState("");
@@ -78,6 +104,17 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     }
   };
 
+  // Phase D4: compute default threshold from settings
+  const defaultThresholdDays = useMemo(() => {
+    const row = expiryThresholds.find(
+      (r) =>
+        r.category_code === categoryCode &&
+        r.type_code === typeCode &&
+        (r as any).is_active !== false
+    );
+    return row?.threshold_days ?? null;
+  }, [expiryThresholds, categoryCode, typeCode]);
+
   useEffect(() => {
     if (open) {
       setMaterialCode(initial?.material_code ?? "");
@@ -90,6 +127,15 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       setStatus(initial?.status ?? "ACTIVE");
       setSubmitting(false);
       setError(null);
+
+      setLowStockThresholdQty(toNumOrEmpty((initial as any)?.low_stock_threshold_qty));
+      setExpiryAlertDays(toNumOrEmpty((initial as any)?.expiry_alert_days));
+
+      const hasOverride =
+        (initial as any)?.auto_quarantine_override_days !== null &&
+        (initial as any)?.auto_quarantine_override_days !== undefined;
+      setOverrideEnabled(!!hasOverride);
+      setOverrideDays(toNumOrEmpty((initial as any)?.auto_quarantine_override_days));
 
       setEditReason("");
 
@@ -125,6 +171,13 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   // ✅ IMPORTANT: this must be BELOW hooks (useMemo/useEffect) to avoid hook order crash
   if (!open) return null;
 
+  const validateNonNeg = (label: string, v: number | ""): string | null => {
+    if (v === "") return null;
+    if (!Number.isFinite(Number(v))) return `${label} must be a number.`;
+    if (Number(v) < 0) return `${label} cannot be negative.`;
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -143,6 +196,25 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       return;
     }
 
+    // Phase D4 validations
+    const v1 = validateNonNeg("Low stock threshold", lowStockThresholdQty);
+    if (v1) {
+      setError(v1);
+      return;
+    }
+    const v2 = validateNonNeg("Low expiry alert days", expiryAlertDays);
+    if (v2) {
+      setError(v2);
+      return;
+    }
+    if (overrideEnabled) {
+      const v3 = validateNonNeg("Auto-quarantine override days", overrideDays);
+      if (v3) {
+        setError(v3);
+        return;
+      }
+    }
+
     // Require reason for edits (used for BOTH material edit + approved-manufacturer edits)
     if (isEdit && !editReason.trim()) {
       setError("Edit reason is required for audit trail.");
@@ -151,6 +223,17 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
 
     setSubmitting(true);
     try {
+      const d4Fields = {
+        low_stock_threshold_qty:
+          lowStockThresholdQty === "" ? null : Number(lowStockThresholdQty),
+        expiry_alert_days: expiryAlertDays === "" ? null : Number(expiryAlertDays),
+        auto_quarantine_override_days: overrideEnabled
+          ? overrideDays === ""
+            ? null
+            : Number(overrideDays)
+          : null,
+      };
+
       if (mode === "create") {
         const payload = {
           material_code: materialCode.trim(),
@@ -164,6 +247,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           complies_es_criteria: true,
           status,
           created_by: "apingu",
+          ...d4Fields,
         };
 
         await apiFetch("/materials/", {
@@ -183,6 +267,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           complies_es_criteria: true,
           status,
           edit_reason: editReason.trim(),
+          ...d4Fields,
         };
 
         await apiFetch(`/materials/${encodeURIComponent(initial.material_code)}`, {
@@ -433,6 +518,79 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
               />
             </div>
 
+            {/* Phase D4: Alerts & Quarantine */}
+            <div className="form-group form-group-full">
+              <label className="label">Alerts &amp; Quarantine</label>
+              <div className="content-subtitle" style={{ marginBottom: 10 }}>
+                Configure per-material low stock + low expiry alerts, and optionally override the auto-quarantine threshold.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="label">Low stock threshold qty (base UOM)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={lowStockThresholdQty}
+                    onChange={(e) => setLowStockThresholdQty(toNumOrEmpty(e.target.value))}
+                    placeholder="e.g. 10"
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="label">Low expiry alert days</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={expiryAlertDays}
+                    onChange={(e) => setExpiryAlertDays(toNumOrEmpty(e.target.value))}
+                    placeholder="e.g. 60"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div className="info-row" style={{ marginBottom: 6 }}>
+                  Default auto-quarantine:{" "}
+                  <strong>
+                    {defaultThresholdDays === null ? "—" : `${defaultThresholdDays} days`}
+                  </strong>{" "}
+                  <span className="muted">(from Settings)</span>
+                </div>
+
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={overrideEnabled}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setOverrideEnabled(on);
+                      if (!on) setOverrideDays("");
+                    }}
+                  />
+                  <span>Override default auto-quarantine days</span>
+                </label>
+
+                {overrideEnabled && (
+                  <div style={{ marginTop: 8, maxWidth: 240 }}>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={overrideDays}
+                      onChange={(e) => setOverrideDays(toNumOrEmpty(e.target.value))}
+                      placeholder="e.g. 30"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
             {isEdit && (
               <div className="form-group form-group-full">
                 <label className="label">
@@ -460,7 +618,9 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 {loadingApproved && (
                   <div className="info-row">Loading manufacturers…</div>
                 )}
-                {approvedError && <div className="error-row">{approvedError}</div>}
+                {approvedError && (
+                  <div className="error-row">{approvedError}</div>
+                )}
 
                 {!loadingApproved &&
                   approvedVisible.length === 0 &&

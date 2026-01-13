@@ -1,6 +1,14 @@
 // web/src/App.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import type { LotBalance, Material, ViewMode, Receipt, Issue, UserMe } from "./types";
+import type {
+  LotBalance,
+  Material,
+  ViewMode,
+  Receipt,
+  Issue,
+  UserMe,
+  ExpiryThresholdRow,
+} from "./types";
 import { apiFetch, clearToken, fetchMe, getToken } from "./utils/api";
 
 import DashboardView from "./components/dashboard/DashboardView";
@@ -9,6 +17,7 @@ import GoodsReceiptsView from "./components/receipts/GoodsReceiptsView";
 import ConsumptionView from "./components/issues/ConsumptionView";
 import LiveLotsView from "./components/lots/LiveLotsView";
 import AuditTrailView from "./components/audit/AuditTrailView";
+import LowStockExpiryView from "./components/alerts/LowStockExpiryView";
 
 import NewReceiptModal from "./components/modals/NewReceiptModal";
 import IssueModal from "./components/modals/IssueModal";
@@ -17,7 +26,6 @@ import MaterialModal from "./components/modals/MaterialModal";
 import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
 import AdminSettingsView from "./components/admin/AdminSettingsView";
-
 
 type MyPermissionsResponse = {
   role: string;
@@ -40,10 +48,8 @@ const App: React.FC = () => {
 
   const isAdmin = hasPerm("admin.full");
   const canChangeStatus = hasPerm("lots.status_change");
-
   const canEditReceipts = hasPerm("receipts.edit");
   const canEditIssues = hasPerm("issues.edit");
-
   const canViewAudit = hasPerm("audit.view");
 
   // --- Data -----------------------------------------------------------------
@@ -51,6 +57,9 @@ const App: React.FC = () => {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [expiryThresholds, setExpiryThresholds] = useState<ExpiryThresholdRow[]>(
+    []
+  );
 
   // Loading / error flags
   const [loadingLots, setLoadingLots] = useState(true);
@@ -73,6 +82,67 @@ const App: React.FC = () => {
   const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
 
   const [view, setView] = useState<ViewMode>("dashboard");
+
+  // --- Derived: Alerts badge counts (combined low stock + low expiry) -------
+  const alertsCounts = useMemo(() => {
+    // Available qty by material (sum of AVAILABLE segments)
+    const availByMat = new Map<string, number>();
+    for (const r of lotBalances as any[]) {
+      if (String(r.status).toUpperCase() !== "AVAILABLE") continue;
+
+      const code = String(r.material_code ?? "");
+      const balRaw = r.balance_qty ?? 0;
+      const bal = typeof balRaw === "number" ? balRaw : Number(balRaw);
+      const safeBal = Number.isFinite(bal) ? bal : 0;
+
+      availByMat.set(code, (availByMat.get(code) ?? 0) + safeBal);
+    }
+
+    // Low stock flagged materials
+    let lowStock = 0;
+    for (const m of materials as any[]) {
+      const thr = m.low_stock_threshold_qty;
+      if (thr === null || thr === undefined) continue;
+
+      const thrNum = typeof thr === "number" ? thr : Number(thr);
+      if (!Number.isFinite(thrNum)) continue;
+
+      const avail = availByMat.get(m.material_code) ?? 0;
+      if (avail <= thrNum) lowStock += 1;
+    }
+
+    // Low expiry flagged lots (AVAILABLE lots where days_to_expiry <= material expiry_alert_days)
+    let lowExpiry = 0;
+    const matByCode = new Map<string, any>();
+    for (const m of materials as any[]) matByCode.set(m.material_code, m);
+
+    for (const r of lotBalances as any[]) {
+      if (String(r.status).toUpperCase() !== "AVAILABLE") continue;
+
+      const balRaw = r.balance_qty ?? 0;
+      const bal = typeof balRaw === "number" ? balRaw : Number(balRaw);
+      if (!Number.isFinite(bal) || bal <= 0) continue;
+
+      if (!r.expiry_date) continue;
+
+      const mat = matByCode.get(r.material_code);
+      const alertDays = mat?.expiry_alert_days;
+      if (alertDays === null || alertDays === undefined) continue;
+
+      const alertNum = typeof alertDays === "number" ? alertDays : Number(alertDays);
+      if (!Number.isFinite(alertNum)) continue;
+
+      const dte = r.days_to_expiry;
+      if (dte === null || dte === undefined) continue;
+
+      const dteNum = typeof dte === "number" ? dte : Number(dte);
+      if (!Number.isFinite(dteNum)) continue;
+
+      if (dteNum <= alertNum) lowExpiry += 1;
+    }
+
+    return { lowStock, lowExpiry, total: lowStock + lowExpiry };
+  }, [materials, lotBalances]);
 
   // --- Loaders --------------------------------------------------------------
   const loadLotBalances = async () => {
@@ -97,6 +167,17 @@ const App: React.FC = () => {
       setMaterials(data);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const loadExpiryThresholds = async () => {
+    try {
+      const res = await apiFetch("/materials/expiry-thresholds");
+      const data = (await res.json()) as ExpiryThresholdRow[];
+      setExpiryThresholds(data);
+    } catch (e) {
+      console.error(e);
+      setExpiryThresholds([]);
     }
   };
 
@@ -131,7 +212,13 @@ const App: React.FC = () => {
   };
 
   const loadAll = async () => {
-    await Promise.all([loadLotBalances(), loadMaterials(), loadReceipts(), loadIssues()]);
+    await Promise.all([
+      loadLotBalances(),
+      loadMaterials(),
+      loadExpiryThresholds(),
+      loadReceipts(),
+      loadIssues(),
+    ]);
   };
 
   const loadMyPermissions = async () => {
@@ -202,7 +289,7 @@ const App: React.FC = () => {
   const handleMaterialSaved = async () => {
     setShowNewMaterialModal(false);
     setEditingMaterial(null);
-    await loadMaterials();
+    await Promise.all([loadMaterials(), loadExpiryThresholds()]);
   };
 
   const handleReceiptPosted = async () => {
@@ -219,7 +306,9 @@ const App: React.FC = () => {
 
   // --- Header helpers -------------------------------------------------------
   const header = useMemo(() => {
-    const signed = me ? `Signed in as ${me.username} (${me.role})` : "Please sign in to continue.";
+    const signed = me
+      ? `Signed in as ${me.username} (${me.role})`
+      : "Please sign in to continue.";
 
     switch (view) {
       case "dashboard":
@@ -232,10 +321,18 @@ const App: React.FC = () => {
         return { tag: "Workspace", title: "Consumption", subtitle: signed };
       case "lots":
         return { tag: "Workspace", title: "Live Lots", subtitle: signed };
+      case "alerts":
+        return {
+          tag: "Risk & Quality",
+          title: "Low Stock & Expiry",
+          subtitle: signed,
+        };
       case "audit":
         return { tag: "Risk & Quality", title: "Audit Trail", subtitle: signed };
       case "admin":
         return { tag: "Admin", title: "Users & Roles", subtitle: signed };
+      case "admin-settings":
+        return { tag: "Admin", title: "Settings", subtitle: signed };
       default:
         return { tag: "Workspace", title: "Dashboard", subtitle: signed };
     }
@@ -337,7 +434,9 @@ const App: React.FC = () => {
 
           {isAdmin && (
             <>
-              <div className="sidebar-section-label sidebar-section-label-admin">Admin</div>
+              <div className="sidebar-section-label sidebar-section-label-admin">
+                Admin
+              </div>
               <li className="nav-item">
                 <button
                   type="button"
@@ -359,13 +458,13 @@ const App: React.FC = () => {
                   Settings
                 </button>
               </li>
-
             </>
           )}
         </ul>
 
         <div className="sidebar-section-label">Risk &amp; Quality</div>
         <ul className="nav-list">
+          {/* Existing placeholders kept intact */}
           <li className="nav-item">
             <a href="#" className="nav-link">
               <span className="icon">⏰</span>
@@ -381,13 +480,36 @@ const App: React.FC = () => {
             </a>
           </li>
 
+          {/* ✅ Phase D4 page + ✅ combined badge */}
+          <li className="nav-item">
+            <button
+              type="button"
+              className={"nav-link as-button " + (view === "alerts" ? "active" : "")}
+              onClick={() => setView("alerts")}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
+            >
+              <span className="icon">🚨</span>
+              Low Stock &amp; Expiry
+              {alertsCounts.total > 0 && (
+                <span className="badge">{alertsCounts.total}</span>
+              )}
+            </button>
+          </li>
+
           <li className="nav-item">
             <button
               type="button"
               className={"nav-link as-button " + (view === "audit" ? "active" : "")}
               onClick={() => setView("audit")}
               disabled={!me || !canViewAudit}
-              title={!me ? "Please sign in" : !canViewAudit ? "You do not have audit.view permission" : ""}
+              title={
+                !me
+                  ? "Please sign in"
+                  : !canViewAudit
+                  ? "You do not have audit.view permission"
+                  : ""
+              }
             >
               <span className="icon">📑</span>
               Audit Trail
@@ -395,12 +517,17 @@ const App: React.FC = () => {
           </li>
         </ul>
 
-        <div className="sidebar-footer" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+        <div
+          className="sidebar-footer"
+          style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}
+        >
           {me ? (
             <>
               <div className="avatar-pill" style={{ justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div className="avatar-img">{me.username.slice(0, 2).toUpperCase()}</div>
+                  <div className="avatar-img">
+                    {me.username.slice(0, 2).toUpperCase()}
+                  </div>
                   <div className="avatar-meta">
                     <div className="avatar-name">{me.username}</div>
                     <div className="avatar-role">{me.role}</div>
@@ -412,7 +539,13 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
                 <span>GMP Mode</span>
                 <span className="pill-muted">Pilot • On-prem</span>
               </div>
@@ -473,7 +606,10 @@ const App: React.FC = () => {
         {view === "dashboard" && <DashboardView materials={materials} />}
 
         {view === "materials" && (
-          <MaterialsLibraryView materials={materials} onEditMaterial={(m) => setEditingMaterial(m)} />
+          <MaterialsLibraryView
+            materials={materials}
+            onEditMaterial={(m) => setEditingMaterial(m)}
+          />
         )}
 
         {view === "receipts" && (
@@ -504,6 +640,10 @@ const App: React.FC = () => {
           />
         )}
 
+        {view === "alerts" && (
+          <LowStockExpiryView materials={materials} lotBalances={lotBalances} />
+        )}
+
         {view === "lots" && (
           <LiveLotsView
             lotBalances={lotBalances}
@@ -518,7 +658,6 @@ const App: React.FC = () => {
 
         {view === "admin" && isAdmin && <AdminUsersView />}
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
-
       </main>
 
       {/* MODALS */}
@@ -553,6 +692,7 @@ const App: React.FC = () => {
         onClose={() => setShowNewMaterialModal(false)}
         mode="create"
         onSaved={handleMaterialSaved}
+        expiryThresholds={expiryThresholds}
       />
 
       <MaterialModal
@@ -561,6 +701,7 @@ const App: React.FC = () => {
         mode="edit"
         initial={editingMaterial || undefined}
         onSaved={handleMaterialSaved}
+        expiryThresholds={expiryThresholds}
       />
     </div>
   );
