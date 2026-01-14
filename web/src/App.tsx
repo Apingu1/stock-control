@@ -32,6 +32,49 @@ type MyPermissionsResponse = {
   permissions: string[];
 };
 
+// --- Alerts: localStorage-driven suppression (NOT_REQUIRED) -----------------
+type AlertState =
+  | "NEW"
+  | "ACKNOWLEDGED"
+  | "ON_ORDER"
+  | "DELAYED"
+  | "UNAVAILABLE"
+  | "NOT_REQUIRED";
+
+type AlertAction = {
+  state: AlertState;
+  eta_text?: string;
+  updated_at?: string;
+  last_seen_available_qty?: number;
+};
+
+const ALERT_STORAGE_KEY = "sc_alert_actions_v1";
+
+function safeNum(n: any): number {
+  const x = typeof n === "number" ? n : Number(n);
+  return Number.isFinite(x) ? x : 0;
+}
+
+function loadAlertActions(): Record<string, AlertAction> {
+  try {
+    const raw = localStorage.getItem(ALERT_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, AlertAction>;
+  } catch {
+    return {};
+  }
+}
+
+function keyLowStock(materialCode: string) {
+  return `LOW_STOCK::${materialCode}`;
+}
+
+function keyLowExpiry(materialCode: string, lotNumber: string) {
+  return `LOW_EXPIRY::${materialCode}::${lotNumber}`;
+}
+
 const App: React.FC = () => {
   // --- Auth -----------------------------------------------------------------
   const [me, setMe] = useState<UserMe | null>(null);
@@ -83,66 +126,95 @@ const App: React.FC = () => {
 
   const [view, setView] = useState<ViewMode>("dashboard");
 
+  // --- NEW: trigger recompute when alert actions change ----------------------
+  const [alertsTick, setAlertsTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setAlertsTick((x) => x + 1);
+
+    // Fired by LowStockExpiryView when saving
+    window.addEventListener("sc_alert_actions_changed", bump as any);
+
+    // In case another tab changes localStorage
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === ALERT_STORAGE_KEY) bump();
+    };
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("sc_alert_actions_changed", bump as any);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
   // --- Derived: Alerts badge counts (combined low stock + low expiry) -------
+  // FIXED: excludes suppressed alerts where action.state === "NOT_REQUIRED"
   const alertsCounts = useMemo(() => {
+    void alertsTick;
+
+    const actions = loadAlertActions();
+
+    const suppressed = new Set<string>();
+    for (const [k, v] of Object.entries(actions)) {
+      if (v?.state === "NOT_REQUIRED") suppressed.add(k);
+    }
+
     // Available qty by material (sum of AVAILABLE segments)
     const availByMat = new Map<string, number>();
     for (const r of lotBalances as any[]) {
       if (String(r.status).toUpperCase() !== "AVAILABLE") continue;
 
       const code = String(r.material_code ?? "");
-      const balRaw = r.balance_qty ?? 0;
-      const bal = typeof balRaw === "number" ? balRaw : Number(balRaw);
-      const safeBal = Number.isFinite(bal) ? bal : 0;
-
-      availByMat.set(code, (availByMat.get(code) ?? 0) + safeBal);
+      const bal = safeNum(r.balance_qty ?? 0);
+      availByMat.set(code, (availByMat.get(code) ?? 0) + bal);
     }
 
-    // Low stock flagged materials
+    // Low stock flagged materials (excluding suppressed)
     let lowStock = 0;
     for (const m of materials as any[]) {
       const thr = m.low_stock_threshold_qty;
       if (thr === null || thr === undefined) continue;
 
-      const thrNum = typeof thr === "number" ? thr : Number(thr);
-      if (!Number.isFinite(thrNum)) continue;
+      const thrNum = safeNum(thr);
+      const avail = availByMat.get(String(m.material_code)) ?? 0;
 
-      const avail = availByMat.get(m.material_code) ?? 0;
-      if (avail <= thrNum) lowStock += 1;
+      if (avail <= thrNum) {
+        const k = keyLowStock(String(m.material_code));
+        if (!suppressed.has(k)) lowStock += 1;
+      }
     }
 
-    // Low expiry flagged lots (AVAILABLE lots where days_to_expiry <= material expiry_alert_days)
+    // Low expiry flagged lots (excluding suppressed)
     let lowExpiry = 0;
     const matByCode = new Map<string, any>();
-    for (const m of materials as any[]) matByCode.set(m.material_code, m);
+    for (const m of materials as any[]) matByCode.set(String(m.material_code), m);
 
     for (const r of lotBalances as any[]) {
       if (String(r.status).toUpperCase() !== "AVAILABLE") continue;
 
-      const balRaw = r.balance_qty ?? 0;
-      const bal = typeof balRaw === "number" ? balRaw : Number(balRaw);
-      if (!Number.isFinite(bal) || bal <= 0) continue;
+      const bal = safeNum(r.balance_qty ?? 0);
+      if (bal <= 0) continue;
 
       if (!r.expiry_date) continue;
 
-      const mat = matByCode.get(r.material_code);
+      const mat = matByCode.get(String(r.material_code));
       const alertDays = mat?.expiry_alert_days;
       if (alertDays === null || alertDays === undefined) continue;
 
-      const alertNum = typeof alertDays === "number" ? alertDays : Number(alertDays);
-      if (!Number.isFinite(alertNum)) continue;
+      const alertNum = safeNum(alertDays);
 
       const dte = r.days_to_expiry;
       if (dte === null || dte === undefined) continue;
 
-      const dteNum = typeof dte === "number" ? dte : Number(dte);
-      if (!Number.isFinite(dteNum)) continue;
-
-      if (dteNum <= alertNum) lowExpiry += 1;
+      const dteNum = safeNum(dte);
+      if (dteNum <= alertNum) {
+        const k = keyLowExpiry(String(r.material_code), String(r.lot_number));
+        if (!suppressed.has(k)) lowExpiry += 1;
+      }
     }
 
     return { lowStock, lowExpiry, total: lowStock + lowExpiry };
-  }, [materials, lotBalances]);
+  }, [alertsTick, materials, lotBalances]);
 
   // --- Loaders --------------------------------------------------------------
   const loadLotBalances = async () => {
@@ -464,14 +536,8 @@ const App: React.FC = () => {
 
         <div className="sidebar-section-label">Risk &amp; Quality</div>
         <ul className="nav-list">
-          {/* Existing placeholders kept intact */}
-          <li className="nav-item">
-            <a href="#" className="nav-link">
-              <span className="icon">⏰</span>
-              Expiry Watchlist
-              <span className="badge">12</span>
-            </a>
-          </li>
+          {/* ✅ Removed placeholder Expiry Watchlist */}
+
           <li className="nav-item">
             <a href="#" className="nav-link">
               <span className="icon">📦</span>
@@ -480,7 +546,7 @@ const App: React.FC = () => {
             </a>
           </li>
 
-          {/* ✅ Phase D4 page + ✅ combined badge */}
+          {/* ✅ Phase D4 page + ✅ badge excludes NOT_REQUIRED */}
           <li className="nav-item">
             <button
               type="button"
