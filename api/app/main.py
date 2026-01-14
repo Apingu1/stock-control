@@ -24,7 +24,8 @@ from .models import Base  # noqa: F401,E402
 
 from .routers import materials, receipts, issues, lot_balances, summary  # noqa: E402
 from .routers import auth, admin  # noqa: E402
-from .routers import audit  # ✅ NEW (additive)
+from .routers import audit
+from .routers import alerts
 
 app.include_router(materials.router)
 app.include_router(receipts.router)
@@ -38,6 +39,7 @@ app.include_router(admin.router)
 # ✅ Audit API (read model for UI)
 app.include_router(audit.router)
 
+app.include_router(alerts.router)
 
 @app.get("/health")
 def health():

@@ -38,6 +38,9 @@ function buildStatusTooltip(lot: LotBalance) {
  *  - days_to_expiry (int)
  *  - expiry_threshold_days (int)
  * This tooltip shows a simple explanation of the rule.
+ *
+ * Updated (Phase D4 UI tweak):
+ * Also show "Days to AQ" = max(days_to_expiry - expiry_threshold_days, 0)
  */
 function buildExpiryTooltip(lot: LotBalance) {
   if (!lot.expiry_date) return "—";
@@ -60,6 +63,8 @@ function buildExpiryTooltip(lot: LotBalance) {
   }
 
   if (typeof d === "number" && typeof t === "number") {
+    const daysToAQ = Math.max(d - t, 0);
+    parts.push(`Days to AQ: ${daysToAQ}`);
     parts.push("Auto-quarantine triggers when days_to_expiry ≤ threshold");
   }
 
@@ -82,8 +87,7 @@ const exportToCsv = (filename: string, rows: (string | number | null | undefined
     return s;
   };
 
-  const csvContent =
-    rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
+  const csvContent = rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
 
   // ✅ Fix Excel “Â£” issue: add UTF-8 BOM
   const BOM = "\ufeff";
@@ -130,9 +134,7 @@ const LiveLotsView: React.FC<{
   }, [lotBalances]);
 
   const uniqueStatuses = useMemo(() => {
-    return Array.from(
-      new Set(lotBalances.map((l) => normalizeStatus(l.status)).filter((x) => x))
-    ).sort();
+    return Array.from(new Set(lotBalances.map((l) => normalizeStatus(l.status)).filter((x) => x))).sort();
   }, [lotBalances]);
 
   const filteredLots = useMemo(() => {
@@ -204,7 +206,7 @@ const LiveLotsView: React.FC<{
       "Expiry",
       "Manufacturer",
       "Balance",
-      "Total cost",               // ✅ moved before total available
+      "Total cost", // ✅ moved before total available
       "Total Available (All lots)",
       "UOM",
       "Status",
@@ -249,9 +251,7 @@ const LiveLotsView: React.FC<{
         <div className="card-header">
           <div>
             <div className="card-title">Live Lots</div>
-            <div className="card-subtitle">
-              On-hand balances by material + lot segment (split-lot safe).
-            </div>
+            <div className="card-subtitle">On-hand balances by material + lot segment (split-lot safe).</div>
           </div>
 
           <div className="card-actions">
@@ -388,9 +388,7 @@ const LiveLotsView: React.FC<{
 
                       {/* ✅ Phase D3 hover tooltip */}
                       <td>
-                        <span title={buildExpiryTooltip(lot)}>
-                          {formatDate(lot.expiry_date)}
-                        </span>
+                        <span title={buildExpiryTooltip(lot)}>{formatDate(lot.expiry_date)}</span>
                       </td>
 
                       <td>{lot.manufacturer || "—"}</td>

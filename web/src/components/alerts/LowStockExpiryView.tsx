@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { LotBalance, Material } from "../../types";
+import {
+  fetchAlertActions,
+  upsertAlertAction,
+  deleteAlertAction,
+} from "../../utils/api";
 
 type Props = {
   materials: Material[];
@@ -153,44 +158,118 @@ function computeDaysToAQ(row: any): number | null {
   return v < 0 ? 0 : v;
 }
 
+type UpsertMeta = {
+  alert_type: AlertType;
+  material_code: string;
+  lot_number?: string | null;
+  last_seen_available_qty?: number | null;
+};
+
 const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
   const [q, setQ] = useState("");
   const [actionsLoaded, setActionsLoaded] = useState(false);
   const [actions, setActions] = useState<Record<string, AlertAction>>({});
   const [showSuppressed, setShowSuppressed] = useState(false);
 
+  // Load local immediately (fast UI), then hydrate from API (authoritative)
   useEffect(() => {
-    const map = loadActions();
-    setActions(map);
-    setActionsLoaded(true);
-    try {
-      window.dispatchEvent(new CustomEvent("sc_alert_actions_changed"));
-    } catch {
-      // ignore
-    }
+    const local = loadActions();
+    setActions(local);
+
+    (async () => {
+      try {
+        const rows = await fetchAlertActions({ include_not_required: true });
+
+        const map: Record<string, AlertAction> = {};
+        for (const r of rows) {
+          map[r.alert_key] = {
+            state: r.state,
+            eta_text: r.eta_text ?? undefined,
+            updated_at: r.updated_at,
+            last_seen_available_qty: r.last_seen_available_qty ?? undefined,
+          };
+        }
+
+        setActions(map);
+        saveActions(map); // keep sidebar badge logic compatible
+      } catch (e) {
+        console.error("Failed to load alert actions from API, using localStorage fallback:", e);
+      } finally {
+        setActionsLoaded(true);
+        try {
+          window.dispatchEvent(new CustomEvent("sc_alert_actions_changed"));
+        } catch {
+          // ignore
+        }
+      }
+    })();
   }, []);
 
-  const upsertAction = (key: string, patch: Partial<AlertAction>) => {
+  const upsertAction = async (key: string, patch: Partial<AlertAction>, meta: UpsertMeta) => {
+    // optimistic UI
     setActions((prev) => {
       const cur = prev[key] ?? { state: "NEW" as AlertState };
-      const next: AlertAction = {
-        ...cur,
-        ...patch,
-        updated_at: nowIso(),
-      };
+      const next: AlertAction = { ...cur, ...patch, updated_at: nowIso() };
       const merged = { ...prev, [key]: next };
       saveActions(merged);
       return merged;
     });
+
+    try {
+      const current = actions[key] ?? { state: "NEW" as AlertState };
+      const state = (patch.state ?? current.state ?? "NEW") as AlertState;
+
+      await upsertAlertAction({
+        alert_key: key,
+        alert_type: meta.alert_type,
+        material_code: meta.material_code,
+        lot_number: meta.lot_number ?? null,
+        state,
+        eta_text: patch.eta_text ?? current.eta_text ?? null,
+        last_seen_available_qty:
+          patch.last_seen_available_qty ??
+          meta.last_seen_available_qty ??
+          current.last_seen_available_qty ??
+          null,
+      });
+    } catch (e) {
+      console.error("Failed to save alert action to API:", e);
+      alert("Failed to save alert update. Please try again.");
+      // reload authoritative
+      try {
+        const rows = await fetchAlertActions({ include_not_required: true });
+        const map: Record<string, AlertAction> = {};
+        for (const r of rows) {
+          map[r.alert_key] = {
+            state: r.state,
+            eta_text: r.eta_text ?? undefined,
+            updated_at: r.updated_at,
+            last_seen_available_qty: r.last_seen_available_qty ?? undefined,
+          };
+        }
+        setActions(map);
+        saveActions(map);
+      } catch {
+        // ignore
+      }
+    }
   };
 
-  const removeAction = (key: string) => {
+  const removeAction = async (key: string) => {
+    // optimistic UI
     setActions((prev) => {
       const next = { ...prev };
       delete next[key];
       saveActions(next);
       return next;
     });
+
+    try {
+      await deleteAlertAction(key);
+    } catch (e) {
+      console.error("Failed to delete alert action:", e);
+      alert("Failed to delete alert entry. Please try again.");
+    }
   };
 
   const availableQtyByMaterial = useMemo(() => {
@@ -238,8 +317,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         if (!hay.includes(query)) continue;
       }
 
-      const sev: "warn" | "critical" =
-        thr > 0 && avail <= thr * 0.5 ? "critical" : "warn";
+      const sev: "warn" | "critical" = thr > 0 && avail <= thr * 0.5 ? "critical" : "warn";
 
       out.push({
         key,
@@ -296,7 +374,6 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       const exp = String(r.expiry_date);
       const daysToExpiry = safeNum(dte);
 
-      // ✅ Days to AQ (auto-quarantine) restored from older script logic
       const daysToAQ = computeDaysToAQ(r);
 
       if (query) {
@@ -304,8 +381,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         if (!hay.includes(query)) continue;
       }
 
-      const sev: "warn" | "critical" =
-        daysToExpiry <= 7 ? "critical" : "warn";
+      const sev: "warn" | "critical" = daysToExpiry <= 7 ? "critical" : "warn";
 
       out.push({
         key,
@@ -331,7 +407,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     return out;
   }, [lotBalances, materialByCode, actions, q]);
 
-  // keep action map "fresh" so NOT_REQUIRED is sticky even when balances fluctuate
+  // Keep low-stock last_seen qty fresh (optional)
   useEffect(() => {
     if (!actionsLoaded) return;
 
@@ -339,7 +415,6 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       let changed = false;
       const next = { ...prev };
 
-      // low stock: update last_seen_available_qty
       for (const mat of materials as any[]) {
         const thrRaw = mat.low_stock_threshold_qty;
         if (thrRaw === null || thrRaw === undefined) continue;
@@ -350,7 +425,6 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         if (!act) continue;
 
         const avail = availableQtyByMaterial.get(code) ?? 0;
-
         if (act.last_seen_available_qty !== avail) {
           next[key] = { ...act, last_seen_available_qty: avail };
           changed = true;
@@ -404,20 +478,8 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     );
   };
 
-  const sectionHeader = (
-    title: string,
-    count: number,
-    kind: "neutral" | "warn" | "critical"
-  ) => (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        gap: 12,
-        marginBottom: 10,
-      }}
-    >
+  const sectionHeader = (title: string, count: number, kind: "neutral" | "warn" | "critical") => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
       </div>
@@ -454,7 +516,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     borderSpacing: 0,
   };
 
-  const renderMgmtCell = (k: string, act: AlertAction) => {
+  const renderMgmtCell = (k: string, act: AlertAction, meta: UpsertMeta) => {
     const onChangeState = (nextState: AlertState) => {
       if (nextState === "NOT_REQUIRED" && act.state !== "NOT_REQUIRED") {
         const ok = window.confirm(
@@ -462,7 +524,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         );
         if (!ok) return;
       }
-      upsertAction(k, { state: nextState });
+      void upsertAction(k, { state: nextState }, meta);
     };
 
     return (
@@ -485,7 +547,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
           style={{ height: 34, width: 220, fontSize: 13 }}
           placeholder="ETA / due date (text)…"
           value={act.eta_text ?? ""}
-          onChange={(e) => upsertAction(k, { eta_text: e.target.value })}
+          onChange={(e) => void upsertAction(k, { eta_text: e.target.value }, meta)}
         />
 
         {badge(
@@ -504,10 +566,8 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       out.push({ key: k, info: parseKey(k), action: v });
     }
     out.sort((a, b) => {
-      if (a.info.type !== b.info.type)
-        return a.info.type.localeCompare(b.info.type);
-      if (a.info.material !== b.info.material)
-        return a.info.material.localeCompare(b.info.material);
+      if (a.info.type !== b.info.type) return a.info.type.localeCompare(b.info.type);
+      if (a.info.material !== b.info.material) return a.info.material.localeCompare(b.info.material);
       return (a.info.lot ?? "").localeCompare(b.info.lot ?? "");
     });
     return out;
@@ -565,34 +625,18 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       {/* LOW STOCK */}
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card-header" style={{ paddingBottom: 0 }}>
-          {sectionHeader(
-            "Low Stock",
-            lowStockRows.length,
-            lowStockRows.length > 0 ? "warn" : "neutral"
-          )}
+          {sectionHeader("Low Stock", lowStockRows.length, lowStockRows.length > 0 ? "warn" : "neutral")}
         </div>
 
-        <div
-          className="table-wrap"
-          style={{
-            paddingTop: 6,
-            maxHeight: 360,
-            overflow: "auto",
-            borderRadius: 12,
-          }}
-        >
+        <div className="table-wrap" style={{ paddingTop: 6, maxHeight: 360, overflow: "auto", borderRadius: 12 }}>
           <table style={tableStyle}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, width: "14%" }}>Material</th>
                 <th style={{ ...thStyle, width: "22%" }}>Name</th>
                 <th style={{ ...thStyle, width: "14%" }}>Category / Type</th>
-                <th style={{ ...thStyle, textAlign: "right", width: "9%" }}>
-                  Available
-                </th>
-                <th style={{ ...thStyle, textAlign: "right", width: "9%" }}>
-                  Threshold
-                </th>
+                <th style={{ ...thStyle, textAlign: "right", width: "9%" }}>Available</th>
+                <th style={{ ...thStyle, textAlign: "right", width: "9%" }}>Threshold</th>
                 <th style={{ ...thStyle, width: "8%" }}>UOM</th>
                 <th style={{ ...thStyle, width: "24%" }}>Alert management</th>
               </tr>
@@ -609,39 +653,29 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                   <tr
                     key={r.key}
                     style={{
-                      background:
-                        r.severity === "critical"
-                          ? "rgba(239, 68, 68, 0.06)"
-                          : "transparent",
+                      background: r.severity === "critical" ? "rgba(239, 68, 68, 0.06)" : "transparent",
                     }}
                   >
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>
-                      {r.material_code}
-                    </td>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>{r.material_code}</td>
                     <td style={tdStyle}>{r.name}</td>
                     <td style={tdStyle} className="muted">
                       {r.category_code} / {r.type_code}
                     </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
+                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {r.available_qty}
                     </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
+                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {r.threshold_qty}
                     </td>
                     <td style={tdStyle}>{r.base_uom_code}</td>
-                    <td style={tdStyle}>{renderMgmtCell(r.key, r.action)}</td>
+                    <td style={tdStyle}>
+                      {renderMgmtCell(r.key, r.action, {
+                        alert_type: "LOW_STOCK",
+                        material_code: r.material_code,
+                        lot_number: null,
+                        last_seen_available_qty: r.available_qty,
+                      })}
+                    </td>
                   </tr>
                 ))
               )}
@@ -653,22 +687,10 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       {/* LOW EXPIRY */}
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card-header" style={{ paddingBottom: 0 }}>
-          {sectionHeader(
-            "Low Expiry",
-            lowExpiryRows.length,
-            lowExpiryRows.length > 0 ? "warn" : "neutral"
-          )}
+          {sectionHeader("Low Expiry", lowExpiryRows.length, lowExpiryRows.length > 0 ? "warn" : "neutral")}
         </div>
 
-        <div
-          className="table-wrap"
-          style={{
-            paddingTop: 6,
-            maxHeight: 420,
-            overflow: "auto",
-            borderRadius: 12,
-          }}
-        >
+        <div className="table-wrap" style={{ paddingTop: 6, maxHeight: 420, overflow: "auto", borderRadius: 12 }}>
           <table style={tableStyle}>
             <thead>
               <tr>
@@ -676,11 +698,8 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                 <th style={{ ...thStyle, width: "22%" }}>Name</th>
                 <th style={{ ...thStyle, width: "14%" }}>Lot</th>
                 <th style={{ ...thStyle, width: "14%" }}>Expiry</th>
-                <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>
-                  Days to expiry
-                </th>
+                <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>Days to expiry</th>
 
-                {/* ✅ AQ label + tooltip */}
                 <th
                   style={{
                     ...thStyle,
@@ -694,12 +713,8 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                   Days to AQ
                 </th>
 
-                <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>
-                  Alert days
-                </th>
-                <th style={{ ...thStyle, textAlign: "right", width: "10%" }}>
-                  Qty
-                </th>
+                <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>Alert days</th>
+                <th style={{ ...thStyle, textAlign: "right", width: "10%" }}>Qty</th>
                 <th style={{ ...thStyle, width: "24%" }}>Alert management</th>
               </tr>
             </thead>
@@ -715,55 +730,33 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                   <tr
                     key={r.key}
                     style={{
-                      background:
-                        r.severity === "critical"
-                          ? "rgba(239, 68, 68, 0.06)"
-                          : "transparent",
+                      background: r.severity === "critical" ? "rgba(239, 68, 68, 0.06)" : "transparent",
                     }}
                   >
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>
-                      {r.material_code}
-                    </td>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>{r.material_code}</td>
                     <td style={tdStyle}>{r.name}</td>
                     <td style={tdStyle}>{r.lot_number}</td>
                     <td style={tdStyle}>{r.expiry_date}</td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
+                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {r.days_to_expiry}
                     </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
+                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {r.days_to_quarantine === null ? "—" : r.days_to_quarantine}
                     </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
+                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {r.alert_days}
                     </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
+                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {r.qty}
                     </td>
-                    <td style={tdStyle}>{renderMgmtCell(r.key, r.action)}</td>
+                    <td style={tdStyle}>
+                      {renderMgmtCell(r.key, r.action, {
+                        alert_type: "LOW_EXPIRY",
+                        material_code: r.material_code,
+                        lot_number: r.lot_number,
+                        last_seen_available_qty: null,
+                      })}
+                    </td>
                   </tr>
                 ))
               )}
@@ -783,11 +776,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                   Alerts marked as “Not required” won’t appear until restocked / re-triggered.
                 </div>
               </div>
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => setShowSuppressed(false)}
-              >
+              <button className="btn btn-ghost" type="button" onClick={() => setShowSuppressed(false)}>
                 Close
               </button>
             </div>
@@ -810,9 +799,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                   <tbody>
                     {suppressed.map((s) => (
                       <tr key={s.key}>
-                        <td style={tdStyle}>
-                          {s.info.type === "LOW_STOCK" ? "Low Stock" : "Low Expiry"}
-                        </td>
+                        <td style={tdStyle}>{s.info.type === "LOW_STOCK" ? "Low Stock" : "Low Expiry"}</td>
                         <td style={tdStyle}>{s.info.material}</td>
                         <td style={tdStyle}>{s.info.lot ?? "—"}</td>
                         <td style={tdStyle}>{s.action.state}</td>
@@ -821,14 +808,19 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                           <button
                             className="btn btn-ghost"
                             type="button"
-                            onClick={() => upsertAction(s.key, { state: "NEW" })}
+                            onClick={() => void upsertAction(s.key, { state: "NEW" }, {
+                              alert_type: s.info.type,
+                              material_code: s.info.material,
+                              lot_number: s.info.type === "LOW_EXPIRY" ? (s.info.lot ?? null) : null,
+                              last_seen_available_qty: null,
+                            })}
                           >
                             Undo
                           </button>
                           <button
                             className="btn btn-ghost"
                             type="button"
-                            onClick={() => removeAction(s.key)}
+                            onClick={() => void removeAction(s.key)}
                             style={{ marginLeft: 8 }}
                           >
                             Delete entry

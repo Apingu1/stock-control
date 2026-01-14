@@ -118,3 +118,64 @@ export async function fetchAuditEvents(params: {
   const res = await apiFetch(`/audit/events?${qs.toString()}`);
   return await res.json();
 }
+
+/* -------------------------------------------------------------------------- */
+/* Alerts (Phase D4+: server-side persistence)                                */
+/* -------------------------------------------------------------------------- */
+
+export type AlertActionRow = {
+  id: number;
+  alert_key: string;
+  alert_type: "LOW_STOCK" | "LOW_EXPIRY";
+  material_code: string;
+  lot_number?: string | null;
+  state:
+    | "NEW"
+    | "ACKNOWLEDGED"
+    | "ON_ORDER"
+    | "DELAYED"
+    | "UNAVAILABLE"
+    | "NOT_REQUIRED";
+  eta_text?: string | null;
+  last_seen_available_qty?: number | null;
+  created_at: string;
+  updated_at: string;
+  updated_by?: string | null;
+};
+
+export async function fetchAlertActions(opts?: { include_not_required?: boolean }) {
+  const qs = new URLSearchParams();
+  if (opts?.include_not_required === false) qs.set("include_not_required", "false");
+  const res = await apiFetch(`/alerts/actions?${qs.toString()}`);
+  return (await res.json()) as AlertActionRow[];
+}
+
+export async function upsertAlertAction(row: {
+  alert_key: string;
+  alert_type: "LOW_STOCK" | "LOW_EXPIRY";
+  material_code: string;
+  lot_number?: string | null;
+  state:
+    | "NEW"
+    | "ACKNOWLEDGED"
+    | "ON_ORDER"
+    | "DELAYED"
+    | "UNAVAILABLE"
+    | "NOT_REQUIRED";
+  eta_text?: string | null;
+  last_seen_available_qty?: number | null;
+}) {
+  const res = await apiFetch("/alerts/actions", {
+    method: "POST",
+    body: JSON.stringify(row),
+  });
+  return (await res.json()) as AlertActionRow;
+}
+
+export async function deleteAlertAction(alert_key: string) {
+  const qs = new URLSearchParams();
+  qs.set("alert_key", alert_key);
+  const res = await apiFetch(`/alerts/actions?${qs.toString()}`, { method: "DELETE" });
+  return (await res.json()) as { ok: boolean };
+}
+

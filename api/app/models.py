@@ -491,3 +491,30 @@ class ExpiryThresholdSetting(Base):
     __table_args__ = (
         UniqueConstraint("category_code", "type_code", name="uq_expiry_threshold_cat_type"),
     )
+
+# --- Phase D4+: Alert actions (server-side persistence) ----------------------
+
+class AlertAction(Base):
+    __tablename__ = "alert_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    alert_key: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    alert_type: Mapped[str] = mapped_column(Text, nullable=False)  # LOW_STOCK / LOW_EXPIRY
+    material_code: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    lot_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    state: Mapped[str] = mapped_column(Text, nullable=False)  # NEW/ACKNOWLEDGED/...
+    eta_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_seen_available_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    updated_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

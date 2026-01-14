@@ -399,3 +399,31 @@ class ExpiryThresholdSettingOut(BaseModel):
 class ExpiryThresholdSettingUpdate(BaseModel):
     threshold_days: Optional[int] = None
     is_active: Optional[bool] = None
+
+# ---------------------------------------------------------------------------
+# ALERTS (Phase D4+: Server-persisted alert actions)
+# ---------------------------------------------------------------------------
+
+class AlertActionBase(BaseModel):
+    alert_key: str
+    alert_type: str  # LOW_STOCK / LOW_EXPIRY
+    material_code: str
+    lot_number: Optional[str] = None
+
+    state: str  # NEW/ACKNOWLEDGED/ON_ORDER/DELAYED/UNAVAILABLE/NOT_REQUIRED
+    eta_text: Optional[str] = None
+    last_seen_available_qty: Optional[float] = None
+
+
+class AlertActionUpsert(AlertActionBase):
+    pass
+
+
+class AlertActionOut(AlertActionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    updated_by: Optional[str] = None
+
+    class Config:
+        from_attributes = True
