@@ -392,7 +392,14 @@ const LiveLotsView: React.FC<{
                       </td>
 
                       <td>{lot.manufacturer || "—"}</td>
-                      <td className="numeric">{lot.balance_qty}</td>
+
+                      {/* ✅ ONLY CHANGE: make Balance bold */}
+                      <td
+                        className="numeric"
+                        style={{ fontWeight: 900, fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {lot.balance_qty}
+                      </td>
 
                       <td className="numeric">{formatMoney(lotValue)}</td>
 

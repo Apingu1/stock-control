@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from ..db import get_db
 from ..schemas import LotBalanceOut, LotStatusChangeCreate
@@ -49,8 +50,6 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
     - Idempotent: only processes AVAILABLE segments with positive balance.
     - Does NOT block issues in this phase.
     """
-    # Find AVAILABLE segments whose expiry is within configured threshold.
-    # We join MaterialLot -> Material to get category/type codes.
     candidates = (
         db.query(MaterialLot.id)
         .join(Material, Material.id == MaterialLot.material_id)
@@ -84,7 +83,6 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
             if bal <= 0:
                 continue
 
-            # See if a QUARANTINE segment already exists for same material + lot_number.
             dest_lot = (
                 db.query(MaterialLot)
                 .filter(
@@ -102,7 +100,6 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
             reason_with_qty = f"{AUTO_QUARANTINE_REASON} | qty={bal} {uom_code}"
 
             if dest_lot:
-                # Merge: move full balance from AVAILABLE segment -> existing QUARANTINE segment
                 db.add(
                     StockTransaction(
                         material_lot_id=lot.id,
@@ -145,15 +142,8 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
                     )
                 )
 
-                # IMPORTANT:
-                # We cannot set the source segment to QUARANTINE because of unique constraint
-                # (material_id, lot_number, status). A QUARANTINE segment already exists.
-                # The STATUS_MOVE txns drain this AVAILABLE segment to 0, and include_zero=False
-                # ensures it won't show in Live Lots.
-              
                 db.commit()
             else:
-                # Whole segment: simply change status + log status change
                 db.add(
                     LotStatusChange(
                         material_lot_id=lot.id,
@@ -181,7 +171,6 @@ def list_lot_balances(
     include_zero: bool = Query(False, description="Include lots with zero balance"),
     limit: int = Query(200, ge=1, le=1000),
 ):
-    # Phase D3: request-time auto-quarantine (idempotent)
     _run_auto_quarantine_low_expiry(db)
 
     sql = """
@@ -269,11 +258,13 @@ def change_lot_status(
     user: User = Depends(require_permission("lots.status_change")),  # ✅ Phase B permission
 ) -> LotBalanceOut:
     """
-    Phase A (kept behaviour):
-    - changed_by is enforced from authenticated user (server-side)
+    Status change / merge logic:
 
-    Phase B:
-    - Requires lots.status_change permission (server-side)
+    - If destination segment exists (same material+lot_number+target status), we ALWAYS do a STATUS_MOVE
+      into the destination and drain the source.
+    - IMPORTANT: When destination exists, we MUST NOT set lot.status = new_status (even for whole_lot),
+      because it would violate the unique constraint (two segments with same status).
+      The source segment is drained to 0 and will not appear in Live Lots (include_zero=False).
     """
     lot = db.query(MaterialLot).filter(MaterialLot.id == material_lot_id).one_or_none()
     if lot is None:
@@ -323,8 +314,6 @@ def change_lot_status(
     material = db.query(Material).filter(Material.id == lot.material_id).one()
     uom_code = material.base_uom_code
 
-    # ✅ Make sure audit details always include quantity
-    # This flows into LOT_STATUS_CHANGE audit "details" via reason/last_status_reason.
     reason_with_qty = f"{base_reason} | qty={move_qty_f} {uom_code}"
 
     dest_statuses = [new_status]
@@ -343,79 +332,9 @@ def change_lot_status(
         .first()
     )
 
-    # --- Destination segment exists ------------------------------------------
-    if dest_lot:
-        db.add(
-            StockTransaction(
-                material_lot_id=lot.id,
-                txn_type="STATUS_MOVE",
-                qty=move_qty_f,
-                uom_code=uom_code,
-                direction=-1,
-                comment=f"Moved {move_qty_f} {uom_code} from {old_status} to {new_status}. Reason: {base_reason}",
-                created_by=changed_by,
-            )
-        )
-        db.add(
-            StockTransaction(
-                material_lot_id=dest_lot.id,
-                txn_type="STATUS_MOVE",
-                qty=move_qty_f,
-                uom_code=uom_code,
-                direction=+1,
-                comment=f"Received {move_qty_f} {uom_code} from {old_status} segment. Reason: {base_reason}",
-                created_by=changed_by,
-            )
-        )
-
-        db.add(
-            LotStatusChange(
-                material_lot_id=lot.id,
-                old_status=old_status,
-                new_status=new_status,
-                reason=reason_with_qty,
-                changed_by=changed_by,
-            )
-        )
-        db.add(
-            LotStatusChange(
-                material_lot_id=dest_lot.id,
-                old_status=_normalise_status(dest_lot.status),
-                new_status=new_status,
-                reason=f"Merged in qty={move_qty_f} {uom_code} from {old_status}. {base_reason}",
-                changed_by=changed_by,
-            )
-        )
-
-        if whole_lot:
-            lot.status = new_status
-
-        db.commit()
-
-    # --- NO destination segment exists ---------------------------------------
-    else:
-        if whole_lot:
-            db.add(
-                LotStatusChange(
-                    material_lot_id=lot.id,
-                    old_status=old_status,
-                    new_status=new_status,
-                    reason=reason_with_qty,
-                    changed_by=changed_by,
-                )
-            )
-            lot.status = new_status
-            db.commit()
-        else:
-            new_lot = MaterialLot(
-                material_id=lot.material_id,
-                lot_number=lot.lot_number,
-                expiry_date=lot.expiry_date,
-                status=new_status,
-            )
-            db.add(new_lot)
-            db.flush()
-
+    try:
+        # --- Destination segment exists ------------------------------------------
+        if dest_lot:
             db.add(
                 StockTransaction(
                     material_lot_id=lot.id,
@@ -423,13 +342,13 @@ def change_lot_status(
                     qty=move_qty_f,
                     uom_code=uom_code,
                     direction=-1,
-                    comment=f"Moved {move_qty_f} {uom_code} from {old_status} to new {new_status} segment. Reason: {base_reason}",
+                    comment=f"Moved {move_qty_f} {uom_code} from {old_status} to {new_status}. Reason: {base_reason}",
                     created_by=changed_by,
                 )
             )
             db.add(
                 StockTransaction(
-                    material_lot_id=new_lot.id,
+                    material_lot_id=dest_lot.id,
                     txn_type="STATUS_MOVE",
                     qty=move_qty_f,
                     uom_code=uom_code,
@@ -438,17 +357,101 @@ def change_lot_status(
                     created_by=changed_by,
                 )
             )
+
+            # Keep status-change history (requested status change + merge)
             db.add(
                 LotStatusChange(
-                    material_lot_id=new_lot.id,
+                    material_lot_id=lot.id,
                     old_status=old_status,
                     new_status=new_status,
                     reason=reason_with_qty,
                     changed_by=changed_by,
                 )
             )
+            db.add(
+                LotStatusChange(
+                    material_lot_id=dest_lot.id,
+                    old_status=_normalise_status(dest_lot.status),
+                    new_status=new_status,
+                    reason=f"Merged in qty={move_qty_f} {uom_code} from {old_status}. {base_reason}",
+                    changed_by=changed_by,
+                )
+            )
 
+            # ✅ CRITICAL FIX:
+            # Do NOT set lot.status=new_status when dest exists (unique constraint).
+            # We rely on STATUS_MOVE txns to drain source to 0.
             db.commit()
+
+        # --- NO destination segment exists ---------------------------------------
+        else:
+            if whole_lot:
+                db.add(
+                    LotStatusChange(
+                        material_lot_id=lot.id,
+                        old_status=old_status,
+                        new_status=new_status,
+                        reason=reason_with_qty,
+                        changed_by=changed_by,
+                    )
+                )
+                lot.status = new_status
+                db.commit()
+            else:
+                new_lot = MaterialLot(
+                    material_id=lot.material_id,
+                    lot_number=lot.lot_number,
+                    expiry_date=lot.expiry_date,
+                    status=new_status,
+                )
+                db.add(new_lot)
+                db.flush()
+
+                db.add(
+                    StockTransaction(
+                        material_lot_id=lot.id,
+                        txn_type="STATUS_MOVE",
+                        qty=move_qty_f,
+                        uom_code=uom_code,
+                        direction=-1,
+                        comment=f"Moved {move_qty_f} {uom_code} from {old_status} to new {new_status} segment. Reason: {base_reason}",
+                        created_by=changed_by,
+                    )
+                )
+                db.add(
+                    StockTransaction(
+                        material_lot_id=new_lot.id,
+                        txn_type="STATUS_MOVE",
+                        qty=move_qty_f,
+                        uom_code=uom_code,
+                        direction=+1,
+                        comment=f"Received {move_qty_f} {uom_code} from {old_status} segment. Reason: {base_reason}",
+                        created_by=changed_by,
+                    )
+                )
+                db.add(
+                    LotStatusChange(
+                        material_lot_id=new_lot.id,
+                        old_status=old_status,
+                        new_status=new_status,
+                        reason=reason_with_qty,
+                        changed_by=changed_by,
+                    )
+                )
+
+                db.commit()
+
+    except IntegrityError as e:
+        db.rollback()
+        logger.exception(f"IntegrityError in status-change for lot_id={material_lot_id}: {e}")
+        raise HTTPException(
+            status_code=409,
+            detail="Status-change merge failed due to a database constraint (duplicate status segment).",
+        )
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Status-change failed for lot_id={material_lot_id}: {e}")
+        raise HTTPException(status_code=500, detail="Status-change failed (server error).")
 
     row = db.execute(
         text(
