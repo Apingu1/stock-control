@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { LotBalance, Material } from "../../types";
 import {
   fetchAlertActions,
   upsertAlertAction,
   deleteAlertAction,
+  pruneAlertActions,
 } from "../../utils/api";
 
 type Props = {
@@ -98,6 +99,8 @@ type LowExpiryRow = {
   key: string;
   material_code: string;
   name: string;
+  category_code: string;
+  type_code: string;
   lot_number: string;
   expiry_date: string;
   days_to_expiry: number;
@@ -117,6 +120,16 @@ const STATE_OPTIONS: { value: AlertState; label: string }[] = [
   { value: "NOT_REQUIRED", label: "Not required" },
 ];
 
+const FILTER_STATE_OPTIONS: { value: "ALL" | Exclude<AlertState, "NOT_REQUIRED">; label: string }[] =
+  [
+    { value: "ALL", label: "All statuses" },
+    { value: "NEW", label: "New" },
+    { value: "ACKNOWLEDGED", label: "Acknowledged" },
+    { value: "ON_ORDER", label: "On order" },
+    { value: "DELAYED", label: "Delayed" },
+    { value: "UNAVAILABLE", label: "Unavailable" },
+  ];
+
 function stateBadgeKind(s: AlertState): "neutral" | "warn" | "critical" {
   if (s === "NOT_REQUIRED") return "neutral";
   if (s === "ON_ORDER") return "neutral";
@@ -124,6 +137,17 @@ function stateBadgeKind(s: AlertState): "neutral" | "warn" | "critical" {
   if (s === "UNAVAILABLE") return "critical";
   if (s === "DELAYED") return "warn";
   return "warn";
+}
+
+function statePriority(s: AlertState): number {
+  // Lower = higher priority
+  // Suggested order: NEW, UNAVAILABLE, DELAYED, ON_ORDER, ACKNOWLEDGED
+  if (s === "NEW") return 0;
+  if (s === "UNAVAILABLE") return 1;
+  if (s === "DELAYED") return 2;
+  if (s === "ON_ORDER") return 3;
+  if (s === "ACKNOWLEDGED") return 4;
+  return 99;
 }
 
 /**
@@ -165,11 +189,32 @@ type UpsertMeta = {
   last_seen_available_qty?: number | null;
 };
 
+type LowStockSortMode = "SEVERITY" | "LOWEST_AVAILABLE" | "STATUS_PRIORITY" | "MATERIAL";
+type LowExpirySortMode = "SOONEST_AQ" | "SOONEST_EXPIRY" | "STATUS_PRIORITY" | "MATERIAL";
+
 const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
   const [q, setQ] = useState("");
   const [actionsLoaded, setActionsLoaded] = useState(false);
   const [actions, setActions] = useState<Record<string, AlertAction>>({});
   const [showSuppressed, setShowSuppressed] = useState(false);
+
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<"ALL" | Exclude<AlertState, "NOT_REQUIRED">>(
+    "ALL"
+  );
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
+
+  // Sorting
+  const [lowStockSort, setLowStockSort] = useState<LowStockSortMode>("SEVERITY");
+  const [lowExpirySort, setLowExpirySort] = useState<LowExpirySortMode>("SOONEST_AQ");
+
+  // ETA draft state (avoid request-per-keystroke)
+  const [etaDraft, setEtaDraft] = useState<Record<string, string>>({});
+  const etaTimersRef = useRef<Record<string, number>>({});
+
+  // Prune debounce
+  const pruneTimerRef = useRef<number | null>(null);
 
   // Load local immediately (fast UI), then hydrate from API (authoritative)
   useEffect(() => {
@@ -288,19 +333,101 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     return m;
   }, [materials]);
 
+  const categoryOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of materials as any[]) {
+      const c = String(m.category_code ?? "").trim();
+      if (c) s.add(c);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [materials]);
+
+  const typeOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of materials as any[]) {
+      const t = String(m.type_code ?? "").trim();
+      if (t) s.add(t);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [materials]);
+
+  // --- Active alert keys (for pruning) -------------------------------------
+  const activeLowStockKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const mat of materials as any[]) {
+      const thrRaw = mat.low_stock_threshold_qty;
+      if (thrRaw === null || thrRaw === undefined) continue;
+
+      const code = String(mat.material_code);
+      const thr = safeNum(thrRaw);
+      const avail = availableQtyByMaterial.get(code) ?? 0;
+      if (avail <= thr) keys.push(keyLowStock(code));
+    }
+    return keys;
+  }, [materials, availableQtyByMaterial]);
+
+  const activeLowExpiryKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const r of lotBalances as any[]) {
+      if (String(r.status).toUpperCase() !== "AVAILABLE") continue;
+      const qty = safeNum(r.balance_qty);
+      if (qty <= 0) continue;
+      if (!r.expiry_date) continue;
+
+      const code = String(r.material_code);
+      const lot = String(r.lot_number);
+      const mat: any = materialByCode.get(code);
+      if (!mat) continue;
+
+      const alertDays = mat.expiry_alert_days;
+      if (alertDays === null || alertDays === undefined) continue;
+
+      const dte = r.days_to_expiry;
+      if (dte === null || dte === undefined) continue;
+      if (safeNum(dte) > safeNum(alertDays)) continue;
+
+      keys.push(keyLowExpiry(code, lot));
+    }
+    return keys;
+  }, [lotBalances, materialByCode]);
+
+  const activeKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const k of activeLowStockKeys) s.add(k);
+    for (const k of activeLowExpiryKeys) s.add(k);
+    return Array.from(s).sort();
+  }, [activeLowStockKeys, activeLowExpiryKeys]);
+
+  // --- Prune resolved action rows ------------------------------------------
+  useEffect(() => {
+    if (!actionsLoaded) return;
+
+    if (pruneTimerRef.current) window.clearTimeout(pruneTimerRef.current);
+    pruneTimerRef.current = window.setTimeout(() => {
+      void pruneAlertActions(activeKeys).catch((e) => {
+        // best-effort / fire-and-forget
+        console.warn("Alert prune failed (non-fatal):", e);
+      });
+    }, 1000);
+
+    return () => {
+      if (pruneTimerRef.current) window.clearTimeout(pruneTimerRef.current);
+    };
+  }, [activeKeys, actionsLoaded]);
+
   const lowStockRows = useMemo(() => {
     const out: LowStockRow[] = [];
     const query = q.trim().toLowerCase();
 
     for (const mat of materials as any[]) {
-      const thrRaw = (mat as any).low_stock_threshold_qty;
+      const thrRaw = mat.low_stock_threshold_qty;
       if (thrRaw === null || thrRaw === undefined) continue;
 
-      const code = String((mat as any).material_code);
-      const name = String((mat as any).name ?? "");
-      const category = String((mat as any).category_code ?? "");
-      const type = String((mat as any).type_code ?? "");
-      const uom = String((mat as any).base_uom_code ?? "");
+      const code = String(mat.material_code);
+      const name = String(mat.name ?? "");
+      const category = String(mat.category_code ?? "");
+      const type = String(mat.type_code ?? "");
+      const uom = String(mat.base_uom_code ?? "");
       const avail = availableQtyByMaterial.get(code) ?? 0;
       const thr = safeNum(thrRaw);
 
@@ -312,6 +439,12 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       // suppressed
       if (action.state === "NOT_REQUIRED") continue;
 
+      // Filters
+      if (statusFilter !== "ALL" && action.state !== statusFilter) continue;
+      if (categoryFilter !== "ALL" && category !== categoryFilter) continue;
+      if (typeFilter !== "ALL" && type !== typeFilter) continue;
+
+      // Search
       if (query) {
         const hay = `${code} ${name} ${category} ${type}`.toLowerCase();
         if (!hay.includes(query)) continue;
@@ -326,20 +459,55 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         category_code: category,
         type_code: type,
         base_uom_code: uom,
-        available_qty: Number(avail.toFixed(6)),
-        threshold_qty: Number(thr.toFixed(6)),
+        available_qty: avail,
+        threshold_qty: thr,
         severity: sev,
         action,
       });
     }
 
+    const sortMaterial = (a: LowStockRow, b: LowStockRow) =>
+      a.material_code.localeCompare(b.material_code);
+
     out.sort((a, b) => {
+      if (lowStockSort === "MATERIAL") return sortMaterial(a, b);
+
+      if (lowStockSort === "STATUS_PRIORITY") {
+        const pa = statePriority(a.action.state);
+        const pb = statePriority(b.action.state);
+        if (pa !== pb) return pa - pb;
+        if (a.available_qty !== b.available_qty) return a.available_qty - b.available_qty;
+        return sortMaterial(a, b);
+      }
+
+      if (lowStockSort === "LOWEST_AVAILABLE") {
+        if (a.available_qty !== b.available_qty) return a.available_qty - b.available_qty;
+        const pa = statePriority(a.action.state);
+        const pb = statePriority(b.action.state);
+        if (pa !== pb) return pa - pb;
+        return sortMaterial(a, b);
+      }
+
+      // Default: SEVERITY
       if (a.severity !== b.severity) return a.severity === "critical" ? -1 : 1;
-      return a.material_code.localeCompare(b.material_code);
+      if (a.available_qty !== b.available_qty) return a.available_qty - b.available_qty;
+      const pa = statePriority(a.action.state);
+      const pb = statePriority(b.action.state);
+      if (pa !== pb) return pa - pb;
+      return sortMaterial(a, b);
     });
 
     return out;
-  }, [materials, availableQtyByMaterial, actions, q]);
+  }, [
+    materials,
+    availableQtyByMaterial,
+    actions,
+    q,
+    statusFilter,
+    categoryFilter,
+    typeFilter,
+    lowStockSort,
+  ]);
 
   const lowExpiryRows = useMemo(() => {
     const out: LowExpiryRow[] = [];
@@ -361,7 +529,6 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
 
       const dte = r.days_to_expiry;
       if (dte === null || dte === undefined) continue;
-
       if (safeNum(dte) > safeNum(alertDays)) continue;
 
       const key = keyLowExpiry(code, lot);
@@ -371,15 +538,23 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       if (action.state === "NOT_REQUIRED") continue;
 
       const name = String(mat.name ?? "");
-      const exp = String(r.expiry_date);
-      const daysToExpiry = safeNum(dte);
+      const category = String(mat.category_code ?? "");
+      const type = String(mat.type_code ?? "");
 
-      const daysToAQ = computeDaysToAQ(r);
+      // Filters
+      if (statusFilter !== "ALL" && action.state !== statusFilter) continue;
+      if (categoryFilter !== "ALL" && category !== categoryFilter) continue;
+      if (typeFilter !== "ALL" && type !== typeFilter) continue;
 
+      // Search
       if (query) {
         const hay = `${code} ${name} ${lot}`.toLowerCase();
         if (!hay.includes(query)) continue;
       }
+
+      const exp = String(r.expiry_date);
+      const daysToExpiry = safeNum(dte);
+      const daysToAQ = computeDaysToAQ(r);
 
       const sev: "warn" | "critical" = daysToExpiry <= 7 ? "critical" : "warn";
 
@@ -387,25 +562,80 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         key,
         material_code: code,
         name,
+        category_code: category,
+        type_code: type,
         lot_number: lot,
         expiry_date: exp,
         days_to_expiry: daysToExpiry,
         alert_days: safeNum(alertDays),
         days_to_quarantine: daysToAQ,
-        qty: Number(qty.toFixed(6)),
+        qty,
         severity: sev,
         action,
       });
     }
 
+    const sortMaterial = (a: LowExpiryRow, b: LowExpiryRow) =>
+      a.material_code.localeCompare(b.material_code);
+
     out.sort((a, b) => {
-      if (a.severity !== b.severity) return a.severity === "critical" ? -1 : 1;
+      if (lowExpirySort === "MATERIAL") {
+        const m = sortMaterial(a, b);
+        if (m !== 0) return m;
+        return a.lot_number.localeCompare(b.lot_number);
+      }
+
+      if (lowExpirySort === "STATUS_PRIORITY") {
+        const pa = statePriority(a.action.state);
+        const pb = statePriority(b.action.state);
+        if (pa !== pb) return pa - pb;
+        const aqA = a.days_to_quarantine ?? 999999;
+        const aqB = b.days_to_quarantine ?? 999999;
+        if (aqA !== aqB) return aqA - aqB;
+        if (a.days_to_expiry !== b.days_to_expiry) return a.days_to_expiry - b.days_to_expiry;
+        const m = sortMaterial(a, b);
+        if (m !== 0) return m;
+        return a.lot_number.localeCompare(b.lot_number);
+      }
+
+      if (lowExpirySort === "SOONEST_EXPIRY") {
+        if (a.days_to_expiry !== b.days_to_expiry) return a.days_to_expiry - b.days_to_expiry;
+        const aqA = a.days_to_quarantine ?? 999999;
+        const aqB = b.days_to_quarantine ?? 999999;
+        if (aqA !== aqB) return aqA - aqB;
+        const pa = statePriority(a.action.state);
+        const pb = statePriority(b.action.state);
+        if (pa !== pb) return pa - pb;
+        const m = sortMaterial(a, b);
+        if (m !== 0) return m;
+        return a.lot_number.localeCompare(b.lot_number);
+      }
+
+      // Default: SOONEST_AQ
+      const aqA = a.days_to_quarantine ?? 999999;
+      const aqB = b.days_to_quarantine ?? 999999;
+      if (aqA !== aqB) return aqA - aqB;
       if (a.days_to_expiry !== b.days_to_expiry) return a.days_to_expiry - b.days_to_expiry;
-      return a.material_code.localeCompare(b.material_code);
+      if (a.severity !== b.severity) return a.severity === "critical" ? -1 : 1;
+      const pa = statePriority(a.action.state);
+      const pb = statePriority(b.action.state);
+      if (pa !== pb) return pa - pb;
+      const m = sortMaterial(a, b);
+      if (m !== 0) return m;
+      return a.lot_number.localeCompare(b.lot_number);
     });
 
     return out;
-  }, [lotBalances, materialByCode, actions, q]);
+  }, [
+    lotBalances,
+    materialByCode,
+    actions,
+    q,
+    statusFilter,
+    categoryFilter,
+    typeFilter,
+    lowExpirySort,
+  ]);
 
   // Keep low-stock last_seen qty fresh (optional)
   useEffect(() => {
@@ -516,15 +746,42 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     borderSpacing: 0,
   };
 
+  const formatQty = (n: number) => {
+    // Keep numeric fidelity but avoid ugly long decimals.
+    // - If integer-ish => show no decimals
+    // - Else show up to 3 decimals (trimmed)
+    const v = Number(n);
+    if (!Number.isFinite(v)) return "0";
+    const rounded = Math.round(v);
+    if (Math.abs(v - rounded) < 1e-9) return String(rounded);
+    const s = v.toFixed(3);
+    return s.replace(/\.0+$/, "").replace(/(\.[0-9]*?)0+$/, "$1");
+  };
+
+  const flushEtaDraft = (k: string, meta: UpsertMeta) => {
+    const val = etaDraft[k];
+    if (val === undefined) return;
+    void upsertAction(k, { eta_text: val }, meta);
+  };
+
   const renderMgmtCell = (k: string, act: AlertAction, meta: UpsertMeta) => {
     const onChangeState = (nextState: AlertState) => {
       if (nextState === "NOT_REQUIRED" && act.state !== "NOT_REQUIRED") {
         const ok = window.confirm(
-          "Do you really want to set this alert to 'Not required'?\n\nThis will remove it from the alert list until it is next restocked."
+          "Do you really want to set this alert to 'Not required'?\n\nThis will remove it from the alert list until manually undone."
         );
         if (!ok) return;
       }
       void upsertAction(k, { state: nextState }, meta);
+    };
+
+    const draftVal = etaDraft[k] ?? act.eta_text ?? "";
+
+    const scheduleDebouncedSave = () => {
+      if (etaTimersRef.current[k]) window.clearTimeout(etaTimersRef.current[k]);
+      etaTimersRef.current[k] = window.setTimeout(() => {
+        flushEtaDraft(k, meta);
+      }, 650);
     };
 
     return (
@@ -546,8 +803,13 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
           className="input"
           style={{ height: 34, width: 220, fontSize: 13 }}
           placeholder="ETA / due date (text)…"
-          value={act.eta_text ?? ""}
-          onChange={(e) => void upsertAction(k, { eta_text: e.target.value }, meta)}
+          value={draftVal}
+          onChange={(e) => {
+            const next = e.target.value;
+            setEtaDraft((prev) => ({ ...prev, [k]: next }));
+            scheduleDebouncedSave();
+          }}
+          onBlur={() => flushEtaDraft(k, meta)}
         />
 
         {badge(
@@ -615,8 +877,52 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search material / lot..."
             className="input"
-            style={{ width: 320, height: 36, fontSize: 13 }}
+            style={{ width: 260, height: 36, fontSize: 13 }}
           />
+
+          <select
+            className="input"
+            style={{ width: 170, height: 36, fontSize: 13 }}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+            title="Filter by status"
+          >
+            {FILTER_STATE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="input"
+            style={{ width: 150, height: 36, fontSize: 13 }}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            title="Filter by category"
+          >
+            <option value="ALL">All categories</option>
+            {categoryOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="input"
+            style={{ width: 150, height: 36, fontSize: 13 }}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            title="Filter by type"
+          >
+            <option value="ALL">All types</option>
+            {typeOptions.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
 
           {badge(`Total: ${totalFlagged}`, totalFlagged > 0 ? "warn" : "neutral")}
         </div>
@@ -625,7 +931,27 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       {/* LOW STOCK */}
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card-header" style={{ paddingBottom: 0 }}>
-          {sectionHeader("Low Stock", lowStockRows.length, lowStockRows.length > 0 ? "warn" : "neutral")}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              {sectionHeader("Low Stock", lowStockRows.length, lowStockRows.length > 0 ? "warn" : "neutral")}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>
+                Sort
+              </div>
+              <select
+                className="input"
+                style={{ height: 34, width: 190, fontSize: 13 }}
+                value={lowStockSort}
+                onChange={(e) => setLowStockSort(e.target.value as LowStockSortMode)}
+              >
+                <option value="SEVERITY">Severity (default)</option>
+                <option value="LOWEST_AVAILABLE">Lowest available</option>
+                <option value="STATUS_PRIORITY">Status priority</option>
+                <option value="MATERIAL">Material code</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="table-wrap" style={{ paddingTop: 6, maxHeight: 360, overflow: "auto", borderRadius: 12 }}>
@@ -662,10 +988,10 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                       {r.category_code} / {r.type_code}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.available_qty}
+                      {formatQty(r.available_qty)}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.threshold_qty}
+                      {formatQty(r.threshold_qty)}
                     </td>
                     <td style={tdStyle}>{r.base_uom_code}</td>
                     <td style={tdStyle}>
@@ -687,7 +1013,27 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       {/* LOW EXPIRY */}
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card-header" style={{ paddingBottom: 0 }}>
-          {sectionHeader("Low Expiry", lowExpiryRows.length, lowExpiryRows.length > 0 ? "warn" : "neutral")}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              {sectionHeader("Low Expiry", lowExpiryRows.length, lowExpiryRows.length > 0 ? "warn" : "neutral")}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>
+                Sort
+              </div>
+              <select
+                className="input"
+                style={{ height: 34, width: 210, fontSize: 13 }}
+                value={lowExpirySort}
+                onChange={(e) => setLowExpirySort(e.target.value as LowExpirySortMode)}
+              >
+                <option value="SOONEST_AQ">Soonest Days to AQ (default)</option>
+                <option value="SOONEST_EXPIRY">Soonest expiry</option>
+                <option value="STATUS_PRIORITY">Status priority</option>
+                <option value="MATERIAL">Material code</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="table-wrap" style={{ paddingTop: 6, maxHeight: 420, overflow: "auto", borderRadius: 12 }}>
@@ -699,7 +1045,6 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                 <th style={{ ...thStyle, width: "14%" }}>Lot</th>
                 <th style={{ ...thStyle, width: "14%" }}>Expiry</th>
                 <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>Days to expiry</th>
-
                 <th
                   style={{
                     ...thStyle,
@@ -712,7 +1057,6 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                 >
                   Days to AQ
                 </th>
-
                 <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>Alert days</th>
                 <th style={{ ...thStyle, textAlign: "right", width: "10%" }}>Qty</th>
                 <th style={{ ...thStyle, width: "24%" }}>Alert management</th>
@@ -747,7 +1091,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                       {r.alert_days}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.qty}
+                      {formatQty(r.qty)}
                     </td>
                     <td style={tdStyle}>
                       {renderMgmtCell(r.key, r.action, {
@@ -773,7 +1117,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
               <div>
                 <div style={{ fontSize: 16, fontWeight: 800 }}>Suppressed alerts</div>
                 <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-                  Alerts marked as “Not required” won’t appear until restocked / re-triggered.
+                  Alerts marked as “Not required” won’t appear until manually undone.
                 </div>
               </div>
               <button className="btn btn-ghost" type="button" onClick={() => setShowSuppressed(false)}>
@@ -782,7 +1126,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
             </div>
 
             <div style={{ padding: 14 }}>
-              {suppressed.length === 0 ? (
+              {Object.entries(actions).filter(([, v]) => v?.state === "NOT_REQUIRED").length === 0 ? (
                 <div className="muted">No suppressed alerts.</div>
               ) : (
                 <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
@@ -797,37 +1141,47 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {suppressed.map((s) => (
-                      <tr key={s.key}>
-                        <td style={tdStyle}>{s.info.type === "LOW_STOCK" ? "Low Stock" : "Low Expiry"}</td>
-                        <td style={tdStyle}>{s.info.material}</td>
-                        <td style={tdStyle}>{s.info.lot ?? "—"}</td>
-                        <td style={tdStyle}>{s.action.state}</td>
-                        <td style={tdStyle}>{s.action.eta_text ?? "—"}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>
-                          <button
-                            className="btn btn-ghost"
-                            type="button"
-                            onClick={() => void upsertAction(s.key, { state: "NEW" }, {
-                              alert_type: s.info.type,
-                              material_code: s.info.material,
-                              lot_number: s.info.type === "LOW_EXPIRY" ? (s.info.lot ?? null) : null,
-                              last_seen_available_qty: null,
-                            })}
-                          >
-                            Undo
-                          </button>
-                          <button
-                            className="btn btn-ghost"
-                            type="button"
-                            onClick={() => void removeAction(s.key)}
-                            style={{ marginLeft: 8 }}
-                          >
-                            Delete entry
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {Object.entries(actions)
+                      .filter(([, v]) => v?.state === "NOT_REQUIRED")
+                      .map(([k, v]) => ({ key: k, info: parseKey(k), action: v! }))
+                      .sort((a, b) => {
+                        if (a.info.type !== b.info.type) return a.info.type.localeCompare(b.info.type);
+                        if (a.info.material !== b.info.material) return a.info.material.localeCompare(b.info.material);
+                        return (a.info.lot ?? "").localeCompare(b.info.lot ?? "");
+                      })
+                      .map((s) => (
+                        <tr key={s.key}>
+                          <td style={tdStyle}>{s.info.type === "LOW_STOCK" ? "Low Stock" : "Low Expiry"}</td>
+                          <td style={tdStyle}>{s.info.material}</td>
+                          <td style={tdStyle}>{s.info.lot ?? "—"}</td>
+                          <td style={tdStyle}>{s.action.state}</td>
+                          <td style={tdStyle}>{s.action.eta_text ?? "—"}</td>
+                          <td style={{ ...tdStyle, textAlign: "right" }}>
+                            <button
+                              className="btn btn-ghost"
+                              type="button"
+                              onClick={() =>
+                                void upsertAction(s.key, { state: "NEW" }, {
+                                  alert_type: s.info.type,
+                                  material_code: s.info.material,
+                                  lot_number: s.info.type === "LOW_EXPIRY" ? (s.info.lot ?? null) : null,
+                                  last_seen_available_qty: null,
+                                })
+                              }
+                            >
+                              Undo
+                            </button>
+                            <button
+                              className="btn btn-ghost"
+                              type="button"
+                              onClick={() => void removeAction(s.key)}
+                              style={{ marginLeft: 8 }}
+                            >
+                              Delete entry
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               )}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -88,3 +88,33 @@ def delete_alert_action(
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/prune")
+def prune_alert_actions(
+    active_keys: List[str] = Body(..., description="List of currently active alert keys"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("alerts.manage")),
+):
+    """Prune resolved (non-suppressed) alert action rows.
+
+    - Deletes rows where state != NOT_REQUIRED and alert_key is NOT in active_keys.
+    - Keeps NOT_REQUIRED rows forever (suppression records), regardless of active_keys.
+    """
+
+    keys = []
+    seen = set()
+    for k in active_keys or []:
+        kk = (k or "").strip()
+        if not kk or kk in seen:
+            continue
+        seen.add(kk)
+        keys.append(kk)
+
+    q = db.query(AlertAction).filter(AlertAction.state != "NOT_REQUIRED")
+    if keys:
+        q = q.filter(~AlertAction.alert_key.in_(keys))
+
+    deleted = q.delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "deleted": int(deleted)}

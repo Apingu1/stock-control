@@ -179,3 +179,11 @@ export async function deleteAlertAction(alert_key: string) {
   return (await res.json()) as { ok: boolean };
 }
 
+// Space-saving: prune resolved alert action rows (keeps NOT_REQUIRED suppressions)
+export async function pruneAlertActions(active_keys: string[]) {
+  const res = await apiFetch("/alerts/prune", {
+    method: "POST",
+    body: JSON.stringify(active_keys ?? []),
+  });
+  return (await res.json()) as { ok: boolean; deleted: number };
+}
