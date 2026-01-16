@@ -24,10 +24,9 @@ export default function IssueModal({
   materials,
   lotBalances,
   createdBy,
-
-  // ✅ NEW
   mode = "create",
   initial,
+  canSuperEditLockedFields = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -38,6 +37,7 @@ export default function IssueModal({
 
   mode?: "create" | "edit";
   initial?: Issue;
+  canSuperEditLockedFields?: boolean;
 }) {
   const isEdit = mode === "edit" && !!initial;
 
@@ -49,6 +49,8 @@ export default function IssueModal({
   const [selectedLot, setSelectedLot] = useState<LotBalance | null>(null);
 
   const [qty, setQty] = useState("");
+  const [esProductCode, setEsProductCode] = useState<string>("");
+
   const [productBatchNo, setProductBatchNo] = useState("");
   const [productManufactureDate, setProductManufactureDate] = useState("");
   const [comment, setComment] = useState("");
@@ -59,6 +61,11 @@ export default function IssueModal({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Superuser edit behaviour:
+  // - By default (non-superuser), material + lot selection are locked in edit mode.
+  // - Superuser can change them (still audit-trailed on backend via edit_reason).
+  const canEditTraceabilityFields = !isEdit || canSuperEditLockedFields;
 
   useEffect(() => {
     if (!open) return;
@@ -80,8 +87,11 @@ export default function IssueModal({
       setSelectedLot(lot);
 
       setQty(String(initial.qty ?? ""));
+      setEsProductCode((initial as any).es_product_code || "");
       setProductBatchNo(initial.product_batch_no || "");
-      setProductManufactureDate(initial.product_manufacture_date ? String(initial.product_manufacture_date).slice(0, 10) : "");
+      setProductManufactureDate(
+        initial.product_manufacture_date ? String(initial.product_manufacture_date).slice(0, 10) : ""
+      );
       setComment(initial.comment || "");
       setManufacturer(initial.manufacturer || "");
       setEditReason("");
@@ -94,6 +104,7 @@ export default function IssueModal({
     setSelectedMaterial(null);
     setSelectedLot(null);
     setQty("");
+    setEsProductCode("");
     setProductBatchNo("");
     setProductManufactureDate("");
     setComment("");
@@ -137,16 +148,14 @@ export default function IssueModal({
     setSelectedMaterial(m);
     setMaterialSearch(`${m.name} (${m.material_code})`);
     setSelectedLot(null);
-    setManufacturer(m.manufacturer || "");
+    setManufacturer("");
   };
 
   const handleSelectLot = (lotId: string) => {
     const idNum = Number(lotId);
     const lot = lotsForMaterial.find((l) => l.material_lot_id === idNum);
     setSelectedLot(lot || null);
-    if (selectedMaterial) {
-      setManufacturer(selectedMaterial.manufacturer || "");
-    }
+    setManufacturer(lot?.manufacturer || "");
   };
 
   const isBatchRequired = consumptionType === "USAGE";
@@ -207,6 +216,9 @@ export default function IssueModal({
           qty: Number(qty),
           uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
 
+          // ✅ FIX: persist ES product code
+          es_product_code: esProductCode.trim() || null,
+
           product_batch_no:
             isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
           product_manufacture_date:
@@ -227,10 +239,14 @@ export default function IssueModal({
           body: JSON.stringify(payload),
         });
       } else {
-        // Edit existing issue (traceability fields locked)
-        const payload = {
+        // Edit existing issue (traceability fields locked unless superuser)
+        const payload: any = {
           qty: Number(qty),
           uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
+
+          // ✅ FIX: allow update of ES product code
+          es_product_code: esProductCode.trim() || null,
+
           product_batch_no:
             isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
           product_manufacture_date:
@@ -240,6 +256,15 @@ export default function IssueModal({
           target_ref: null,
           edit_reason: editReason.trim(),
         };
+
+        // Superuser can also change material/lot (backend must support if you enable it)
+        // NOTE: If backend currently does not support changing lot/material on edit,
+        // leave these fields out or implement backend logic later.
+        if (canSuperEditLockedFields) {
+          payload.material_code = selectedMaterial.material_code;
+          payload.lot_number = selectedLot.lot_number;
+          payload.material_lot_id = selectedLot.material_lot_id;
+        }
 
         await apiFetch(`/issues/${initial!.id}`, {
           method: "PUT",
@@ -308,7 +333,7 @@ export default function IssueModal({
                   className="input"
                   placeholder="Start typing material or code…"
                   value={materialSearch}
-                  disabled={isEdit}
+                  disabled={!canEditTraceabilityFields}
                   onChange={(e) => {
                     setMaterialSearch(e.target.value);
                     setSelectedMaterial(null);
@@ -335,6 +360,9 @@ export default function IssueModal({
                     ))}
                   </div>
                 )}
+                {/* In edit mode, if superuser unlocks, dropdown still should not show
+                    because your existing UI only shows dropdown when !isEdit.
+                    If you want dropdown in edit superuser mode later, we can extend. */}
               </div>
             </div>
 
@@ -344,7 +372,7 @@ export default function IssueModal({
                 className="input"
                 value={selectedLot ? String(selectedLot.material_lot_id) : ""}
                 onChange={(e) => handleSelectLot(e.target.value)}
-                disabled={!selectedMaterial || isEdit}
+                disabled={!selectedMaterial || !canEditTraceabilityFields}
               >
                 <option value="">Select lot…</option>
                 {lotsForMaterial.map((lot) => {
@@ -402,6 +430,16 @@ export default function IssueModal({
 
             {showBatchFields && (
               <>
+                <div className="form-group">
+                  <label className="label">ES product code</label>
+                  <input
+                    className="input"
+                    value={esProductCode}
+                    onChange={(e) => setEsProductCode(e.target.value)}
+                    placeholder="e.g. DULO2"
+                  />
+                </div>
+
                 <div className="form-group">
                   <label className="label">
                     ES batch number {isBatchRequired ? "(required)" : "(optional)"}

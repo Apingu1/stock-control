@@ -93,6 +93,12 @@ const App: React.FC = () => {
   const canChangeStatus = hasPerm("lots.status_change");
   const canEditReceipts = hasPerm("receipts.edit");
   const canEditIssues = hasPerm("issues.edit");
+
+  const canSuperEditMaterials = hasPerm("materials.super_edit_locked_fields");
+  const canSuperEditReceipts = hasPerm("receipts.super_edit_locked_fields");
+  // ✅ NEW: consumption superuser unlock flag (separate permission)
+  const canSuperEditIssues = hasPerm("issues.super_edit_locked_fields");
+
   const canViewAudit = hasPerm("audit.view");
 
   // --- Data -----------------------------------------------------------------
@@ -737,6 +743,7 @@ const App: React.FC = () => {
         onReceiptPosted={handleReceiptPosted}
         mode={editingReceipt ? "edit" : "create"}
         initial={editingReceipt || undefined}
+        canSuperEditLockedFields={canSuperEditReceipts}
       />
 
       <IssueModal
@@ -751,6 +758,8 @@ const App: React.FC = () => {
         createdBy={me?.username || ""}
         mode={editingIssue ? "edit" : "create"}
         initial={editingIssue || undefined}
+        // ✅ NEW: allow superuser unlock inside IssueModal
+        canSuperEditLockedFields={canSuperEditIssues}
       />
 
       <MaterialModal
@@ -759,6 +768,7 @@ const App: React.FC = () => {
         mode="create"
         onSaved={handleMaterialSaved}
         expiryThresholds={expiryThresholds}
+        canSuperEditLockedFields={canSuperEditMaterials}
       />
 
       <MaterialModal
@@ -768,6 +778,7 @@ const App: React.FC = () => {
         initial={editingMaterial || undefined}
         onSaved={handleMaterialSaved}
         expiryThresholds={expiryThresholds}
+        canSuperEditLockedFields={canSuperEditMaterials}
       />
     </div>
   );

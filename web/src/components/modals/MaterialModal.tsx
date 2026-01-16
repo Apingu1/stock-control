@@ -16,6 +16,7 @@ type MaterialFormProps = {
 
   // Phase D4: defaults lookup (read-only endpoint /materials/expiry-thresholds)
   expiryThresholds: ExpiryThresholdRow[];
+  canSuperEditLockedFields?: boolean;
 };
 
 function toNumOrEmpty(v: any): number | "" {
@@ -31,6 +32,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   mode,
   onSaved,
   expiryThresholds,
+  canSuperEditLockedFields = false,
 }) => {
   const [materialCode, setMaterialCode] = useState(initial?.material_code ?? "");
   const [name, setName] = useState(initial?.name ?? "");
@@ -437,7 +439,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 placeholder="e.g. Paracetamol Powder"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                disabled={isEdit} // backend also blocks rename
+                disabled={isEdit && !canSuperEditLockedFields} // backend enforces superuser permission
               />
             </div>
 

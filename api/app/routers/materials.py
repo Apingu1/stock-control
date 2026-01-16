@@ -25,7 +25,7 @@ from ..schemas import (
     ApprovedManufacturerCreate,
     ExpiryThresholdSettingOut,
 )
-from ..security import require_permission
+from ..security import require_permission, user_has_permission
 from ..audit_logger import log_approved_manufacturer_edit
 
 router = APIRouter(prefix="/materials", tags=["materials"])
@@ -68,7 +68,6 @@ def create_material(
         low_stock_threshold_qty=body.low_stock_threshold_qty,
         expiry_alert_days=body.expiry_alert_days,
         auto_quarantine_override_days=body.auto_quarantine_override_days,
-
     )
 
     db.add(m)
@@ -79,6 +78,37 @@ def create_material(
         _translate_integrity_error(e)
 
     db.refresh(m)
+
+    # ✅ FIX (required feature):
+    # When creating TABLETS/CAPSULES materials, if a default manufacturer was provided,
+    # automatically add it to Approved Manufacturers so it is immediately selectable
+    # in issues/consumption flows without needing a second edit.
+    try:
+        if (m.category_code == "TABLETS_CAPSULES") and m.manufacturer:
+            existing_am = (
+                db.execute(
+                    select(MaterialApprovedManufacturer).where(
+                        MaterialApprovedManufacturer.material_id == m.id,
+                        MaterialApprovedManufacturer.manufacturer_name == m.manufacturer,
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if not existing_am:
+                db.add(
+                    MaterialApprovedManufacturer(
+                        material_id=m.id,
+                        manufacturer_name=m.manufacturer,
+                        is_active=True,
+                        created_by=user.username,
+                    )
+                )
+                db.commit()
+    except IntegrityError:
+        # If something raced / already exists, ignore – core material create succeeded.
+        db.rollback()
+
     return m
 
 
@@ -98,6 +128,7 @@ def list_materials(
 
     stmt = stmt.order_by(Material.material_code).offset(offset).limit(limit)
     return db.execute(stmt).scalars().all()
+
 
 @router.get("/expiry-thresholds", response_model=List[ExpiryThresholdSettingOut])
 def list_expiry_thresholds(
@@ -148,12 +179,13 @@ def update_material(
     if not reason:
         raise HTTPException(status_code=400, detail="edit_reason is required for material edits")
 
-    if body.name != m.name:
+    # ✅ Superuser-only rename
+    if body.name != m.name and not user_has_permission(db, user, "materials.super_edit_locked_fields"):
         raise HTTPException(
             status_code=400,
             detail=(
-                "Material name cannot be changed once created. "
-                "If a rename is required, create a new material record."
+                "Material name cannot be changed by your role. "
+                "A superuser permission is required to rename a material."
             ),
         )
 
@@ -170,7 +202,6 @@ def update_material(
     m.low_stock_threshold_qty = body.low_stock_threshold_qty
     m.expiry_alert_days = body.expiry_alert_days
     m.auto_quarantine_override_days = body.auto_quarantine_override_days
-
 
     after_json = MaterialEdit.snapshot_material(m)
 
@@ -287,7 +318,15 @@ def add_approved_manufacturer(
     )
 
     db.add(am)
-    db.flush()
+
+    # ✅ Keep your existing logging behaviour (after commit so id exists)
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        _translate_integrity_error(e)
+
+    db.refresh(am)
 
     after = {
         "id": am.id,

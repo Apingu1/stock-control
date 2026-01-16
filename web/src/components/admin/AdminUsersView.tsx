@@ -79,7 +79,7 @@ export default function AdminUsersView() {
     try {
       const res = await apiFetch("/admin/permissions");
       const data = (await res.json()) as PermissionDef[];
-      setPermissions(data);
+      setPermissions(data.filter((p) => !p.key.endsWith('.delete')));
     } catch {
       // fallback list (keeps UI usable if endpoint ever missing)
       setPermissions([
@@ -87,15 +87,15 @@ export default function AdminUsersView() {
         { key: "materials.view" },
         { key: "materials.create" },
         { key: "materials.edit" },
-        { key: "materials.delete" },
+        { key: "materials.super_edit_locked_fields" },
         { key: "receipts.view" },
         { key: "receipts.create" },
         { key: "receipts.edit" },
-        { key: "receipts.delete" },
+        { key: "receipts.super_edit_locked_fields" },
         { key: "issues.view" },
         { key: "issues.create" },
         { key: "issues.edit" },
-        { key: "issues.delete" },
+        { key: "issues.super_edit_locked_fields" },
         { key: "lots.view" },
         { key: "lots.status_change" },
       ]);

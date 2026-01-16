@@ -11,6 +11,9 @@ type NewReceiptModalProps = {
 
   mode?: "create" | "edit";
   initial?: Receipt;
+
+  // ✅ NEW (Phase D5): allows superusers to edit locked traceability fields on receipts
+  canSuperEditLockedFields?: boolean;
 };
 
 const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
@@ -20,6 +23,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   onReceiptPosted,
   mode = "create",
   initial,
+  canSuperEditLockedFields = false,
 }) => {
   const isEdit = mode === "edit" && !!initial;
 
@@ -43,6 +47,9 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // ✅ Receipt traceability fields are locked on edit unless superuser permission is present
+  const lockTraceabilityFields = isEdit && !canSuperEditLockedFields;
 
   useEffect(() => {
     if (!open) return;
@@ -193,7 +200,8 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
           body: JSON.stringify(payload),
         });
       } else {
-        const payload = {
+        // ✅ Edit (traceability locked unless superuser)
+        const payload: any = {
           qty: Number(qty),
 
           // ✅ D1 edit: allow editing total line cost; backend derives unit_price
@@ -204,6 +212,12 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
           manufacturer: manufacturer || null,
           edit_reason: editReason.trim(),
         };
+
+        // ✅ Superuser can also edit locked receipt traceability fields
+        if (canSuperEditLockedFields) {
+          payload.lot_number = lotNumber || null;
+          payload.expiry_date = expiryDate || null;
+        }
 
         await apiFetch(`/receipts/${initial!.id}`, {
           method: "PUT",
@@ -231,7 +245,9 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
           <div>
             <div className="modal-title">{isEdit ? "Edit goods receipt" : "New goods receipt"}</div>
             <div className="modal-subtitle">
-              {isEdit ? "Edits are audit-trailed. Provide a reason for change." : "Post an incoming delivery into ES stock."}
+              {isEdit
+                ? "Edits are audit-trailed. Provide a reason for change."
+                : "Post an incoming delivery into ES stock."}
             </div>
           </div>
 
@@ -277,23 +293,44 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
             </div>
 
             <div className="form-group">
-              <label className="label">Lot number</label>
+              <label className="label">
+                Lot number{" "}
+                {isEdit && lockTraceabilityFields && (
+                  <span style={{ color: "#94a3b8", fontWeight: 500 }}>(locked)</span>
+                )}
+                {isEdit && !lockTraceabilityFields && (
+                  <span style={{ color: "#fbbf24", fontWeight: 600 }}>(superuser)</span>
+                )}
+              </label>
               <input
                 className="input"
                 placeholder="e.g. A43621"
                 value={lotNumber}
-                disabled={isEdit}
+                disabled={lockTraceabilityFields}
                 onChange={(e) => setLotNumber(e.target.value)}
               />
+              {isEdit && !lockTraceabilityFields && (
+                <div className="info-row" style={{ marginTop: 6 }}>
+                  Changing lot number will also affect Live Lots & Consumption references for this receipt’s lot.
+                </div>
+              )}
             </div>
 
             <div className="form-group">
-              <label className="label">Expiry date</label>
+              <label className="label">
+                Expiry date{" "}
+                {isEdit && lockTraceabilityFields && (
+                  <span style={{ color: "#94a3b8", fontWeight: 500 }}>(locked)</span>
+                )}
+                {isEdit && !lockTraceabilityFields && (
+                  <span style={{ color: "#fbbf24", fontWeight: 600 }}>(superuser)</span>
+                )}
+              </label>
               <input
                 className="input"
                 type="date"
                 value={expiryDate}
-                disabled={isEdit}
+                disabled={lockTraceabilityFields}
                 onChange={(e) => setExpiryDate(e.target.value)}
               />
             </div>

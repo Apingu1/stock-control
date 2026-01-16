@@ -153,6 +153,10 @@ def create_issue(
         unit_price=lot_unit_price,
         total_value=issue_total_value,
         target_ref=payload.target_ref,
+
+        # ✅ FIX: persist ES product code into the issue transaction
+        es_product_code=(payload.es_product_code.strip() if getattr(payload, "es_product_code", None) else None),
+
         product_batch_no=payload.product_batch_no,
         product_manufacture_date=payload.product_manufacture_date,
         comment=payload.comment,
@@ -180,6 +184,7 @@ def create_issue(
         uom_code=txn.uom_code,
         unit_price=txn.unit_price,
         total_value=txn.total_value,
+        es_product_code=txn.es_product_code,
         product_batch_no=txn.product_batch_no,
         manufacturer=manufacturer,
         supplier=supplier,
@@ -226,6 +231,7 @@ def list_issues(
                 uom_code=txn.uom_code,
                 unit_price=txn.unit_price,
                 total_value=txn.total_value,
+                es_product_code=txn.es_product_code,
                 product_batch_no=txn.product_batch_no,
                 manufacturer=manufacturer,
                 supplier=supplier,
@@ -288,6 +294,11 @@ def update_issue(
     txn.product_batch_no = payload.product_batch_no
     txn.product_manufacture_date = payload.product_manufacture_date
     txn.comment = payload.comment
+
+    # ✅ FIX: allow editing ES product code (still audit-trailed)
+    if hasattr(payload, "es_product_code"):
+        txn.es_product_code = payload.es_product_code.strip() if payload.es_product_code else None
+
     # Keep txn.material_status_at_txn unchanged (historical snapshot)
 
     # ✅ Recompute costing for the edited qty.
@@ -325,6 +336,7 @@ def update_issue(
         uom_code=txn.uom_code,
         unit_price=txn.unit_price,
         total_value=txn.total_value,
+        es_product_code=txn.es_product_code,
         product_batch_no=txn.product_batch_no,
         manufacturer=manufacturer,
         supplier=supplier,

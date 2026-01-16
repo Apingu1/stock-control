@@ -9,14 +9,16 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import (
     Material,
+    MaterialLotEdit,
     MaterialLot,
     StockTransaction,
+    LotStatusChange,
     MaterialApprovedManufacturer,
     User,
     StockTransactionEdit,
 )
 from ..schemas import ReceiptCreate, ReceiptOut, ReceiptUpdate
-from ..security import require_permission
+from ..security import require_permission, user_has_permission
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -262,6 +264,100 @@ def update_receipt(
 
     lot = db.query(MaterialLot).filter(MaterialLot.id == txn.material_lot_id).one()
     material = db.query(Material).filter(Material.id == lot.material_id).one()
+
+    # --- Superuser-only edits to locked lot fields (lot_number / expiry_date) ---
+    lot_before = MaterialLotEdit.snapshot_lot(lot)
+
+    wants_lot_change = payload.lot_number is not None and payload.lot_number.strip() and payload.lot_number.strip() != lot.lot_number
+    wants_expiry_change = payload.expiry_date is not None and payload.expiry_date != lot.expiry_date
+
+    if (wants_lot_change or wants_expiry_change) and not user_has_permission(db, user, "receipts.super_edit_locked_fields"):
+        raise HTTPException(status_code=403, detail="Superuser permission required to edit lot number/expiry date")
+
+    # Apply expiry change (safe)
+    if wants_expiry_change:
+        lot.expiry_date = payload.expiry_date
+
+    # Apply lot rename (may merge on collision)
+    if wants_lot_change:
+        new_lot_no = payload.lot_number.strip()
+        target = (
+            db.query(MaterialLot)
+            .filter(
+                MaterialLot.material_id == lot.material_id,
+                MaterialLot.status == lot.status,
+                MaterialLot.lot_number == new_lot_no,
+            )
+            .one_or_none()
+        )
+
+        if target and target.id != lot.id:
+            # Collision: we will MERGE by repointing all transactions and status changes to the target lot,
+            # then deleting the source lot segment (superuser-only, deviation-controlled).
+            if not payload.force_merge:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Lot number already exists for this material/status. "
+                        "If you continue, this segment will be merged into the existing lot."
+                    ),
+                )
+
+            target_before = MaterialLotEdit.snapshot_lot(target)
+
+            # Move all transactions to target lot id (this preserves stock math and makes history consistent)
+            db.query(StockTransaction).filter(StockTransaction.material_lot_id == lot.id).update(
+                {"material_lot_id": target.id}
+            )
+
+            # Move lot status changes as well
+            db.query(LotStatusChange).filter(LotStatusChange.material_lot_id == lot.id).update(
+                {"material_lot_id": target.id}
+            )
+
+            # Delete the now-orphaned lot segment
+            db.delete(lot)
+            db.flush()
+
+            # Audit (rename merge)
+            db.add(
+                MaterialLotEdit(
+                    edited_by=user.username,
+                    material_lot_id=target.id,
+                    action="RENAME_MERGE",
+                    edit_reason=payload.edit_reason,
+                    before_json={"source": lot_before, "target": target_before},
+                    after_json={"target": MaterialLotEdit.snapshot_lot(target), "merged_into": target.id},
+                )
+            )
+
+            lot = target  # continue with the target as the lot for this receipt txn
+        else:
+            # No collision: simple rename in-place
+            lot.lot_number = new_lot_no
+            db.add(
+                MaterialLotEdit(
+                    edited_by=user.username,
+                    material_lot_id=lot.id,
+                    action="EDIT",
+                    edit_reason=payload.edit_reason,
+                    before_json=lot_before,
+                    after_json=MaterialLotEdit.snapshot_lot(lot),
+                )
+            )
+    elif wants_expiry_change:
+        # expiry-only edit audit
+        db.add(
+            MaterialLotEdit(
+                edited_by=user.username,
+                material_lot_id=lot.id,
+                action="EDIT",
+                edit_reason=payload.edit_reason,
+                before_json=lot_before,
+                after_json=MaterialLotEdit.snapshot_lot(lot),
+            )
+        )
+
 
     before_json = StockTransactionEdit.snapshot_txn(txn)
 

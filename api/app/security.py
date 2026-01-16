@@ -172,6 +172,15 @@ def require_any_permission(*permission_keys: str) -> Callable[[User], User]:
 
     return _dep
 
+def user_has_permission(db: Session, user: User, permission_key: str) -> bool:
+    """Utility for routers: check if a user has a permission without raising."""
+    try:
+        perms = _get_permissions_for_role(db, user.role)
+        return permission_key.strip() in perms
+    except Exception:
+        return False
+
+
 
 # Admin gate for /admin/*
 require_admin_full = require_permission("admin.full")

@@ -85,6 +85,9 @@ export type Issue = {
 
   consumption_type: string | null;
 
+  // ✅ NEW (Phase D5): ES product code (links ES Batch to a product code, e.g. DULO2)
+  es_product_code?: string | null;
+
   product_batch_no: string | null;
   product_manufacture_date: string | null;
 

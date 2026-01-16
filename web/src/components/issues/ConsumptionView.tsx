@@ -68,6 +68,12 @@ const formatMoney = (v: number | null | undefined): string => {
   return `£${v.toFixed(2)}`;
 };
 
+const formatUnitMoney = (v: number | null | undefined): string => {
+  if (v === null || v === undefined) return "—";
+  if (!Number.isFinite(v)) return "—";
+  return `£${v.toFixed(4)}`;
+};
+
 const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   issues,
   loadingIssues,
@@ -139,6 +145,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.lot_number,
         i.uom_code,
         i.manufacturer ?? "",
+        i.es_product_code ?? "",
         i.product_batch_no ?? "",
         i.comment ?? "",
         i.consumption_type ?? "",
@@ -181,6 +188,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Issue Date",
       "Product Mfg Date",
       "Type",
+      "ES Product Code",
       "ES Batch / Ref",
       "Material Code",
       "Material Name",
@@ -199,27 +207,30 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
     const rows = exportRowsSource.map((i) => {
       const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
       const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D";
+
+      const esProduct = isBatchRelevant ? i.es_product_code || "—" : "N/A";
       const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
 
       const total = i.total_value ?? null;
       const unit = i.unit_price ?? null;
 
       return [
-        i.created_at ? formatDate(i.created_at) : "",
-        i.product_manufacture_date ? formatDate(i.product_manufacture_date) : "",
+        formatDate(i.created_at),
+        formatDate(i.product_manufacture_date),
         renderConsumptionType(i.consumption_type),
+        esProduct,
         esRef,
         i.material_code,
         i.material_name,
         i.lot_number,
-        i.expiry_date ? formatDate(i.expiry_date) : "",
+        formatDate(i.expiry_date),
         i.qty,
         i.uom_code,
-        total ?? "",
-        unit ?? "",
-        i.manufacturer || "",
-        i.material_status_at_txn || "",
-        i.comment && i.comment.trim().length > 0 ? i.comment : "",
+        total != null ? formatMoney(total) : "—",
+        unit != null ? formatUnitMoney(unit) : "—",
+        i.manufacturer || "—",
+        i.material_status_at_txn || "—",
+        i.comment && i.comment.trim().length > 0 ? i.comment : "—",
         i.created_by,
       ];
     });
@@ -238,14 +249,14 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
             <div className="card-title">Issue History</div>
             <div className="card-subtitle">
               Filter by date, consumption type or manufacturer, or search by
-              material, lot or ES batch.
+              material, lot, ES product code or ES batch.
             </div>
           </div>
           <div className="card-actions card-actions-wrap">
             <input
               className="input"
               style={{ minWidth: 260 }}
-              placeholder="Search material / lot / ES batch / comment…"
+              placeholder="Search material / lot / ES product / ES batch / comment…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -312,6 +323,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th>Issue Date</th>
                   <th>Product Mfg Date</th>
                   <th>Type</th>
+                  <th>ES Product</th>
                   <th>ES Batch / Ref</th>
                   <th>Material Code</th>
                   <th>Material Name</th>
@@ -333,7 +345,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
               <tbody>
                 {filteredIssues.length === 0 && (
                   <tr>
-                    <td colSpan={showActions ? 16 : 15} className="empty-row">
+                    <td colSpan={showActions ? 17 : 16} className="empty-row">
                       No issues match your filters.
                     </td>
                   </tr>
@@ -342,6 +354,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                 {filteredIssues.map((i) => {
                   const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
                   const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D";
+
+                  const esProduct = isBatchRelevant ? i.es_product_code || "—" : "N/A";
                   const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
 
                   return (
@@ -349,6 +363,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td>{formatDate(i.created_at)}</td>
                       <td>{formatDate(i.product_manufacture_date)}</td>
                       <td>{renderConsumptionType(i.consumption_type)}</td>
+                      <td>{esProduct}</td>
                       <td>{esRef}</td>
                       <td>{i.material_code}</td>
                       <td>{i.material_name}</td>

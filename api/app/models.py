@@ -21,6 +21,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+# ✅ FIX 1: JSONB is used by MaterialLotEdit but was not imported
+from sqlalchemy.dialects.postgresql import JSONB
+
 
 # --- Base ---------------------------------------------------------------------
 
@@ -292,6 +295,14 @@ class MaterialLot(Base):
         cascade="all, delete-orphan",
     )
 
+    # ✅ FIX 2: MaterialLotEdit.back_populates="edits" requires this relationship on MaterialLot.
+    edits: Mapped[list["MaterialLotEdit"]] = relationship(
+        "MaterialLotEdit",
+        back_populates="lot",
+        cascade="all, delete-orphan",
+        order_by="MaterialLotEdit.edited_at.asc()",
+    )
+
 
 class StockTransaction(Base):
     __tablename__ = "stock_transactions"
@@ -318,6 +329,7 @@ class StockTransaction(Base):
 
     target_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    es_product_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     product_batch_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     product_manufacture_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
@@ -407,10 +419,54 @@ class StockTransactionEdit(Base):
 # --- Lot status change history ----------------------------------------------
 
 
+
+# --- Material lot edit audit trail -------------------------------------------
+
+
+class MaterialLotEdit(Base):
+    """Immutable audit trail for edits/merges to material_lots rows."""
+    __tablename__ = "material_lot_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    edited_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    edited_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    material_lot_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("material_lots.id"), nullable=False
+    )
+
+    action: Mapped[str] = mapped_column(String(50), nullable=False)  # EDIT / RENAME_MERGE
+    edit_reason: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    before_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    after_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    lot: Mapped["MaterialLot"] = relationship("MaterialLot", back_populates="edits")
+
+    @staticmethod
+    def snapshot_lot(lot: "MaterialLot") -> dict:
+        return {
+            "id": lot.id,
+            "material_id": lot.material_id,
+            "lot_number": lot.lot_number,
+            "expiry_date": lot.expiry_date.isoformat() if lot.expiry_date else None,
+            "status": lot.status,
+            "manufacturer": lot.manufacturer,
+            "supplier": lot.supplier,
+            "created_at": lot.created_at.isoformat() if lot.created_at else None,
+            "created_by": lot.created_by,
+        }
+
+
 class LotStatusChange(Base):
     __tablename__ = "lot_status_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # ✅ NOTE: edits relationship does NOT belong here; it belongs on MaterialLot.
+    # (It was previously placed here by mistake and will break mapper config.)
 
     material_lot_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("material_lots.id"), nullable=False

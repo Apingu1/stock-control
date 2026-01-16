@@ -161,8 +161,10 @@ class ReceiptUpdate(BaseModel):
     target_ref: Optional[str] = None
     comment: Optional[str] = None
     receipt_date: Optional[date] = None
+    lot_number: Optional[str] = None  # superuser-only
+    expiry_date: Optional[date] = None  # superuser-only
+    force_merge: Optional[bool] = False  # superuser-only (for lot rename collision)
     edit_reason: str
-
 
 class ReceiptOut(BaseModel):
     id: int
@@ -200,6 +202,7 @@ class IssueCreate(BaseModel):
 
     qty: float
     uom_code: str
+    es_product_code: Optional[str] = None  # ES Product Code (e.g., DULO2)
     product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[datetime] = None
     consumption_type: str = "USAGE"
@@ -219,13 +222,13 @@ class IssueUpdate(BaseModel):
     """
     qty: float
     uom_code: Optional[str] = None  # optional; most sites keep UOM fixed on edit, but safe.
+    es_product_code: Optional[str] = None
     product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[datetime] = None
     consumption_type: str = "USAGE"
     target_ref: Optional[str] = None
     comment: Optional[str] = None
     edit_reason: str
-
 
 class IssueOut(BaseModel):
     id: int
@@ -235,6 +238,7 @@ class IssueOut(BaseModel):
     expiry_date: Optional[datetime] = None
     qty: float
     uom_code: str
+    es_product_code: Optional[str] = None
 
     # ✅ Costing (stored on ISSUE txn at time of posting)
     unit_price: Optional[float] = None
