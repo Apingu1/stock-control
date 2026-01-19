@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { Material, ApprovedManufacturer, ExpiryThresholdRow } from "../../types";
-import {
-  MATERIAL_CATEGORY_OPTIONS,
-  MATERIAL_TYPE_OPTIONS,
-  MATERIAL_UOM_OPTIONS,
-} from "../../constants";
+import type { Material, ExpiryThresholdRow } from "../../types";
 import { apiFetch } from "../../utils/api";
+
+import MaterialFormFields from "./materials/MaterialFormFields";
+import ApprovedManufacturersSection from "./materials/ApprovedManufacturersSection";
+import { useApprovedManufacturers } from "./materials/useApprovedManufacturers";
+import { isOverrideEnabledFromInitial, toNumOrEmpty } from "./materials/materialFormUtils";
 
 type MaterialFormProps = {
   open: boolean;
@@ -19,12 +19,6 @@ type MaterialFormProps = {
   canSuperEditLockedFields?: boolean;
 };
 
-function toNumOrEmpty(v: any): number | "" {
-  if (v === null || v === undefined || v === "") return "";
-  const n = Number(v);
-  return Number.isFinite(n) ? n : "";
-}
-
 const MaterialModal: React.FC<MaterialFormProps> = ({
   open,
   onClose,
@@ -36,18 +30,12 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
 }) => {
   const [materialCode, setMaterialCode] = useState(initial?.material_code ?? "");
   const [name, setName] = useState(initial?.name ?? "");
-  const [categoryCode, setCategoryCode] = useState(
-    initial?.category_code ?? MATERIAL_CATEGORY_OPTIONS[0]
-  );
-  const [typeCode, setTypeCode] = useState(
-    initial?.type_code ?? MATERIAL_TYPE_OPTIONS[0]
-  );
-  const [baseUomCode, setBaseUomCode] = useState(
-    initial?.base_uom_code ?? MATERIAL_UOM_OPTIONS[0]
-  );
+  const [categoryCode, setCategoryCode] = useState((initial as any)?.category_code ?? "");
+  const [typeCode, setTypeCode] = useState((initial as any)?.type_code ?? "");
+  const [baseUomCode, setBaseUomCode] = useState((initial as any)?.base_uom_code ?? "");
   const [manufacturer, setManufacturer] = useState(initial?.manufacturer ?? "");
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
-  const [status, setStatus] = useState(initial?.status ?? "ACTIVE");
+  const [status, setStatus] = useState((initial as any)?.status ?? "ACTIVE");
 
   // Phase D4 fields
   const [lowStockThresholdQty, setLowStockThresholdQty] = useState<number | "">(
@@ -58,53 +46,22 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   );
 
   const [overrideEnabled, setOverrideEnabled] = useState<boolean>(
-    (initial as any)?.auto_quarantine_override_days !== null &&
-      (initial as any)?.auto_quarantine_override_days !== undefined
+    isOverrideEnabledFromInitial(initial)
   );
   const [overrideDays, setOverrideDays] = useState<number | "">(
     toNumOrEmpty((initial as any)?.auto_quarantine_override_days)
   );
 
-  // ✅ edit-only audit reason
+  // edit-only audit reason
   const [editReason, setEditReason] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Approved manufacturers (TABLETS/CAPS)
-  const [approvedManufacturers, setApprovedManufacturers] = useState<
-    ApprovedManufacturer[]
-  >([]);
-  const [newApprovedName, setNewApprovedName] = useState("");
-  const [loadingApproved, setLoadingApproved] = useState(false);
-  const [approvedError, setApprovedError] = useState<string | null>(null);
-
-  // ✅ stage changes to approved manufacturers until Save
-  const [pendingRemoveIds, setPendingRemoveIds] = useState<Set<number>>(
-    new Set()
-  );
-  const [pendingAddNames, setPendingAddNames] = useState<string[]>([]);
-
   const isEdit = mode === "edit";
   const isTabletsCaps = categoryCode === "TABLETS_CAPSULES";
 
-  const loadApproved = async (code: string) => {
-    try {
-      setApprovedError(null);
-      setLoadingApproved(true);
-      const res = await apiFetch(
-        `/materials/${encodeURIComponent(code)}/approved-manufacturers`
-      );
-      const data = (await res.json()) as ApprovedManufacturer[];
-      setApprovedManufacturers(data);
-    } catch (err: any) {
-      console.error(err);
-      setApprovedError(err.message ?? "Failed to load approved manufacturers");
-      setApprovedManufacturers([]);
-    } finally {
-      setLoadingApproved(false);
-    }
-  };
+  const am = useApprovedManufacturers();
 
   // Phase D4: compute default threshold from settings
   const defaultThresholdDays = useMemo(() => {
@@ -118,59 +75,43 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   }, [expiryThresholds, categoryCode, typeCode]);
 
   useEffect(() => {
-    if (open) {
-      setMaterialCode(initial?.material_code ?? "");
-      setName(initial?.name ?? "");
-      setCategoryCode(initial?.category_code ?? MATERIAL_CATEGORY_OPTIONS[0]);
-      setTypeCode(initial?.type_code ?? MATERIAL_TYPE_OPTIONS[0]);
-      setBaseUomCode(initial?.base_uom_code ?? MATERIAL_UOM_OPTIONS[0]);
-      setManufacturer(initial?.manufacturer ?? "");
-      setSupplier(initial?.supplier ?? "");
-      setStatus(initial?.status ?? "ACTIVE");
-      setSubmitting(false);
-      setError(null);
+    if (!open) return;
 
-      setLowStockThresholdQty(toNumOrEmpty((initial as any)?.low_stock_threshold_qty));
-      setExpiryAlertDays(toNumOrEmpty((initial as any)?.expiry_alert_days));
+    setMaterialCode(initial?.material_code ?? "");
+    setName(initial?.name ?? "");
+    setCategoryCode((initial as any)?.category_code ?? "");
+    setTypeCode((initial as any)?.type_code ?? "");
+    setBaseUomCode((initial as any)?.base_uom_code ?? "");
+    setManufacturer(initial?.manufacturer ?? "");
+    setSupplier(initial?.supplier ?? "");
+    setStatus((initial as any)?.status ?? "ACTIVE");
 
-      const hasOverride =
-        (initial as any)?.auto_quarantine_override_days !== null &&
-        (initial as any)?.auto_quarantine_override_days !== undefined;
-      setOverrideEnabled(!!hasOverride);
-      setOverrideDays(toNumOrEmpty((initial as any)?.auto_quarantine_override_days));
+    setSubmitting(false);
+    setError(null);
 
-      setEditReason("");
+    setLowStockThresholdQty(toNumOrEmpty((initial as any)?.low_stock_threshold_qty));
+    setExpiryAlertDays(toNumOrEmpty((initial as any)?.expiry_alert_days));
 
-      setNewApprovedName("");
-      setApprovedError(null);
+    const hasOverride = isOverrideEnabledFromInitial(initial);
+    setOverrideEnabled(!!hasOverride);
+    setOverrideDays(toNumOrEmpty((initial as any)?.auto_quarantine_override_days));
 
-      // reset staged manufacturer changes on open
-      setPendingRemoveIds(new Set());
-      setPendingAddNames([]);
+    setEditReason("");
 
-      if (mode === "edit" && initial?.material_code) {
-        void loadApproved(initial.material_code);
-      } else {
-        setApprovedManufacturers([]);
-      }
+    am.setNewApprovedName("");
+    am.setApprovedError(null);
+    am.setPendingRemoveIds(new Set());
+    am.setPendingAddNames([]);
+
+    if (mode === "edit" && initial?.material_code) {
+      void am.loadApproved(initial.material_code);
+    } else {
+      am.setApprovedManufacturers([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial, mode]);
 
-  // Helpers for staged changes
-  const normalize = (s: string) => s.trim().toUpperCase();
-
-  const approvedVisible = useMemo(() => {
-    // show DB-approved list but visually mark pending removals
-    return approvedManufacturers.slice().sort((a, b) =>
-      a.manufacturer_name.localeCompare(b.manufacturer_name)
-    );
-  }, [approvedManufacturers]);
-
-  const pendingAddsNormalized = useMemo(() => {
-    return new Set(pendingAddNames.map(normalize));
-  }, [pendingAddNames]);
-
-  // ✅ IMPORTANT: this must be BELOW hooks (useMemo/useEffect) to avoid hook order crash
+  // IMPORTANT: keep hook order safe
   if (!open) return null;
 
   const validateNonNeg = (label: string, v: number | ""): string | null => {
@@ -183,7 +124,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setApprovedError(null);
+    am.setApprovedError(null);
 
     if (!materialCode.trim() && mode === "create") {
       setError("Material code is required.");
@@ -200,24 +141,17 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
 
     // Phase D4 validations
     const v1 = validateNonNeg("Low stock threshold", lowStockThresholdQty);
-    if (v1) {
-      setError(v1);
-      return;
-    }
+    if (v1) return void setError(v1);
+
     const v2 = validateNonNeg("Low expiry alert days", expiryAlertDays);
-    if (v2) {
-      setError(v2);
-      return;
-    }
+    if (v2) return void setError(v2);
+
     if (overrideEnabled) {
       const v3 = validateNonNeg("Auto-quarantine override days", overrideDays);
-      if (v3) {
-        setError(v3);
-        return;
-      }
+      if (v3) return void setError(v3);
     }
 
-    // Require reason for edits (used for BOTH material edit + approved-manufacturer edits)
+    // Require reason for edits (covers material edit + approved-manufacturer edits)
     if (isEdit && !editReason.trim()) {
       setError("Edit reason is required for audit trail.");
       return;
@@ -278,8 +212,8 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           body: JSON.stringify(payload),
         });
 
-        // 2) Apply staged approved-manufacturer removals (backend requires edit_reason as QUERY param)
-        const removeIds = Array.from(pendingRemoveIds);
+        // 2) Apply staged approved-manufacturer removals (edit_reason as QUERY param)
+        const removeIds = Array.from(am.pendingRemoveIds);
         for (const id of removeIds) {
           const qs = `?edit_reason=${encodeURIComponent(editReason.trim())}`;
           await apiFetch(
@@ -290,12 +224,11 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           );
         }
 
-        // 3) Apply staged approved-manufacturer adds (backend requires edit_reason in BODY)
-        for (const manuName of pendingAddNames) {
+        // 3) Apply staged approved-manufacturer adds (edit_reason in BODY)
+        for (const manuName of am.pendingAddNames) {
           const body = {
             manufacturer_name: manuName.trim(),
             edit_reason: editReason.trim(),
-            // server enforces created_by from JWT, but harmless if present
             created_by: "apingu",
           };
           await apiFetch(
@@ -309,9 +242,9 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
         }
 
         // 4) Refresh list and reset staged changes
-        await loadApproved(initial.material_code);
-        setPendingRemoveIds(new Set());
-        setPendingAddNames([]);
+        await am.loadApproved(initial.material_code);
+        am.setPendingRemoveIds(new Set());
+        am.setPendingAddNames([]);
       }
 
       onSaved();
@@ -324,90 +257,43 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     }
   };
 
-  // Stage add (no API call)
-  const handleAddApproved = () => {
-    if (!isEdit || !initial?.material_code) return;
-
-    const nm = newApprovedName.trim();
-    if (!nm) {
-      setApprovedError("Manufacturer name is required.");
-      return;
-    }
-
-    const n = normalize(nm);
-
-    // If it's already in DB list and pending removal, treat as "undo removal"
-    const existing = approvedManufacturers.find(
-      (a) => normalize(a.manufacturer_name) === n
-    );
-    if (existing) {
-      if (pendingRemoveIds.has(existing.id)) {
-        setPendingRemoveIds((prev) => {
-          const next = new Set(prev);
-          next.delete(existing.id);
-          return next;
-        });
-        setNewApprovedName("");
-        setApprovedError(null);
-        return;
-      }
-      setApprovedError("That manufacturer is already on the approved list.");
-      return;
-    }
-
-    // Prevent duplicate pending adds
-    if (pendingAddsNormalized.has(n)) {
-      setApprovedError("That manufacturer is already pending add.");
-      return;
-    }
-
-    setPendingAddNames((prev) => [...prev, nm]);
-    setNewApprovedName("");
-    setApprovedError(null);
-  };
-
-  // Stage delete (no API call)
-  const handleDeleteApproved = (id: number) => {
-    if (!isEdit || !initial?.material_code) return;
-    setApprovedError(null);
-
-    setPendingRemoveIds((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  };
-
-  const undoDeleteApproved = (id: number) => {
-    setPendingRemoveIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  };
-
-  const removePendingAdd = (nameToRemove: string) => {
-    const n = normalize(nameToRemove);
-    setPendingAddNames((prev) => prev.filter((x) => normalize(x) !== n));
-  };
-
   const handleCancel = () => {
     // Discard staged approved-manufacturer changes
-    setPendingRemoveIds(new Set());
-    setPendingAddNames([]);
-    setApprovedError(null);
+    am.setPendingRemoveIds(new Set());
+    am.setPendingAddNames([]);
+    am.setApprovedError(null);
     setError(null);
     onClose();
   };
+
+  const approvedSection = (
+    <ApprovedManufacturersSection
+      isEdit={isEdit}
+      isTabletsCaps={isTabletsCaps}
+      approvedManufacturers={am.approvedManufacturers}
+      approvedVisible={am.approvedVisible}
+      pendingRemoveIds={am.pendingRemoveIds}
+      pendingAddNames={am.pendingAddNames}
+      pendingAddsNormalized={am.pendingAddsNormalized}
+      newApprovedName={am.newApprovedName}
+      setNewApprovedName={am.setNewApprovedName}
+      loadingApproved={am.loadingApproved}
+      approvedError={am.approvedError}
+      setApprovedError={am.setApprovedError}
+      stageDelete={am.stageDelete}
+      undoDelete={am.undoDelete}
+      removePendingAdd={am.removePendingAdd}
+      setPendingRemoveIds={am.setPendingRemoveIds}
+      setPendingAddNames={am.setPendingAddNames}
+    />
+  );
 
   return (
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
           <div>
-            <div className="modal-title">
-              {isEdit ? "Edit material" : "New material"}
-            </div>
+            <div className="modal-title">{isEdit ? "Edit material" : "New material"}</div>
             <div className="modal-subtitle">
               {isEdit
                 ? "Update master data for this ES material."
@@ -420,314 +306,39 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
         </div>
 
         <form className="modal-body" onSubmit={handleSubmit}>
-          <div className="form-grid">
-            <div className="form-group">
-              <label className="label">Material code</label>
-              <input
-                className="input"
-                placeholder="e.g. MAT0327"
-                value={materialCode}
-                onChange={(e) => setMaterialCode(e.target.value)}
-                disabled={isEdit}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="label">Material name</label>
-              <input
-                className="input"
-                placeholder="e.g. Paracetamol Powder"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={isEdit && !canSuperEditLockedFields} // backend enforces superuser permission
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="label">Category</label>
-              <select
-                className="input"
-                value={categoryCode}
-                onChange={(e) => setCategoryCode(e.target.value)}
-              >
-                {MATERIAL_CATEGORY_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Type</label>
-              <select
-                className="input"
-                value={typeCode}
-                onChange={(e) => setTypeCode(e.target.value)}
-              >
-                {MATERIAL_TYPE_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Base UOM</label>
-              <select
-                className="input"
-                value={baseUomCode}
-                onChange={(e) => setBaseUomCode(e.target.value)}
-              >
-                {MATERIAL_UOM_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Status</label>
-              <select
-                className="input"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="INACTIVE">INACTIVE</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Default manufacturer</label>
-              <input
-                className="input"
-                placeholder="e.g. Zentiva"
-                value={manufacturer}
-                onChange={(e) => setManufacturer(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="label">Default supplier</label>
-              <input
-                className="input"
-                placeholder="e.g. MEDI HEALTH"
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-              />
-            </div>
-
-            {/* Phase D4: Alerts & Quarantine */}
-            <div className="form-group form-group-full">
-              <label className="label">Alerts &amp; Quarantine</label>
-              <div className="content-subtitle" style={{ marginBottom: 10 }}>
-                Configure per-material low stock + low expiry alerts, and optionally override the auto-quarantine threshold.
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="label">Low stock threshold qty (base UOM)</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={lowStockThresholdQty}
-                    onChange={(e) => setLowStockThresholdQty(toNumOrEmpty(e.target.value))}
-                    placeholder="e.g. 10"
-                  />
-                </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="label">Low expiry alert days</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    step="1"
-                    value={expiryAlertDays}
-                    onChange={(e) => setExpiryAlertDays(toNumOrEmpty(e.target.value))}
-                    placeholder="e.g. 60"
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginTop: 10 }}>
-                <div className="info-row" style={{ marginBottom: 6 }}>
-                  Default auto-quarantine:{" "}
-                  <strong>
-                    {defaultThresholdDays === null ? "—" : `${defaultThresholdDays} days`}
-                  </strong>{" "}
-                  <span className="muted">(from Settings)</span>
-                </div>
-
-                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={overrideEnabled}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setOverrideEnabled(on);
-                      if (!on) setOverrideDays("");
-                    }}
-                  />
-                  <span>Override default auto-quarantine days</span>
-                </label>
-
-                {overrideEnabled && (
-                  <div style={{ marginTop: 8, maxWidth: 240 }}>
-                    <input
-                      className="input"
-                      type="number"
-                      min={0}
-                      step="1"
-                      value={overrideDays}
-                      onChange={(e) => setOverrideDays(toNumOrEmpty(e.target.value))}
-                      placeholder="e.g. 30"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {isEdit && (
-              <div className="form-group form-group-full">
-                <label className="label">
-                  Edit reason <span style={{ color: "#fca5a5" }}>(required)</span>
-                </label>
-                <textarea
-                  className="input textarea"
-                  value={editReason}
-                  onChange={(e) => setEditReason(e.target.value)}
-                  placeholder="Explain what changed and why (audit trail)…"
-                />
-              </div>
-            )}
-
-            {isEdit && isTabletsCaps && (
-              <div className="form-group form-group-full">
-                <label className="label">
-                  Approved manufacturers (TABLETS/CAPSULES)
-                </label>
-                <p className="content-subtitle" style={{ marginBottom: 8 }}>
-                  Operators will only be able to book goods in against these
-                  manufacturers in the Goods Receipt screen.
-                </p>
-
-                {loadingApproved && (
-                  <div className="info-row">Loading manufacturers…</div>
-                )}
-                {approvedError && (
-                  <div className="error-row">{approvedError}</div>
-                )}
-
-                {!loadingApproved &&
-                  approvedVisible.length === 0 &&
-                  pendingAddNames.length === 0 && (
-                    <div className="info-row">
-                      No approved manufacturers configured yet.
-                    </div>
-                  )}
-
-                {approvedVisible.length > 0 && (
-                  <ul className="pill-list">
-                    {approvedVisible.map((am) => {
-                      const pendingRemove = pendingRemoveIds.has(am.id);
-                      return (
-                        <li
-                          key={am.id}
-                          className="pill"
-                          style={{ opacity: pendingRemove ? 0.5 : 1 }}
-                          title={
-                            pendingRemove
-                              ? "Pending removal (will apply on Save)"
-                              : undefined
-                          }
-                        >
-                          <span>{am.manufacturer_name}</span>
-                          {!pendingRemove ? (
-                            <button
-                              type="button"
-                              className="pill-remove-btn"
-                              onClick={() => handleDeleteApproved(am.id)}
-                              title="Mark for removal (will apply on Save)"
-                            >
-                              ✕
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="pill-remove-btn"
-                              onClick={() => undoDeleteApproved(am.id)}
-                              title="Undo removal"
-                            >
-                              Undo
-                            </button>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-
-                {pendingAddNames.length > 0 && (
-                  <div style={{ marginTop: 10 }}>
-                    <div className="info-row" style={{ marginBottom: 6 }}>
-                      Pending add (applies on Save):
-                    </div>
-                    <ul className="pill-list">
-                      {pendingAddNames.map((n) => (
-                        <li
-                          key={normalize(n)}
-                          className="pill"
-                          title="Pending add (will apply on Save)"
-                        >
-                          <span>{n}</span>
-                          <button
-                            type="button"
-                            className="pill-remove-btn"
-                            onClick={() => removePendingAdd(n)}
-                            title="Remove from pending adds"
-                          >
-                            ✕
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <input
-                    className="input"
-                    placeholder="Add manufacturer name…"
-                    value={newApprovedName}
-                    onChange={(e) => setNewApprovedName(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleAddApproved}
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!isEdit && isTabletsCaps && (
-              <div className="form-group form-group-full">
-                <label className="label">Approved manufacturers</label>
-                <p className="content-subtitle">
-                  Save the material first, then edit it to configure the list of
-                  approved manufacturers for TABLETS/CAPSULES.
-                </p>
-              </div>
-            )}
-          </div>
+          <MaterialFormFields
+            mode={mode}
+            canSuperEditLockedFields={canSuperEditLockedFields}
+            materialCode={materialCode}
+            setMaterialCode={setMaterialCode}
+            name={name}
+            setName={setName}
+            categoryCode={categoryCode}
+            setCategoryCode={setCategoryCode}
+            typeCode={typeCode}
+            setTypeCode={setTypeCode}
+            baseUomCode={baseUomCode}
+            setBaseUomCode={setBaseUomCode}
+            manufacturer={manufacturer}
+            setManufacturer={setManufacturer}
+            supplier={supplier}
+            setSupplier={setSupplier}
+            status={status}
+            setStatus={setStatus}
+            lowStockThresholdQty={lowStockThresholdQty}
+            setLowStockThresholdQty={setLowStockThresholdQty}
+            expiryAlertDays={expiryAlertDays}
+            setExpiryAlertDays={setExpiryAlertDays}
+            overrideEnabled={overrideEnabled}
+            setOverrideEnabled={setOverrideEnabled}
+            overrideDays={overrideDays}
+            setOverrideDays={setOverrideDays}
+            defaultThresholdDays={defaultThresholdDays}
+            isTabletsCaps={isTabletsCaps}
+            editReason={editReason}
+            setEditReason={setEditReason}
+            approvedManufacturersSection={approvedSection}
+          />
 
           {error && <div className="form-error">{error}</div>}
 
@@ -740,11 +351,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={submitting}
-            >
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
               {submitting ? "Saving…" : "Save"}
             </button>
           </div>

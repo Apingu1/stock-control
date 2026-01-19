@@ -7,190 +7,47 @@ import {
   pruneAlertActions,
 } from "../../utils/api";
 
+import type {
+  AlertAction,
+  AlertState,
+  LowExpiryRow,
+  LowExpirySortMode,
+  LowStockRow,
+  LowStockSortMode,
+  ParsedKey,
+  UpsertMeta,
+} from "./alertsTypes";
+
+import {
+  FILTER_STATE_OPTIONS,
+  STATE_OPTIONS,
+  getCategoryOptions,
+  getTypeOptions,
+  stateBadgeKind,
+  statePriority,
+} from "./alertsTypes";
+
+import {
+  computeDaysToAQ,
+  keyLowExpiry,
+  keyLowStock,
+  loadActions,
+  nowIso,
+  parseKey,
+  safeNum,
+  saveActions,
+} from "./alertsStore";
+
+import { badge, stateLabel } from "./alertsUi";
+import LowStockPanel from "./LowStockPanel";
+import LowExpiryPanel from "./LowExpiryPanel";
+import SuppressedModal from "./SuppressedModal";
+import type { SuppressedRow } from "./SuppressedModal";
+
 type Props = {
   materials: Material[];
   lotBalances: LotBalance[];
 };
-
-type AlertState =
-  | "NEW"
-  | "ACKNOWLEDGED"
-  | "ON_ORDER"
-  | "DELAYED"
-  | "UNAVAILABLE"
-  | "NOT_REQUIRED";
-
-type AlertAction = {
-  state: AlertState;
-  eta_text?: string;
-  updated_at?: string;
-  last_seen_available_qty?: number;
-};
-
-const ALERT_STORAGE_KEY = "sc_alert_actions_v1";
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function safeNum(n: any): number {
-  const x = typeof n === "number" ? n : Number(n);
-  return Number.isFinite(x) ? x : 0;
-}
-
-function loadActions(): Record<string, AlertAction> {
-  try {
-    const raw = localStorage.getItem(ALERT_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Record<string, AlertAction>;
-  } catch {
-    return {};
-  }
-}
-
-function saveActions(map: Record<string, AlertAction>) {
-  localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(map));
-  try {
-    window.dispatchEvent(new CustomEvent("sc_alert_actions_changed"));
-  } catch {
-    // ignore
-  }
-}
-
-function keyLowStock(materialCode: string) {
-  return `LOW_STOCK::${materialCode}`;
-}
-function keyLowExpiry(materialCode: string, lotNumber: string) {
-  return `LOW_EXPIRY::${materialCode}::${lotNumber}`;
-}
-
-type AlertType = "LOW_STOCK" | "LOW_EXPIRY";
-
-type ParsedKey = {
-  type: AlertType;
-  material: string;
-  lot?: string;
-};
-
-function parseKey(k: string): ParsedKey {
-  const parts = k.split("::");
-  if (parts[0] === "LOW_STOCK") return { type: "LOW_STOCK", material: parts[1] ?? "" };
-  if (parts[0] === "LOW_EXPIRY")
-    return { type: "LOW_EXPIRY", material: parts[1] ?? "", lot: parts[2] ?? "" };
-  return { type: "LOW_STOCK", material: k };
-}
-
-type LowStockRow = {
-  key: string;
-  material_code: string;
-  name: string;
-  category_code: string;
-  type_code: string;
-  base_uom_code: string;
-  available_qty: number;
-  threshold_qty: number;
-  severity: "warn" | "critical";
-  action: AlertAction;
-};
-
-type LowExpiryRow = {
-  key: string;
-  material_code: string;
-  name: string;
-  category_code: string;
-  type_code: string;
-  lot_number: string;
-  expiry_date: string;
-  days_to_expiry: number;
-  alert_days: number;
-  days_to_quarantine: number | null;
-  qty: number;
-  severity: "warn" | "critical";
-  action: AlertAction;
-};
-
-const STATE_OPTIONS: { value: AlertState; label: string }[] = [
-  { value: "NEW", label: "New" },
-  { value: "ACKNOWLEDGED", label: "Acknowledged" },
-  { value: "ON_ORDER", label: "On order" },
-  { value: "DELAYED", label: "Delayed" },
-  { value: "UNAVAILABLE", label: "Unavailable" },
-  { value: "NOT_REQUIRED", label: "Not required" },
-];
-
-const FILTER_STATE_OPTIONS: { value: "ALL" | Exclude<AlertState, "NOT_REQUIRED">; label: string }[] =
-  [
-    { value: "ALL", label: "All statuses" },
-    { value: "NEW", label: "New" },
-    { value: "ACKNOWLEDGED", label: "Acknowledged" },
-    { value: "ON_ORDER", label: "On order" },
-    { value: "DELAYED", label: "Delayed" },
-    { value: "UNAVAILABLE", label: "Unavailable" },
-  ];
-
-function stateBadgeKind(s: AlertState): "neutral" | "warn" | "critical" {
-  if (s === "NOT_REQUIRED") return "neutral";
-  if (s === "ON_ORDER") return "neutral";
-  if (s === "ACKNOWLEDGED") return "neutral";
-  if (s === "UNAVAILABLE") return "critical";
-  if (s === "DELAYED") return "warn";
-  return "warn";
-}
-
-function statePriority(s: AlertState): number {
-  // Lower = higher priority
-  // Suggested order: NEW, UNAVAILABLE, DELAYED, ON_ORDER, ACKNOWLEDGED
-  if (s === "NEW") return 0;
-  if (s === "UNAVAILABLE") return 1;
-  if (s === "DELAYED") return 2;
-  if (s === "ON_ORDER") return 3;
-  if (s === "ACKNOWLEDGED") return 4;
-  return 99;
-}
-
-/**
- * Compute "Days to AQ" (Days until auto-quarantine threshold is reached).
- *
- * Priority:
- * 1) If backend provides r.days_to_quarantine, use it.
- * 2) Else derive: days_to_expiry - expiry_threshold_days (if both exist).
- *
- * Clamp to >= 0 to avoid confusing negative values.
- */
-function computeDaysToAQ(row: any): number | null {
-  const direct =
-    row?.days_to_quarantine ??
-    row?.days_to_aq ??
-    row?.days_to_auto_quarantine ??
-    row?.days_until_auto_quarantine ??
-    null;
-
-  if (direct !== null && direct !== undefined) {
-    const v = safeNum(direct);
-    return v < 0 ? 0 : v;
-  }
-
-  const dte = row?.days_to_expiry ?? null;
-  const thresholdDays = row?.expiry_threshold_days ?? row?.expiry_threshold ?? null;
-
-  if (dte === null || dte === undefined) return null;
-  if (thresholdDays === null || thresholdDays === undefined) return null;
-
-  const v = safeNum(dte) - safeNum(thresholdDays);
-  return v < 0 ? 0 : v;
-}
-
-type UpsertMeta = {
-  alert_type: AlertType;
-  material_code: string;
-  lot_number?: string | null;
-  last_seen_available_qty?: number | null;
-};
-
-type LowStockSortMode = "SEVERITY" | "LOWEST_AVAILABLE" | "STATUS_PRIORITY" | "MATERIAL";
-type LowExpirySortMode = "SOONEST_AQ" | "SOONEST_EXPIRY" | "STATUS_PRIORITY" | "MATERIAL";
 
 const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
   const [q, setQ] = useState("");
@@ -333,23 +190,8 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     return m;
   }, [materials]);
 
-  const categoryOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const m of materials as any[]) {
-      const c = String(m.category_code ?? "").trim();
-      if (c) s.add(c);
-    }
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [materials]);
-
-  const typeOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const m of materials as any[]) {
-      const t = String(m.type_code ?? "").trim();
-      if (t) s.add(t);
-    }
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [materials]);
+  const categoryOptions = useMemo(() => getCategoryOptions(materials), [materials]);
+  const typeOptions = useMemo(() => getTypeOptions(materials), [materials]);
 
   // --- Active alert keys (for pruning) -------------------------------------
   const activeLowStockKeys = useMemo(() => {
@@ -667,97 +509,6 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materials, availableQtyByMaterial, actionsLoaded]);
 
-  const badge = (text: string, kind: "neutral" | "warn" | "critical") => {
-    const bg =
-      kind === "critical"
-        ? "rgba(239, 68, 68, 0.18)"
-        : kind === "warn"
-        ? "rgba(245, 158, 11, 0.18)"
-        : "rgba(99, 102, 241, 0.18)";
-    const border =
-      kind === "critical"
-        ? "rgba(239, 68, 68, 0.35)"
-        : kind === "warn"
-        ? "rgba(245, 158, 11, 0.35)"
-        : "rgba(99, 102, 241, 0.35)";
-    const color =
-      kind === "critical"
-        ? "rgba(252, 165, 165, 1)"
-        : kind === "warn"
-        ? "rgba(253, 186, 116, 1)"
-        : "rgba(199, 210, 254, 1)";
-    return (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "4px 10px",
-          borderRadius: 999,
-          background: bg,
-          border: `1px solid ${border}`,
-          color,
-          fontSize: 12,
-          fontWeight: 600,
-          lineHeight: "16px",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {text}
-      </span>
-    );
-  };
-
-  const sectionHeader = (title: string, count: number, kind: "neutral" | "warn" | "critical") => (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
-      </div>
-      <div>{badge(`${count} flagged`, kind)}</div>
-    </div>
-  );
-
-  const thStyle: React.CSSProperties = {
-    textAlign: "left",
-    fontSize: 12,
-    fontWeight: 700,
-    letterSpacing: "0.02em",
-    color: "rgba(226, 232, 240, 0.9)",
-    padding: "12px 14px",
-    borderBottom: "1px solid rgba(148, 163, 184, 0.12)",
-    whiteSpace: "nowrap",
-    position: "sticky",
-    top: 0,
-    zIndex: 2,
-    background: "rgba(15, 23, 42, 0.92)",
-    backdropFilter: "blur(6px)",
-  };
-
-  const tdStyle: React.CSSProperties = {
-    fontSize: 13,
-    padding: "12px 14px",
-    borderBottom: "1px solid rgba(148, 163, 184, 0.08)",
-    verticalAlign: "middle",
-  };
-
-  const tableStyle: React.CSSProperties = {
-    width: "100%",
-    borderCollapse: "separate",
-    borderSpacing: 0,
-  };
-
-  const formatQty = (n: number) => {
-    // Keep numeric fidelity but avoid ugly long decimals.
-    // - If integer-ish => show no decimals
-    // - Else show up to 3 decimals (trimmed)
-    const v = Number(n);
-    if (!Number.isFinite(v)) return "0";
-    const rounded = Math.round(v);
-    if (Math.abs(v - rounded) < 1e-9) return String(rounded);
-    const s = v.toFixed(3);
-    return s.replace(/\.0+$/, "").replace(/(\.[0-9]*?)0+$/, "$1");
-  };
-
   const flushEtaDraft = (k: string, meta: UpsertMeta) => {
     const val = etaDraft[k];
     if (val === undefined) return;
@@ -783,6 +534,8 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         flushEtaDraft(k, meta);
       }, 650);
     };
+
+    const bgKind = stateBadgeKind(act.state);
 
     return (
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -812,17 +565,14 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
           onBlur={() => flushEtaDraft(k, meta)}
         />
 
-        {badge(
-          STATE_OPTIONS.find((o) => o.value === act.state)?.label ?? act.state,
-          stateBadgeKind(act.state)
-        )}
+        {badge(stateLabel(act.state), bgKind)}
       </div>
     );
   };
 
-  const suppressed = useMemo(() => {
+  const suppressed = useMemo<SuppressedRow[]>(() => {
     if (!actionsLoaded) return [];
-    const out: { key: string; info: ParsedKey; action: AlertAction }[] = [];
+    const out: SuppressedRow[] = [];
     for (const [k, v] of Object.entries(actions)) {
       if (v?.state !== "NOT_REQUIRED") continue;
       out.push({ key: k, info: parseKey(k), action: v });
@@ -928,273 +678,38 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         </div>
       </div>
 
-      {/* LOW STOCK */}
-      <div className="card" style={{ marginTop: 14 }}>
-        <div className="card-header" style={{ paddingBottom: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              {sectionHeader("Low Stock", lowStockRows.length, lowStockRows.length > 0 ? "warn" : "neutral")}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
-              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>
-                Sort
-              </div>
-              <select
-                className="input"
-                style={{ height: 34, width: 190, fontSize: 13 }}
-                value={lowStockSort}
-                onChange={(e) => setLowStockSort(e.target.value as LowStockSortMode)}
-              >
-                <option value="SEVERITY">Severity (default)</option>
-                <option value="LOWEST_AVAILABLE">Lowest available</option>
-                <option value="STATUS_PRIORITY">Status priority</option>
-                <option value="MATERIAL">Material code</option>
-              </select>
-            </div>
-          </div>
-        </div>
+      <LowStockPanel
+        rows={lowStockRows}
+        sortMode={lowStockSort}
+        setSortMode={setLowStockSort}
+        renderMgmtCell={renderMgmtCell}
+      />
 
-        <div className="table-wrap" style={{ paddingTop: 6, maxHeight: 360, overflow: "auto", borderRadius: 12 }}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={{ ...thStyle, width: "14%" }}>Material</th>
-                <th style={{ ...thStyle, width: "22%" }}>Name</th>
-                <th style={{ ...thStyle, width: "14%" }}>Category / Type</th>
-                <th style={{ ...thStyle, textAlign: "right", width: "9%" }}>Available</th>
-                <th style={{ ...thStyle, textAlign: "right", width: "9%" }}>Threshold</th>
-                <th style={{ ...thStyle, width: "8%" }}>UOM</th>
-                <th style={{ ...thStyle, width: "24%" }}>Alert management</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lowStockRows.length === 0 ? (
-                <tr>
-                  <td style={tdStyle} colSpan={7} className="muted">
-                    No low stock alerts triggered.
-                  </td>
-                </tr>
-              ) : (
-                lowStockRows.map((r) => (
-                  <tr
-                    key={r.key}
-                    style={{
-                      background: r.severity === "critical" ? "rgba(239, 68, 68, 0.06)" : "transparent",
-                    }}
-                  >
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>{r.material_code}</td>
-                    <td style={tdStyle}>{r.name}</td>
-                    <td style={tdStyle} className="muted">
-                      {r.category_code} / {r.type_code}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatQty(r.available_qty)}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatQty(r.threshold_qty)}
-                    </td>
-                    <td style={tdStyle}>{r.base_uom_code}</td>
-                    <td style={tdStyle}>
-                      {renderMgmtCell(r.key, r.action, {
-                        alert_type: "LOW_STOCK",
-                        material_code: r.material_code,
-                        lot_number: null,
-                        last_seen_available_qty: r.available_qty,
-                      })}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <LowExpiryPanel
+        rows={lowExpiryRows}
+        sortMode={lowExpirySort}
+        setSortMode={setLowExpirySort}
+        renderMgmtCell={renderMgmtCell}
+      />
 
-      {/* LOW EXPIRY */}
-      <div className="card" style={{ marginTop: 14 }}>
-        <div className="card-header" style={{ paddingBottom: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              {sectionHeader("Low Expiry", lowExpiryRows.length, lowExpiryRows.length > 0 ? "warn" : "neutral")}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
-              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>
-                Sort
-              </div>
-              <select
-                className="input"
-                style={{ height: 34, width: 210, fontSize: 13 }}
-                value={lowExpirySort}
-                onChange={(e) => setLowExpirySort(e.target.value as LowExpirySortMode)}
-              >
-                <option value="SOONEST_AQ">Soonest Days to AQ (default)</option>
-                <option value="SOONEST_EXPIRY">Soonest expiry</option>
-                <option value="STATUS_PRIORITY">Status priority</option>
-                <option value="MATERIAL">Material code</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="table-wrap" style={{ paddingTop: 6, maxHeight: 420, overflow: "auto", borderRadius: 12 }}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={{ ...thStyle, width: "14%" }}>Material</th>
-                <th style={{ ...thStyle, width: "22%" }}>Name</th>
-                <th style={{ ...thStyle, width: "14%" }}>Lot</th>
-                <th style={{ ...thStyle, width: "14%" }}>Expiry</th>
-                <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>Days to expiry</th>
-                <th
-                  style={{
-                    ...thStyle,
-                    textAlign: "right",
-                    width: "8%",
-                    whiteSpace: "normal",
-                    lineHeight: "14px",
-                  }}
-                  title="Days until auto quarantine"
-                >
-                  Days to AQ
-                </th>
-                <th style={{ ...thStyle, textAlign: "right", width: "8%" }}>Alert days</th>
-                <th style={{ ...thStyle, textAlign: "right", width: "10%" }}>Qty</th>
-                <th style={{ ...thStyle, width: "24%" }}>Alert management</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lowExpiryRows.length === 0 ? (
-                <tr>
-                  <td style={tdStyle} colSpan={9} className="muted">
-                    No low expiry alerts triggered.
-                  </td>
-                </tr>
-              ) : (
-                lowExpiryRows.map((r) => (
-                  <tr
-                    key={r.key}
-                    style={{
-                      background: r.severity === "critical" ? "rgba(239, 68, 68, 0.06)" : "transparent",
-                    }}
-                  >
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>{r.material_code}</td>
-                    <td style={tdStyle}>{r.name}</td>
-                    <td style={tdStyle}>{r.lot_number}</td>
-                    <td style={tdStyle}>{r.expiry_date}</td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.days_to_expiry}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.days_to_quarantine === null ? "—" : r.days_to_quarantine}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.alert_days}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatQty(r.qty)}
-                    </td>
-                    <td style={tdStyle}>
-                      {renderMgmtCell(r.key, r.action, {
-                        alert_type: "LOW_EXPIRY",
-                        material_code: r.material_code,
-                        lot_number: r.lot_number,
-                        last_seen_available_qty: null,
-                      })}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* SUPPRESSED MODAL */}
-      {showSuppressed && (
-        <div className="modal-backdrop">
-          <div className="modal" style={{ maxWidth: 820 }}>
-            <div className="modal-header">
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>Suppressed alerts</div>
-                <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-                  Alerts marked as “Not required” won’t appear until manually undone.
-                </div>
-              </div>
-              <button className="btn btn-ghost" type="button" onClick={() => setShowSuppressed(false)}>
-                Close
-              </button>
-            </div>
-
-            <div style={{ padding: 14 }}>
-              {Object.entries(actions).filter(([, v]) => v?.state === "NOT_REQUIRED").length === 0 ? (
-                <div className="muted">No suppressed alerts.</div>
-              ) : (
-                <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ ...thStyle }}>Type</th>
-                      <th style={{ ...thStyle }}>Material</th>
-                      <th style={{ ...thStyle }}>Lot</th>
-                      <th style={{ ...thStyle }}>State</th>
-                      <th style={{ ...thStyle }}>ETA</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(actions)
-                      .filter(([, v]) => v?.state === "NOT_REQUIRED")
-                      .map(([k, v]) => ({ key: k, info: parseKey(k), action: v! }))
-                      .sort((a, b) => {
-                        if (a.info.type !== b.info.type) return a.info.type.localeCompare(b.info.type);
-                        if (a.info.material !== b.info.material) return a.info.material.localeCompare(b.info.material);
-                        return (a.info.lot ?? "").localeCompare(b.info.lot ?? "");
-                      })
-                      .map((s) => (
-                        <tr key={s.key}>
-                          <td style={tdStyle}>{s.info.type === "LOW_STOCK" ? "Low Stock" : "Low Expiry"}</td>
-                          <td style={tdStyle}>{s.info.material}</td>
-                          <td style={tdStyle}>{s.info.lot ?? "—"}</td>
-                          <td style={tdStyle}>{s.action.state}</td>
-                          <td style={tdStyle}>{s.action.eta_text ?? "—"}</td>
-                          <td style={{ ...tdStyle, textAlign: "right" }}>
-                            <button
-                              className="btn btn-ghost"
-                              type="button"
-                              onClick={() =>
-                                void upsertAction(s.key, { state: "NEW" }, {
-                                  alert_type: s.info.type,
-                                  material_code: s.info.material,
-                                  lot_number: s.info.type === "LOW_EXPIRY" ? (s.info.lot ?? null) : null,
-                                  last_seen_available_qty: null,
-                                })
-                              }
-                            >
-                              Undo
-                            </button>
-                            <button
-                              className="btn btn-ghost"
-                              type="button"
-                              onClick={() => void removeAction(s.key)}
-                              style={{ marginLeft: 8 }}
-                            >
-                              Delete entry
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn btn-primary" type="button" onClick={() => setShowSuppressed(false)}>
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SuppressedModal
+        open={showSuppressed}
+        suppressed={suppressed}
+        onClose={() => setShowSuppressed(false)}
+        onUndo={(k: string, info: ParsedKey) =>
+          void upsertAction(
+            k,
+            { state: "NEW" },
+            {
+              alert_type: info.type,
+              material_code: info.material,
+              lot_number: info.type === "LOW_EXPIRY" ? info.lot ?? null : null,
+              last_seen_available_qty: null,
+            }
+          )
+        }
+        onDelete={(k: string) => void removeAction(k)}
+      />
     </div>
   );
 };

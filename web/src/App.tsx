@@ -1,15 +1,15 @@
 // web/src/App.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import type {
-  LotBalance,
-  Material,
-  ViewMode,
-  Receipt,
-  Issue,
-  UserMe,
-  ExpiryThresholdRow,
-} from "./types";
-import { apiFetch, clearToken, fetchMe, getToken } from "./utils/api";
+import type { Issue, Material, Receipt, UserMe, ViewMode } from "./types";
+import { clearToken, fetchMe, getToken } from "./utils/api";
+
+import { useAuth } from "./hooks/useAuth";
+import { usePermissions } from "./hooks/usePermissions";
+import { useStockData } from "./hooks/useStockData";
+import { useAlertsBadge } from "./hooks/useAlertsBadge";
+
+import Sidebar from "./components/layout/Sidebar";
+import TopBar from "./components/layout/TopBar";
 
 import DashboardView from "./components/dashboard/DashboardView";
 import MaterialsLibraryView from "./components/materials/MaterialsLibraryView";
@@ -27,67 +27,13 @@ import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
 import AdminSettingsView from "./components/admin/AdminSettingsView";
 
-type MyPermissionsResponse = {
-  role: string;
-  permissions: string[];
-};
-
-// --- Alerts: localStorage-driven suppression (NOT_REQUIRED) -----------------
-type AlertState =
-  | "NEW"
-  | "ACKNOWLEDGED"
-  | "ON_ORDER"
-  | "DELAYED"
-  | "UNAVAILABLE"
-  | "NOT_REQUIRED";
-
-type AlertAction = {
-  state: AlertState;
-  eta_text?: string;
-  updated_at?: string;
-  last_seen_available_qty?: number;
-};
-
-const ALERT_STORAGE_KEY = "sc_alert_actions_v1";
-
-function safeNum(n: any): number {
-  const x = typeof n === "number" ? n : Number(n);
-  return Number.isFinite(x) ? x : 0;
-}
-
-function loadAlertActions(): Record<string, AlertAction> {
-  try {
-    const raw = localStorage.getItem(ALERT_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Record<string, AlertAction>;
-  } catch {
-    return {};
-  }
-}
-
-function keyLowStock(materialCode: string) {
-  return `LOW_STOCK::${materialCode}`;
-}
-
-function keyLowExpiry(materialCode: string, lotNumber: string) {
-  return `LOW_EXPIRY::${materialCode}::${lotNumber}`;
-}
-
 const App: React.FC = () => {
   // --- Auth -----------------------------------------------------------------
-  const [me, setMe] = useState<UserMe | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
+  const auth = useAuth();
 
   // Phase B: permissions (UX only; server enforces)
-  const [myPermissions, setMyPermissions] = useState<string[]>([]);
-
-  const hasPerm = useMemo(() => {
-    const s = new Set(myPermissions);
-    return (p: string) => s.has(p);
-  }, [myPermissions]);
+  const perms = usePermissions();
+  const hasPerm = perms.hasPerm;
 
   const isAdmin = hasPerm("admin.full");
   const canChangeStatus = hasPerm("lots.status_change");
@@ -96,29 +42,12 @@ const App: React.FC = () => {
 
   const canSuperEditMaterials = hasPerm("materials.super_edit_locked_fields");
   const canSuperEditReceipts = hasPerm("receipts.super_edit_locked_fields");
-  // ✅ NEW: consumption superuser unlock flag (separate permission)
   const canSuperEditIssues = hasPerm("issues.super_edit_locked_fields");
 
   const canViewAudit = hasPerm("audit.view");
 
   // --- Data -----------------------------------------------------------------
-  const [lotBalances, setLotBalances] = useState<LotBalance[]>([]);
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [expiryThresholds, setExpiryThresholds] = useState<ExpiryThresholdRow[]>(
-    []
-  );
-
-  // Loading / error flags
-  const [loadingLots, setLoadingLots] = useState(true);
-  const [lotsError, setLotsError] = useState<string | null>(null);
-
-  const [loadingReceipts, setLoadingReceipts] = useState(true);
-  const [receiptsError, setReceiptsError] = useState<string | null>(null);
-
-  const [loadingIssues, setLoadingIssues] = useState(true);
-  const [issuesError, setIssuesError] = useState<string | null>(null);
+  const stock = useStockData();
 
   // Modals
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -132,209 +61,33 @@ const App: React.FC = () => {
 
   const [view, setView] = useState<ViewMode>("dashboard");
 
-  // --- NEW: trigger recompute when alert actions change ----------------------
-  const [alertsTick, setAlertsTick] = useState(0);
-
-  useEffect(() => {
-    const bump = () => setAlertsTick((x) => x + 1);
-
-    // Fired by LowStockExpiryView when saving
-    window.addEventListener("sc_alert_actions_changed", bump as any);
-
-    // In case another tab changes localStorage
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === ALERT_STORAGE_KEY) bump();
-    };
-    window.addEventListener("storage", onStorage);
-
-    return () => {
-      window.removeEventListener("sc_alert_actions_changed", bump as any);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
-
-  // --- Derived: Alerts badge counts (combined low stock + low expiry) -------
-  // FIXED: excludes suppressed alerts where action.state === "NOT_REQUIRED"
-  const alertsCounts = useMemo(() => {
-    void alertsTick;
-
-    const actions = loadAlertActions();
-
-    const suppressed = new Set<string>();
-    for (const [k, v] of Object.entries(actions)) {
-      if (v?.state === "NOT_REQUIRED") suppressed.add(k);
-    }
-
-    // Available qty by material (sum of AVAILABLE segments)
-    const availByMat = new Map<string, number>();
-    for (const r of lotBalances as any[]) {
-      if (String(r.status).toUpperCase() !== "AVAILABLE") continue;
-
-      const code = String(r.material_code ?? "");
-      const bal = safeNum(r.balance_qty ?? 0);
-      availByMat.set(code, (availByMat.get(code) ?? 0) + bal);
-    }
-
-    // Low stock flagged materials (excluding suppressed)
-    let lowStock = 0;
-    for (const m of materials as any[]) {
-      const thr = m.low_stock_threshold_qty;
-      if (thr === null || thr === undefined) continue;
-
-      const thrNum = safeNum(thr);
-      const avail = availByMat.get(String(m.material_code)) ?? 0;
-
-      if (avail <= thrNum) {
-        const k = keyLowStock(String(m.material_code));
-        if (!suppressed.has(k)) lowStock += 1;
-      }
-    }
-
-    // Low expiry flagged lots (excluding suppressed)
-    let lowExpiry = 0;
-    const matByCode = new Map<string, any>();
-    for (const m of materials as any[]) matByCode.set(String(m.material_code), m);
-
-    for (const r of lotBalances as any[]) {
-      if (String(r.status).toUpperCase() !== "AVAILABLE") continue;
-
-      const bal = safeNum(r.balance_qty ?? 0);
-      if (bal <= 0) continue;
-
-      if (!r.expiry_date) continue;
-
-      const mat = matByCode.get(String(r.material_code));
-      const alertDays = mat?.expiry_alert_days;
-      if (alertDays === null || alertDays === undefined) continue;
-
-      const alertNum = safeNum(alertDays);
-
-      const dte = r.days_to_expiry;
-      if (dte === null || dte === undefined) continue;
-
-      const dteNum = safeNum(dte);
-      if (dteNum <= alertNum) {
-        const k = keyLowExpiry(String(r.material_code), String(r.lot_number));
-        if (!suppressed.has(k)) lowExpiry += 1;
-      }
-    }
-
-    return { lowStock, lowExpiry, total: lowStock + lowExpiry };
-  }, [alertsTick, materials, lotBalances]);
-
-  // --- Loaders --------------------------------------------------------------
-  const loadLotBalances = async () => {
-    try {
-      setLoadingLots(true);
-      setLotsError(null);
-      const res = await apiFetch("/lot-balances/");
-      const data = (await res.json()) as LotBalance[];
-      setLotBalances(data);
-    } catch (e: any) {
-      console.error(e);
-      setLotsError(e?.message ?? "Failed to load lot balances");
-    } finally {
-      setLoadingLots(false);
-    }
-  };
-
-  const loadMaterials = async () => {
-    try {
-      const res = await apiFetch("/materials/");
-      const data = (await res.json()) as Material[];
-      setMaterials(data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const loadExpiryThresholds = async () => {
-    try {
-      const res = await apiFetch("/materials/expiry-thresholds");
-      const data = (await res.json()) as ExpiryThresholdRow[];
-      setExpiryThresholds(data);
-    } catch (e) {
-      console.error(e);
-      setExpiryThresholds([]);
-    }
-  };
-
-  const loadReceipts = async () => {
-    try {
-      setLoadingReceipts(true);
-      setReceiptsError(null);
-      const res = await apiFetch("/receipts/");
-      const data = (await res.json()) as Receipt[];
-      setReceipts(data);
-    } catch (e: any) {
-      console.error(e);
-      setReceiptsError(e?.message ?? "Failed to load goods receipts");
-    } finally {
-      setLoadingReceipts(false);
-    }
-  };
-
-  const loadIssues = async () => {
-    try {
-      setLoadingIssues(true);
-      setIssuesError(null);
-      const res = await apiFetch("/issues/");
-      const data = (await res.json()) as Issue[];
-      setIssues(data);
-    } catch (e: any) {
-      console.error(e);
-      setIssuesError(e?.message ?? "Failed to load consumption history");
-    } finally {
-      setLoadingIssues(false);
-    }
-  };
-
-  const loadAll = async () => {
-    await Promise.all([
-      loadLotBalances(),
-      loadMaterials(),
-      loadExpiryThresholds(),
-      loadReceipts(),
-      loadIssues(),
-    ]);
-  };
-
-  const loadMyPermissions = async () => {
-    try {
-      const res = await apiFetch("/auth/my-permissions");
-      const data = (await res.json()) as MyPermissionsResponse;
-      setMyPermissions(data.permissions || []);
-    } catch (e) {
-      console.error(e);
-      setMyPermissions([]);
-    }
-  };
+  const { alertsCounts } = useAlertsBadge(stock.materials, stock.lotBalances);
 
   // --- Auth bootstrap -------------------------------------------------------
   useEffect(() => {
     const boot = async () => {
       const token = getToken();
       if (!token) {
-        setMe(null);
-        setMyPermissions([]);
-        setAuthChecked(true);
-        setShowLogin(true);
+        auth.setMe(null);
+        perms.setMyPermissions([]);
+        auth.setAuthChecked(true);
+        auth.setShowLogin(true);
         return;
       }
 
       try {
         const u = await fetchMe();
-        setMe(u);
-        await loadMyPermissions();
-        setAuthChecked(true);
-        setShowLogin(false);
-        await loadAll();
+        auth.setMe(u);
+        await perms.loadMyPermissions();
+        auth.setAuthChecked(true);
+        auth.setShowLogin(false);
+        await stock.loadAll();
       } catch (e) {
         clearToken();
-        setMe(null);
-        setMyPermissions([]);
-        setAuthChecked(true);
-        setShowLogin(true);
+        auth.setMe(null);
+        perms.setMyPermissions([]);
+        auth.setAuthChecked(true);
+        auth.setShowLogin(true);
       }
     };
 
@@ -343,22 +96,22 @@ const App: React.FC = () => {
   }, []);
 
   const handleLoggedIn = async (u: UserMe) => {
-    setMe(u);
-    setShowLogin(false);
-    await loadMyPermissions();
-    await loadAll();
+    auth.setMe(u);
+    auth.setShowLogin(false);
+    await perms.loadMyPermissions();
+    await stock.loadAll();
   };
 
   const logout = () => {
     clearToken();
-    setMe(null);
-    setMyPermissions([]);
-    setShowLogin(true);
+    auth.setMe(null);
+    perms.setMyPermissions([]);
+    auth.setShowLogin(true);
     setView("dashboard");
-    setLotBalances([]);
-    setMaterials([]);
-    setReceipts([]);
-    setIssues([]);
+    stock.setLotBalances([]);
+    stock.setMaterials([]);
+    stock.setReceipts([]);
+    stock.setIssues([]);
     setEditingReceipt(null);
     setEditingIssue(null);
   };
@@ -367,25 +120,25 @@ const App: React.FC = () => {
   const handleMaterialSaved = async () => {
     setShowNewMaterialModal(false);
     setEditingMaterial(null);
-    await Promise.all([loadMaterials(), loadExpiryThresholds()]);
+    await Promise.all([stock.loadMaterials(), stock.loadExpiryThresholds()]);
   };
 
   const handleReceiptPosted = async () => {
     setShowReceiptModal(false);
     setEditingReceipt(null);
-    await Promise.all([loadLotBalances(), loadReceipts()]);
+    await Promise.all([stock.loadLotBalances(), stock.loadReceipts()]);
   };
 
   const handleIssuePosted = async () => {
     setShowIssueModal(false);
     setEditingIssue(null);
-    await Promise.all([loadLotBalances(), loadIssues()]);
+    await Promise.all([stock.loadLotBalances(), stock.loadIssues()]);
   };
 
   // --- Header helpers -------------------------------------------------------
   const header = useMemo(() => {
-    const signed = me
-      ? `Signed in as ${me.username} (${me.role})`
+    const signed = auth.me
+      ? `Signed in as ${auth.me.username} (${auth.me.role})`
       : "Please sign in to continue.";
 
     switch (view) {
@@ -400,11 +153,7 @@ const App: React.FC = () => {
       case "lots":
         return { tag: "Workspace", title: "Live Lots", subtitle: signed };
       case "alerts":
-        return {
-          tag: "Risk & Quality",
-          title: "Low Stock & Expiry",
-          subtitle: signed,
-        };
+        return { tag: "Risk & Quality", title: "Low Stock & Expiry", subtitle: signed };
       case "audit":
         return { tag: "Risk & Quality", title: "Audit Trail", subtitle: signed };
       case "admin":
@@ -414,9 +163,9 @@ const App: React.FC = () => {
       default:
         return { tag: "Workspace", title: "Dashboard", subtitle: signed };
     }
-  }, [view, me]);
+  }, [view, auth.me]);
 
-  if (!authChecked) {
+  if (!auth.authChecked) {
     return (
       <div className="app-shell">
         <div className="content">
@@ -430,265 +179,41 @@ const App: React.FC = () => {
 
   return (
     <div className="app-shell">
-      <LoginModal open={showLogin} onLoggedIn={handleLoggedIn} />
+      <LoginModal open={auth.showLogin} onLoggedIn={handleLoggedIn} />
 
-      {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="sidebar-logo">SC</div>
-          <div>
-            <div className="sidebar-title-main">Digital Stock</div>
-            <div className="sidebar-title-sub">Control Studio</div>
-          </div>
-        </div>
+      <Sidebar
+        me={auth.me}
+        view={view}
+        setView={setView}
+        isAdmin={isAdmin}
+        canViewAudit={canViewAudit}
+        alertsCounts={alertsCounts}
+        onLogout={logout}
+      />
 
-        <div className="sidebar-section-label">Workspace</div>
-        <ul className="nav-list">
-          <li className="nav-item">
-            <button
-              type="button"
-              className={"nav-link as-button " + (view === "dashboard" ? "active" : "")}
-              onClick={() => setView("dashboard")}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              <span className="icon">📊</span>
-              Dashboard
-              <span className="badge">Today</span>
-            </button>
-          </li>
-
-          <li className="nav-item">
-            <button
-              type="button"
-              className={"nav-link as-button " + (view === "materials" ? "active" : "")}
-              onClick={() => setView("materials")}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              <span className="icon">🧪</span>
-              Materials Library
-            </button>
-          </li>
-
-          <li className="nav-item">
-            <button
-              type="button"
-              className={"nav-link as-button " + (view === "receipts" ? "active" : "")}
-              onClick={() => setView("receipts")}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              <span className="icon">📥</span>
-              Goods Receipts
-            </button>
-          </li>
-
-          <li className="nav-item">
-            <button
-              type="button"
-              className={"nav-link as-button " + (view === "consumption" ? "active" : "")}
-              onClick={() => setView("consumption")}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              <span className="icon">🚚</span>
-              Consumption
-            </button>
-          </li>
-
-          <li className="nav-item">
-            <button
-              type="button"
-              className={"nav-link as-button " + (view === "lots" ? "active" : "")}
-              onClick={() => setView("lots")}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              <span className="icon">📦</span>
-              Live Lots
-            </button>
-          </li>
-
-          {isAdmin && (
-            <>
-              <div className="sidebar-section-label sidebar-section-label-admin">
-                Admin
-              </div>
-              <li className="nav-item">
-                <button
-                  type="button"
-                  className={"nav-link as-button " + (view === "admin" ? "active" : "")}
-                  onClick={() => setView("admin")}
-                >
-                  <span className="icon">👤</span>
-                  Users &amp; Roles
-                </button>
-              </li>
-
-              <li className="nav-item">
-                <button
-                  type="button"
-                  className={"nav-link as-button " + (view === "admin-settings" ? "active" : "")}
-                  onClick={() => setView("admin-settings")}
-                >
-                  <span className="icon">⚙️</span>
-                  Settings
-                </button>
-              </li>
-            </>
-          )}
-        </ul>
-
-        <div className="sidebar-section-label">Risk &amp; Quality</div>
-        <ul className="nav-list">
-          {/* ✅ Removed placeholder Expiry Watchlist */}
-
-          <li className="nav-item">
-            <a href="#" className="nav-link">
-              <span className="icon">📦</span>
-              Quarantine
-              <span className="badge">4</span>
-            </a>
-          </li>
-
-          {/* ✅ Phase D4 page + ✅ badge excludes NOT_REQUIRED */}
-          <li className="nav-item">
-            <button
-              type="button"
-              className={"nav-link as-button " + (view === "alerts" ? "active" : "")}
-              onClick={() => setView("alerts")}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              <span className="icon">🚨</span>
-              Low Stock &amp; Expiry
-              {alertsCounts.total > 0 && (
-                <span className="badge">{alertsCounts.total}</span>
-              )}
-            </button>
-          </li>
-
-          <li className="nav-item">
-            <button
-              type="button"
-              className={"nav-link as-button " + (view === "audit" ? "active" : "")}
-              onClick={() => setView("audit")}
-              disabled={!me || !canViewAudit}
-              title={
-                !me
-                  ? "Please sign in"
-                  : !canViewAudit
-                  ? "You do not have audit.view permission"
-                  : ""
-              }
-            >
-              <span className="icon">📑</span>
-              Audit Trail
-            </button>
-          </li>
-        </ul>
-
-        <div
-          className="sidebar-footer"
-          style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}
-        >
-          {me ? (
-            <>
-              <div className="avatar-pill" style={{ justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div className="avatar-img">
-                    {me.username.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="avatar-meta">
-                    <div className="avatar-name">{me.username}</div>
-                    <div className="avatar-role">{me.role}</div>
-                  </div>
-                </div>
-
-                <button className="btn btn-ghost" type="button" onClick={logout}>
-                  Logout
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span>GMP Mode</span>
-                <span className="pill-muted">Pilot • On-prem</span>
-              </div>
-            </>
-          ) : (
-            <div className="info-row">Please sign in.</div>
-          )}
-        </div>
-      </aside>
-
-      {/* MAIN */}
       <main className="main">
-        <header className="top-bar">
-          <div>
-            <div className="page-tag">{header.tag}</div>
-            <div className="page-title">{header.title}</div>
-            <div className="page-subtitle">{header.subtitle}</div>
-          </div>
+        <TopBar
+          header={header}
+          isSignedIn={!!auth.me}
+          onNewMaterial={() => setShowNewMaterialModal(true)}
+          onNewReceipt={() => setShowReceiptModal(true)}
+          onNewIssue={() => setShowIssueModal(true)}
+        />
 
-          <div className="top-bar-actions">
-            <div className="chip">
-              <span className="chip-dot" />
-              Stock engine healthy
-            </div>
-
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => setShowNewMaterialModal(true)}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              🧪 New Material
-            </button>
-
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => setShowReceiptModal(true)}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              📥 New Goods Receipt
-            </button>
-
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => setShowIssueModal(true)}
-              disabled={!me}
-              title={!me ? "Please sign in" : ""}
-            >
-              🚚 New Consumption
-            </button>
-          </div>
-        </header>
-
-        {view === "dashboard" && <DashboardView materials={materials} />}
+        {view === "dashboard" && <DashboardView materials={stock.materials} />}
 
         {view === "materials" && (
           <MaterialsLibraryView
-            materials={materials}
+            materials={stock.materials}
             onEditMaterial={(m) => setEditingMaterial(m)}
           />
         )}
 
         {view === "receipts" && (
           <GoodsReceiptsView
-            receipts={receipts}
-            loadingReceipts={loadingReceipts}
-            receiptsError={receiptsError}
+            receipts={stock.receipts}
+            loadingReceipts={stock.loadingReceipts}
+            receiptsError={stock.receiptsError}
             onNewReceipt={() => setShowReceiptModal(true)}
             canEdit={!!canEditReceipts}
             onEditReceipt={(r) => {
@@ -700,9 +225,9 @@ const App: React.FC = () => {
 
         {view === "consumption" && (
           <ConsumptionView
-            issues={issues}
-            loadingIssues={loadingIssues}
-            issuesError={issuesError}
+            issues={stock.issues}
+            loadingIssues={stock.loadingIssues}
+            issuesError={stock.issuesError}
             onNewIssue={() => setShowIssueModal(true)}
             canEdit={!!canEditIssues}
             onEditIssue={(i) => {
@@ -713,15 +238,15 @@ const App: React.FC = () => {
         )}
 
         {view === "alerts" && (
-          <LowStockExpiryView materials={materials} lotBalances={lotBalances} />
+          <LowStockExpiryView materials={stock.materials} lotBalances={stock.lotBalances} />
         )}
 
         {view === "lots" && (
           <LiveLotsView
-            lotBalances={lotBalances}
-            loadingLots={loadingLots}
-            lotsError={lotsError}
-            onLotStatusChanged={loadLotBalances}
+            lotBalances={stock.lotBalances}
+            loadingLots={stock.loadingLots}
+            lotsError={stock.lotsError}
+            onLotStatusChanged={stock.loadLotBalances}
             canChangeStatus={!!canChangeStatus}
           />
         )}
@@ -739,7 +264,7 @@ const App: React.FC = () => {
           setShowReceiptModal(false);
           setEditingReceipt(null);
         }}
-        materials={materials}
+        materials={stock.materials}
         onReceiptPosted={handleReceiptPosted}
         mode={editingReceipt ? "edit" : "create"}
         initial={editingReceipt || undefined}
@@ -752,13 +277,12 @@ const App: React.FC = () => {
           setShowIssueModal(false);
           setEditingIssue(null);
         }}
-        materials={materials}
-        lotBalances={lotBalances}
+        materials={stock.materials}
+        lotBalances={stock.lotBalances}
         onIssuePosted={handleIssuePosted}
-        createdBy={me?.username || ""}
+        createdBy={auth.me?.username || ""}
         mode={editingIssue ? "edit" : "create"}
         initial={editingIssue || undefined}
-        // ✅ NEW: allow superuser unlock inside IssueModal
         canSuperEditLockedFields={canSuperEditIssues}
       />
 
@@ -767,7 +291,7 @@ const App: React.FC = () => {
         onClose={() => setShowNewMaterialModal(false)}
         mode="create"
         onSaved={handleMaterialSaved}
-        expiryThresholds={expiryThresholds}
+        expiryThresholds={stock.expiryThresholds}
         canSuperEditLockedFields={canSuperEditMaterials}
       />
 
@@ -777,7 +301,7 @@ const App: React.FC = () => {
         mode="edit"
         initial={editingMaterial || undefined}
         onSaved={handleMaterialSaved}
-        expiryThresholds={expiryThresholds}
+        expiryThresholds={stock.expiryThresholds}
         canSuperEditLockedFields={canSuperEditMaterials}
       />
     </div>

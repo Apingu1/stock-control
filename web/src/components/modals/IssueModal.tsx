@@ -1,21 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../../utils/api";
+import React, { useState } from "react";
 import type { LotBalance, Material, Issue } from "../../types";
-import { CONSUMPTION_TYPES } from "../../constants";
+import { apiFetch } from "../../utils/api";
 
-type ConsumptionTypeCode = "USAGE" | "WASTAGE" | "DESTRUCTION" | "R_AND_D";
-
-function formatDateShort(d: string | null | undefined) {
-  if (!d) return "—";
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return String(d);
-
-  const day = String(dt.getDate()).padStart(2, "0");
-  const month = String(dt.getMonth() + 1).padStart(2, "0");
-  const year = dt.getFullYear();
-
-  return `${day}-${month}-${year}`; // DD-MM-YYYY
-}
+import { useIssueForm } from "./issues/useIssueForm";
+import IssueTraceabilityFields from "./issues/IssueTraceabilityFields";
+import IssueProductFields from "./issues/IssueProductFields";
 
 export default function IssueModal({
   open,
@@ -33,160 +22,48 @@ export default function IssueModal({
   onIssuePosted: () => void;
   materials: Material[];
   lotBalances: LotBalance[];
-  createdBy: string; // ✅ from authenticated user
+  createdBy: string;
 
   mode?: "create" | "edit";
   initial?: Issue;
   canSuperEditLockedFields?: boolean;
 }) {
-  const isEdit = mode === "edit" && !!initial;
-
-  const [consumptionType, setConsumptionType] =
-    useState<ConsumptionTypeCode>("USAGE");
-
-  const [materialSearch, setMaterialSearch] = useState("");
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
-  const [selectedLot, setSelectedLot] = useState<LotBalance | null>(null);
-
-  const [qty, setQty] = useState("");
-  const [esProductCode, setEsProductCode] = useState<string>("");
-
-  const [productBatchNo, setProductBatchNo] = useState("");
-  const [productManufactureDate, setProductManufactureDate] = useState("");
-  const [comment, setComment] = useState("");
-  const [manufacturer, setManufacturer] = useState("");
-
-  // ✅ NEW: edit reason
-  const [editReason, setEditReason] = useState("");
+  const form = useIssueForm({
+    open,
+    mode,
+    initial,
+    materials,
+    lotBalances,
+    canSuperEditLockedFields,
+  });
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Superuser edit behaviour:
-  // - By default (non-superuser), material + lot selection are locked in edit mode.
-  // - Superuser can change them (still audit-trailed on backend via edit_reason).
-  const canEditTraceabilityFields = !isEdit || canSuperEditLockedFields;
-
-  useEffect(() => {
-    if (!open) return;
-
-    setSubmitting(false);
-    setSubmitError(null);
-
-    if (isEdit && initial) {
-      setConsumptionType((initial.consumption_type as ConsumptionTypeCode) || "USAGE");
-
-      setMaterialSearch(`${initial.material_name} (${initial.material_code})`);
-      const mat = materials.find((m) => m.material_code === initial.material_code) || null;
-      setSelectedMaterial(mat);
-
-      // Select lot by lot_number match (we don't have material_lot_id in Issue currently)
-      const lot = lotBalances.find(
-        (l) => l.material_code === initial.material_code && l.lot_number === initial.lot_number
-      ) || null;
-      setSelectedLot(lot);
-
-      setQty(String(initial.qty ?? ""));
-      setEsProductCode((initial as any).es_product_code || "");
-      setProductBatchNo(initial.product_batch_no || "");
-      setProductManufactureDate(
-        initial.product_manufacture_date ? String(initial.product_manufacture_date).slice(0, 10) : ""
-      );
-      setComment(initial.comment || "");
-      setManufacturer(initial.manufacturer || "");
-      setEditReason("");
-      return;
-    }
-
-    // Create reset (existing behaviour)
-    setConsumptionType("USAGE");
-    setMaterialSearch("");
-    setSelectedMaterial(null);
-    setSelectedLot(null);
-    setQty("");
-    setEsProductCode("");
-    setProductBatchNo("");
-    setProductManufactureDate("");
-    setComment("");
-    setManufacturer("");
-    setEditReason("");
-  }, [open, isEdit, initial, materials, lotBalances]);
-
-  const filteredMaterials = useMemo(() => {
-    const q = materialSearch.trim().toLowerCase();
-    if (!q) return materials.slice(0, 15);
-    return materials
-      .filter(
-        (m) =>
-          m.material_code.toLowerCase().includes(q) ||
-          m.name.toLowerCase().includes(q)
-      )
-      .slice(0, 15);
-  }, [materialSearch, materials]);
-
-  const lotsForMaterial = useMemo(() => {
-    if (!selectedMaterial) return [];
-    return lotBalances
-      .filter(
-        (lot) =>
-          lot.material_code === selectedMaterial.material_code &&
-          lot.balance_qty > 0
-      )
-      .sort((a, b) => {
-        const rank = (s: string) => {
-          const x = (s || "").toUpperCase();
-          if (x === "AVAILABLE") return 1;
-          if (x === "QUARANTINE") return 2;
-          if (x === "REJECTED") return 3;
-          return 9;
-        };
-        return rank(a.status) - rank(b.status);
-      });
-  }, [selectedMaterial, lotBalances]);
-
-  const handleSelectMaterial = (m: Material) => {
-    setSelectedMaterial(m);
-    setMaterialSearch(`${m.name} (${m.material_code})`);
-    setSelectedLot(null);
-    setManufacturer("");
-  };
-
-  const handleSelectLot = (lotId: string) => {
-    const idNum = Number(lotId);
-    const lot = lotsForMaterial.find((l) => l.material_lot_id === idNum);
-    setSelectedLot(lot || null);
-    setManufacturer(lot?.manufacturer || "");
-  };
-
-  const isBatchRequired = consumptionType === "USAGE";
-  const isBatchOptional = consumptionType === "R_AND_D";
-  const isBatchIrrelevant =
-    consumptionType === "WASTAGE" || consumptionType === "DESTRUCTION";
-
-  const showBatchFields = !isBatchIrrelevant;
+  if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedMaterial) {
+    if (!form.selectedMaterial) {
       setSubmitError("Please select a material.");
       return;
     }
-    if (!selectedLot) {
+    if (!form.selectedLot) {
       setSubmitError("Please select a lot for this material.");
       return;
     }
-    if (!qty) {
+    if (!form.qty) {
       setSubmitError("Please enter a quantity.");
       return;
     }
 
-    if (isBatchRequired && !productBatchNo.trim()) {
+    if (form.isBatchRequired && !form.productBatchNo.trim()) {
       setSubmitError("Please enter the ES batch number for Usage.");
       return;
     }
 
-    if (consumptionType === "DESTRUCTION" && !comment.trim()) {
+    if (form.consumptionType === "DESTRUCTION" && !form.comment.trim()) {
       setSubmitError("Please enter a comment explaining the destruction of stock.");
       return;
     }
@@ -196,7 +73,7 @@ export default function IssueModal({
       return;
     }
 
-    if (isEdit && !editReason.trim()) {
+    if (form.isEdit && !form.editReason.trim()) {
       setSubmitError("Edit reason is required for audit trail.");
       return;
     }
@@ -205,32 +82,27 @@ export default function IssueModal({
     setSubmitError(null);
 
     try {
-      if (!isEdit) {
+      if (!form.isEdit) {
         const payload = {
-          material_code: selectedMaterial.material_code,
-          lot_number: selectedLot.lot_number,
+          material_code: form.selectedMaterial.material_code,
+          lot_number: form.selectedLot.lot_number,
+          material_lot_id: form.selectedLot.material_lot_id,
 
-          // split-lot safe selection
-          material_lot_id: selectedLot.material_lot_id,
+          qty: Number(form.qty),
+          uom_code: form.selectedLot.uom_code || form.selectedMaterial.base_uom_code,
 
-          qty: Number(qty),
-          uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
-
-          // ✅ FIX: persist ES product code
-          es_product_code: esProductCode.trim() || null,
+          es_product_code: form.esProductCode.trim() || null,
 
           product_batch_no:
-            isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
+            form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
           product_manufacture_date:
-            isBatchRequired || isBatchOptional ? productManufactureDate || null : null,
+            form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
 
-          consumption_type: consumptionType,
-
-          // ✅ derived from authenticated user (passed down)
+          consumption_type: form.consumptionType,
           created_by: createdBy,
 
-          comment: comment || null,
-          manufacturer: manufacturer || null,
+          comment: form.comment || null,
+          manufacturer: form.manufacturer || null,
           target_ref: null,
         };
 
@@ -239,31 +111,27 @@ export default function IssueModal({
           body: JSON.stringify(payload),
         });
       } else {
-        // Edit existing issue (traceability fields locked unless superuser)
         const payload: any = {
-          qty: Number(qty),
-          uom_code: selectedLot.uom_code || selectedMaterial.base_uom_code,
+          qty: Number(form.qty),
+          uom_code: form.selectedLot.uom_code || form.selectedMaterial.base_uom_code,
 
-          // ✅ FIX: allow update of ES product code
-          es_product_code: esProductCode.trim() || null,
+          es_product_code: form.esProductCode.trim() || null,
 
           product_batch_no:
-            isBatchRequired || isBatchOptional ? productBatchNo.trim() || null : null,
+            form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
           product_manufacture_date:
-            isBatchRequired || isBatchOptional ? productManufactureDate || null : null,
-          consumption_type: consumptionType,
-          comment: comment || null,
+            form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
+
+          consumption_type: form.consumptionType,
+          comment: form.comment || null,
           target_ref: null,
-          edit_reason: editReason.trim(),
+          edit_reason: form.editReason.trim(),
         };
 
-        // Superuser can also change material/lot (backend must support if you enable it)
-        // NOTE: If backend currently does not support changing lot/material on edit,
-        // leave these fields out or implement backend logic later.
         if (canSuperEditLockedFields) {
-          payload.material_code = selectedMaterial.material_code;
-          payload.lot_number = selectedLot.lot_number;
-          payload.material_lot_id = selectedLot.material_lot_id;
+          payload.material_code = form.selectedMaterial.material_code;
+          payload.lot_number = form.selectedLot.lot_number;
+          payload.material_lot_id = form.selectedLot.material_lot_id;
         }
 
         await apiFetch(`/issues/${initial!.id}`, {
@@ -282,216 +150,75 @@ export default function IssueModal({
     }
   };
 
-  if (!open) return null;
-
-  const quantityUom =
-    selectedLot?.uom_code || selectedMaterial?.base_uom_code || "";
-
-  const isQuarantined =
-    (selectedLot?.status || "").toUpperCase() === "QUARANTINE";
-
   return (
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
           <div>
-            <div className="modal-title">{isEdit ? "Edit Consumption" : "New Consumption"}</div>
+            <div className="modal-title">{form.isEdit ? "Edit Consumption" : "New Consumption"}</div>
             <div className="modal-subtitle">
-              {isEdit
+              {form.isEdit
                 ? "Edits are audit-trailed. Provide a reason for change."
                 : "Issue material from a specific lot with GMP-style traceability."}
             </div>
           </div>
-          <button className="icon-btn" type="button" onClick={onClose}>
+
+          <button
+            className="icon-btn"
+            type="button"
+            onClick={() => {
+              setSubmitError(null);
+              onClose();
+            }}
+          >
             ✕
           </button>
         </div>
 
         <form className="modal-body" onSubmit={handleSubmit}>
           <div className="form-grid">
-            <div className="form-group">
-              <label className="label">Consumption type</label>
-              <select
-                className="input"
-                value={consumptionType}
-                onChange={(e) =>
-                  setConsumptionType(e.target.value as ConsumptionTypeCode)
-                }
-              >
-                {CONSUMPTION_TYPES.map((opt) => (
-                  <option key={opt.code} value={opt.code}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <IssueTraceabilityFields
+              isEdit={form.isEdit}
+              consumptionType={form.consumptionType}
+              setConsumptionType={form.setConsumptionType}
+              canEditTraceabilityFields={form.canEditTraceabilityFields}
+              materialSearch={form.materialSearch}
+              setMaterialSearch={form.setMaterialSearch}
+              filteredMaterials={form.filteredMaterials}
+              selectedMaterial={form.selectedMaterial}
+              onSelectMaterial={form.handleSelectMaterial}
+              lotsForMaterial={form.lotsForMaterial}
+              selectedLot={form.selectedLot}
+              onSelectLot={form.handleSelectLot}
+              isQuarantined={form.isQuarantined}
+              onResetSelections={() => {
+                form.setSelectedMaterial(null);
+                form.setSelectedLot(null);
+                form.setManufacturer("");
+              }}
+            />
 
-            <div className="form-group">
-              <label className="label">Material</label>
-              <div className="typeahead-wrap">
-                <input
-                  className="input"
-                  placeholder="Start typing material or code…"
-                  value={materialSearch}
-                  disabled={!canEditTraceabilityFields}
-                  onChange={(e) => {
-                    setMaterialSearch(e.target.value);
-                    setSelectedMaterial(null);
-                    setSelectedLot(null);
-                    setManufacturer("");
-                  }}
-                />
-                {filteredMaterials.length > 0 && !selectedMaterial && !isEdit && (
-                  <div className="typeahead-dropdown">
-                    {filteredMaterials.map((m) => (
-                      <button
-                        type="button"
-                        key={m.id}
-                        className="typeahead-option"
-                        onClick={() => handleSelectMaterial(m)}
-                      >
-                        <div className="typeahead-main">
-                          {m.name} ({m.material_code})
-                        </div>
-                        <div className="typeahead-meta">
-                          {m.category_code} • {m.type_code}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {/* In edit mode, if superuser unlocks, dropdown still should not show
-                    because your existing UI only shows dropdown when !isEdit.
-                    If you want dropdown in edit superuser mode later, we can extend. */}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Lot (choose segment)</label>
-              <select
-                className="input"
-                value={selectedLot ? String(selectedLot.material_lot_id) : ""}
-                onChange={(e) => handleSelectLot(e.target.value)}
-                disabled={!selectedMaterial || !canEditTraceabilityFields}
-              >
-                <option value="">Select lot…</option>
-                {lotsForMaterial.map((lot) => {
-                  const status = (lot.status || "").toUpperCase();
-                  const exp = formatDateShort(lot.expiry_date);
-                  const label = `${lot.lot_number} • EXP ${exp} • ${status} • ${lot.balance_qty} ${lot.uom_code}`;
-                  return (
-                    <option key={lot.material_lot_id} value={lot.material_lot_id}>
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            {isQuarantined && (
-              <div className="form-group form-group-full">
-                <div
-                  style={{
-                    border: "1px solid rgba(248,113,113,0.55)",
-                    background: "rgba(248,113,113,0.10)",
-                    borderRadius: 12,
-                    padding: "10px 12px",
-                    fontSize: 13,
-                    color: "#fecaca",
-                  }}
-                >
-                  <strong>Warning:</strong> This is quarantined material. Obtain
-                  QA approval prior to use. If already used, escalate to QA
-                  Management.
-                </div>
-              </div>
-            )}
-
-            <div className="form-group">
-              <label className="label">Quantity ({quantityUom || "uom"})</label>
-              <input
-                className="input"
-                inputMode="decimal"
-                value={qty}
-                onChange={(e) => setQty(e.target.value)}
-                placeholder="e.g. 10"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="label">Manufacturer (info)</label>
-              <input
-                className="input"
-                value={manufacturer}
-                onChange={(e) => setManufacturer(e.target.value)}
-                placeholder="(auto)"
-              />
-            </div>
-
-            {showBatchFields && (
-              <>
-                <div className="form-group">
-                  <label className="label">ES product code</label>
-                  <input
-                    className="input"
-                    value={esProductCode}
-                    onChange={(e) => setEsProductCode(e.target.value)}
-                    placeholder="e.g. DULO2"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="label">
-                    ES batch number {isBatchRequired ? "(required)" : "(optional)"}
-                  </label>
-                  <input
-                    className="input"
-                    value={productBatchNo}
-                    onChange={(e) => setProductBatchNo(e.target.value)}
-                    placeholder="e.g. ES000123"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="label">Product manufacture date</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={productManufactureDate}
-                    onChange={(e) => setProductManufactureDate(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="form-group form-group-full">
-              <label className="label">
-                Comment {consumptionType === "DESTRUCTION" ? "(required)" : ""}{" "}
-                <span style={{ opacity: 0.7, fontWeight: 400 }}>
-                  {isEdit ? "(optional)" : "(optional unless destruction)"}
-                </span>
-              </label>
-              <textarea
-                className="input textarea"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Optional unless destruction…"
-              />
-            </div>
-
-            {isEdit && (
-              <div className="form-group form-group-full">
-                <label className="label">
-                  Edit reason <span style={{ color: "#fca5a5" }}>(required)</span>
-                </label>
-                <textarea
-                  className="input textarea"
-                  value={editReason}
-                  onChange={(e) => setEditReason(e.target.value)}
-                  placeholder="Explain what changed and why (audit trail)…"
-                />
-              </div>
-            )}
+            <IssueProductFields
+              showBatchFields={form.showBatchFields}
+              isBatchRequired={form.isBatchRequired}
+              quantityUom={form.quantityUom}
+              qty={form.qty}
+              setQty={form.setQty}
+              manufacturer={form.manufacturer}
+              setManufacturer={form.setManufacturer}
+              esProductCode={form.esProductCode}
+              setEsProductCode={form.setEsProductCode}
+              productBatchNo={form.productBatchNo}
+              setProductBatchNo={form.setProductBatchNo}
+              productManufactureDate={form.productManufactureDate}
+              setProductManufactureDate={form.setProductManufactureDate}
+              consumptionType={form.consumptionType}
+              comment={form.comment}
+              setComment={form.setComment}
+              isEdit={form.isEdit}
+              editReason={form.editReason}
+              setEditReason={form.setEditReason}
+            />
           </div>
 
           {submitError && <div className="form-error">{submitError}</div>}
@@ -500,13 +227,17 @@ export default function IssueModal({
             <button
               className="btn-muted"
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                setSubmitError(null);
+                onClose();
+              }}
               disabled={submitting}
             >
               Cancel
             </button>
+
             <button className="btn-primary" type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : isEdit ? "Save changes" : "Post consumption"}
+              {submitting ? "Saving…" : form.isEdit ? "Save changes" : "Post consumption"}
             </button>
           </div>
         </form>
