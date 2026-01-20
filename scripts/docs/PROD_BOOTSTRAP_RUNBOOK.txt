@@ -1,0 +1,57 @@
+PRODUCTION BOOTSTRAP / GO-LIVE RUNBOOK (Stock Control)
+
+Assumptions
+
+* Repo root: /workspaces/stock-control
+* Docker Compose file: infra/docker-compose.yml
+* You have a valid .env at repo root (copy from .env.example and edit as needed)
+* Scripts are executable (chmod +x scripts/filename.sh)
+
+0. Pre-checks
+   cd /workspaces/stock-control
+   ls -la .env
+
+1. Fresh DB rebuild (wipes DB volume + recreates schema)
+   chmod +x scripts/rebuild_db.sh
+   ./scripts/rebuild_db.sh
+
+2. Restart stack without deleting data (routine ops / after code updates)
+   chmod +x scripts/restart_stack.sh
+   ./scripts/restart_stack.sh
+
+3. Frontend setup (Node + npm + deps)
+   chmod +x scripts/setup_frontend.sh
+   ./scripts/setup_frontend.sh
+
+NOTE: If "npm: command not found" in a new terminal, load nvm:
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm use 20.19.5
+
+4. Start frontend dev server (Codespaces/dev)
+   cd /workspaces/stock-control/web
+   npm run dev
+
+# If port exposure is flaky:
+
+# npm run dev -- --host 0.0.0.0 --port 5173
+
+5. Reset admin password (bootstrap access)
+   chmod +x scripts/reset_admin_password.sh
+   ./scripts/reset_admin_password.sh
+   Default admin password set by script: Admin123!
+
+6. Health checks
+   curl -sS [http://localhost:8000/health](http://localhost:8000/health) || true
+   curl -sS [http://localhost:8080/health](http://localhost:8080/health) || true
+
+7. Login
+
+* username: admin
+* password: Admin123!
+  Then immediately change password via Admin UI.
+
+Notes
+
+* rebuild_db.sh DESTROYS DB DATA (volume wipe) – use only for go-live reset / clean rebuild.
+* restart_stack.sh keeps volumes/data – use for normal restarts after code changes.

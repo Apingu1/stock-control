@@ -1,3 +1,15 @@
+1) DELETE DB
+
+docker compose -f infra/docker-compose.yml down -v
+
+
+2) MAKE SCRIPTS EXECUTBALE
+
+chmod +x scripts/rebuild_db.sh
+
+
+3) RUN FRONT END
+
 cd /workspaces/stock-control/web
 
 # start dev server and bind to all interfaces (better for Codespaces)
