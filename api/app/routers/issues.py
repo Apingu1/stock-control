@@ -1,6 +1,7 @@
-# app/routers/issues.py
+# api/app/routers/issues.py
 from datetime import datetime
-from typing import List
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from typing import List, Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -14,19 +15,52 @@ from ..security import require_permission
 router = APIRouter(prefix="/issues", tags=["issues"])
 
 
-def _round_money(value: float | None) -> float | None:
+# ---------------------------------------------------------------------------
+# Decimal helpers (preserve existing behaviour)
+# - unit_price rounding: 4dp (matches prior _round_unit)
+# - money rounding: 2dp (matches prior _round_money)
+# - qty rounding: 6dp (matches DB NUMERIC(18,6) and common inventory precision)
+# ---------------------------------------------------------------------------
+
+QTY_Q = Decimal("0.000001")   # 6dp
+UNIT_Q = Decimal("0.0001")    # 4dp (keep existing UI logic)
+MONEY_Q = Decimal("0.01")     # 2dp
+
+
+def _to_decimal(value: Any) -> Optional[Decimal]:
+    """
+    Convert value (float/int/str/Decimal/None) to Decimal safely.
+    IMPORTANT: For floats, use Decimal(str(value)) to avoid IEEE-754 artifacts.
+    """
     if value is None:
         return None
-    return round(float(value) + 1e-12, 2)
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
 
 
-def _round_unit(value: float | None) -> float | None:
+def _q_qty(value: Decimal | None) -> Decimal | None:
     if value is None:
         return None
-    return round(float(value) + 1e-12, 4)
+    return value.quantize(QTY_Q, rounding=ROUND_HALF_UP)
 
 
-def _lot_weighted_unit_price(db: Session, lot_id: int) -> float | None:
+def _q_unit(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(UNIT_Q, rounding=ROUND_HALF_UP)
+
+
+def _q_money(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(MONEY_Q, rounding=ROUND_HALF_UP)
+
+
+def _lot_weighted_unit_price(db: Session, lot_id: int) -> Decimal | None:
     """
     D2 (Option A): Use the lot's actual cost basis.
     Weighted average of RECEIPT transactions for this lot:
@@ -38,10 +72,15 @@ def _lot_weighted_unit_price(db: Session, lot_id: int) -> float | None:
     sum_value, sum_qty = (
         db.query(
             func.coalesce(
-                func.sum(func.coalesce(StockTransaction.total_value, StockTransaction.unit_price * StockTransaction.qty)),
-                0.0,
+                func.sum(
+                    func.coalesce(
+                        StockTransaction.total_value,
+                        StockTransaction.unit_price * StockTransaction.qty,
+                    )
+                ),
+                0,
             ),
-            func.coalesce(func.sum(StockTransaction.qty), 0.0),
+            func.coalesce(func.sum(StockTransaction.qty), 0),
         )
         .filter(
             StockTransaction.material_lot_id == lot_id,
@@ -50,12 +89,13 @@ def _lot_weighted_unit_price(db: Session, lot_id: int) -> float | None:
         .one()
     )
 
-    sum_value = float(sum_value or 0.0)
-    sum_qty = float(sum_qty or 0.0)
-    if sum_qty <= 0:
+    sum_value_dec = _to_decimal(sum_value) or Decimal("0")
+    sum_qty_dec = _to_decimal(sum_qty) or Decimal("0")
+
+    if sum_qty_dec <= 0:
         return None
 
-    return _round_unit(sum_value / sum_qty)
+    return _q_unit(sum_value_dec / sum_qty_dec)
 
 
 @router.post("/", response_model=IssueOut, status_code=201)
@@ -66,15 +106,20 @@ def create_issue(
 ) -> IssueOut:
     created_by = user.username
 
-    material = (
-        db.query(Material)
-        .filter(Material.material_code == payload.material_code)
-        .one_or_none()
-    )
+    material = db.query(Material).filter(Material.material_code == payload.material_code).one_or_none()
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    lot = None
+    # qty from payload (supports current float schemas OR future Decimal schemas)
+    payload_qty = _to_decimal(getattr(payload, "qty", None))
+    if payload_qty is None:
+        raise HTTPException(status_code=400, detail="Invalid qty")
+    payload_qty = _q_qty(payload_qty)
+    if payload_qty is None or payload_qty <= 0:
+        raise HTTPException(status_code=400, detail="qty must be > 0")
+
+    lot: MaterialLot | None = None
+
     if payload.material_lot_id is not None:
         lot = (
             db.query(MaterialLot)
@@ -118,40 +163,38 @@ def create_issue(
                 ),
             )
 
+    # Current balance as Decimal
     current_balance = (
-        db.query(
-            func.coalesce(
-                func.sum(StockTransaction.qty * StockTransaction.direction), 0.0
-            )
-        )
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0))
         .filter(StockTransaction.material_lot_id == lot.id)
         .scalar()
     )
-    current_balance = float(current_balance or 0.0)
+    current_balance_dec = _to_decimal(current_balance) or Decimal("0")
+    current_balance_dec = _q_qty(current_balance_dec) or Decimal("0")
 
-    if current_balance < payload.qty:
+    if current_balance_dec < payload_qty:
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Insufficient stock in lot {lot.lot_number} "
-                f"(available {current_balance}, requested {payload.qty})"
+                f"(available {current_balance_dec}, requested {payload_qty})"
             ),
         )
 
-    # ✅ D2 costing: derive issue unit cost from lot weighted receipts
-    lot_unit_price = _lot_weighted_unit_price(db, lot.id)
-    issue_total_value = _round_money(float(payload.qty) * lot_unit_price) if lot_unit_price is not None else None
+    # ✅ D2 costing: derive issue unit cost from lot weighted receipts (Decimal)
+    lot_unit_price = _lot_weighted_unit_price(db, lot.id)  # 4dp
+    issue_total_value = _q_money(payload_qty * lot_unit_price) if lot_unit_price is not None else None
 
     now = datetime.utcnow()
     txn = StockTransaction(
         material_lot_id=lot.id,
         txn_type="ISSUE",
         consumption_type=payload.consumption_type or "USAGE",
-        qty=payload.qty,
+        qty=payload_qty,  # Decimal
         uom_code=payload.uom_code,
         direction=-1,
-        unit_price=lot_unit_price,
-        total_value=issue_total_value,
+        unit_price=lot_unit_price,      # Decimal (4dp)
+        total_value=issue_total_value,  # Decimal (2dp)
         target_ref=payload.target_ref,
 
         # ✅ FIX: persist ES product code into the issue transaction
@@ -259,9 +302,7 @@ def update_issue(
     if not reason:
         raise HTTPException(status_code=400, detail="edit_reason is required")
 
-    txn: StockTransaction | None = (
-        db.query(StockTransaction).filter(StockTransaction.id == issue_id).one_or_none()
-    )
+    txn: StockTransaction | None = db.query(StockTransaction).filter(StockTransaction.id == issue_id).one_or_none()
     if txn is None or txn.txn_type != "ISSUE":
         raise HTTPException(status_code=404, detail="Issue not found")
 
@@ -270,25 +311,37 @@ def update_issue(
 
     before_json = StockTransactionEdit.snapshot_txn(txn)
 
+    # New qty from payload
+    new_qty = _to_decimal(getattr(payload, "qty", None))
+    if new_qty is None:
+        raise HTTPException(status_code=400, detail="Invalid qty")
+    new_qty = _q_qty(new_qty)
+    if new_qty is None or new_qty <= 0:
+        raise HTTPException(status_code=400, detail="qty must be > 0")
+
     current_balance = (
-        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0))
         .filter(StockTransaction.material_lot_id == txn.material_lot_id)
         .scalar()
     )
-    current_balance = float(current_balance or 0.0)
+    current_balance_dec = _to_decimal(current_balance) or Decimal("0")
+    current_balance_dec = _q_qty(current_balance_dec) or Decimal("0")
 
     # remove old issue (adds stock back), then apply new qty
-    balance_without_old = current_balance + float(txn.qty or 0.0)
-    if float(payload.qty) > balance_without_old + 1e-9:
+    old_qty = _to_decimal(txn.qty) or Decimal("0")
+    old_qty = _q_qty(old_qty) or Decimal("0")
+
+    balance_without_old = current_balance_dec + old_qty
+    if new_qty > balance_without_old:
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Insufficient stock in lot {lot.lot_number} "
-                f"(available {balance_without_old}, requested {payload.qty})"
+                f"(available {balance_without_old}, requested {new_qty})"
             ),
         )
 
-    txn.qty = float(payload.qty)
+    txn.qty = new_qty
     txn.consumption_type = payload.consumption_type or "USAGE"
     txn.target_ref = payload.target_ref
     txn.product_batch_no = payload.product_batch_no
@@ -304,12 +357,13 @@ def update_issue(
     # ✅ Recompute costing for the edited qty.
     # Prefer: keep the original unit_price on the txn if present (historical),
     # otherwise compute from lot receipts.
-    unit_price = txn.unit_price
+    unit_price = _to_decimal(txn.unit_price)
     if unit_price is None:
         unit_price = _lot_weighted_unit_price(db, lot.id)
 
+    unit_price = _q_unit(unit_price) if unit_price is not None else None
     txn.unit_price = unit_price
-    txn.total_value = _round_money(txn.qty * unit_price) if unit_price is not None else None
+    txn.total_value = _q_money(txn.qty * unit_price) if unit_price is not None else None
 
     after_json = StockTransactionEdit.snapshot_txn(txn)
 

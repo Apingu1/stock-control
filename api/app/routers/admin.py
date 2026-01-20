@@ -19,7 +19,6 @@ from ..schemas import (
     RolePermissionSet,
     ExpiryThresholdSettingOut,
     ExpiryThresholdSettingUpdate,
-
 )
 from ..security import hash_password, require_admin_access
 
@@ -135,7 +134,6 @@ def update_user(
     # -----------------------------------------------------------------------
     if _is_demoting_or_disabling_admin(u, payload):
         active_admins = _active_admin_count(db)
-        # since this user is currently an active admin, removing them would reduce by 1
         if active_admins <= 1:
             raise HTTPException(status_code=400, detail="Cannot disable/demote the last active ADMIN user")
 
@@ -235,31 +233,31 @@ def update_role(
 
 
 @router.delete("/roles/{role_name}", status_code=204)
-def delete_role(
+def retire_role(
     role_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin_access),
 ):
     rn = role_name.strip().upper()
 
-    # never allow deleting core roles
+    # never allow retiring core roles
     if rn in SYSTEM_ROLES:
-        raise HTTPException(status_code=400, detail="Cannot delete system role")
+        raise HTTPException(status_code=400, detail="System roles cannot be retired")
 
     role = db.query(Role).filter(Role.name == rn).one_or_none()
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    # Block delete if any users currently have this role
+    # Block retire if any users currently have this role
     user_count = db.query(func.count(User.id)).filter(User.role == rn).scalar() or 0
     if user_count > 0:
         raise HTTPException(
             status_code=409,
-            detail=f"Cannot delete role '{rn}' because {user_count} user(s) are assigned to it. Reassign users first.",
+            detail=f"Cannot retire role '{rn}' because {user_count} user(s) are assigned to it. Reassign users first.",
         )
 
-    # Safe to delete: cascades role_permissions via FK ON DELETE CASCADE
-    db.delete(role)
+    # Soft-retire only: keep historical integrity (ALCOA+ Enduring).
+    role.is_active = False
     db.commit()
     return
 
@@ -287,7 +285,6 @@ def get_role_permissions_matrix(
     if not r:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    # Return ALL permissions for stable matrix (even if missing rows)
     perms = db.query(Permission).order_by(Permission.key.asc()).all()
     rp_rows = db.query(RolePermission).filter(RolePermission.role_name == rn).all()
     rp_map: Dict[str, bool] = {rp.permission_key: bool(rp.granted) for rp in rp_rows}
@@ -309,11 +306,6 @@ def set_role_permissions_matrix(
     r = db.query(Role).filter(Role.name == rn).one_or_none()
     if not r:
         raise HTTPException(status_code=404, detail="Role not found")
-
-# Role name is authoritative from the path param {rn}.
-# Payload may not include role_name (frontend sends only permissions list).
-# We deliberately do not accept role_name from client to avoid mismatches.
-
 
     if not payload.permissions:
         raise HTTPException(status_code=400, detail="No permissions provided")
@@ -347,7 +339,8 @@ def set_role_permissions_matrix(
     db.commit()
     return get_role_permissions_matrix(rn, db, admin)
 
-    # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Phase D3: Expiry auto-quarantine threshold settings (Admin -> Settings)
 # ---------------------------------------------------------------------------
 

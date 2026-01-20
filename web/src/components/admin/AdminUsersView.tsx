@@ -47,7 +47,7 @@ export default function AdminUsersView() {
   const [selectedRole, setSelectedRole] = useState<string>("ADMIN");
   const [rolePerms, setRolePerms] = useState<Record<string, boolean>>({});
   const [savingPerms, setSavingPerms] = useState(false);
-  const [deletingRole, setDeletingRole] = useState(false);
+  const [retiringRole, setRetiringRole] = useState(false);
 
   // create role
   const [roleName, setRoleName] = useState("");
@@ -65,10 +65,17 @@ export default function AdminUsersView() {
       const data = (await res.json()) as AdminRole[];
       setAdminRoles(data);
 
-      const names = data.map((r) => r.name).filter(Boolean);
-      setRoles(names.length ? (names as Role[]) : FALLBACK_ROLES);
+      // For user creation: only allow ACTIVE roles (backend enforces this too).
+      const activeNames = data
+        .filter((r) => r.is_active !== false)
+        .map((r) => r.name)
+        .filter(Boolean);
 
-      if (names.length && !names.includes(selectedRole)) setSelectedRole(names[0]);
+      setRoles(activeNames.length ? (activeNames as Role[]) : FALLBACK_ROLES);
+
+      // For roles tab: if current selection disappeared, pick first available (active or inactive).
+      const allNames = data.map((r) => r.name).filter(Boolean);
+      if (allNames.length && !allNames.includes(selectedRole)) setSelectedRole(allNames[0]);
     } catch {
       setAdminRoles(FALLBACK_ROLES.map((n) => ({ name: n })));
       setRoles(FALLBACK_ROLES);
@@ -79,7 +86,7 @@ export default function AdminUsersView() {
     try {
       const res = await apiFetch("/admin/permissions");
       const data = (await res.json()) as PermissionDef[];
-      setPermissions(data.filter((p) => !p.key.endsWith('.delete')));
+      setPermissions(data.filter((p) => !p.key.endsWith(".delete")));
     } catch {
       // fallback list (keeps UI usable if endpoint ever missing)
       setPermissions([
@@ -211,17 +218,17 @@ export default function AdminUsersView() {
     }
   };
 
-  const deleteSelectedRole = async () => {
+  const retireSelectedRole = async () => {
     const rn = (selectedRole || "").trim().toUpperCase();
     if (!rn) return;
-    if (SYSTEM_ROLES.has(rn)) return setErr("System roles cannot be deleted.");
+    if (SYSTEM_ROLES.has(rn)) return setErr("System roles cannot be retired.");
 
     const ok = window.confirm(
-      `Delete role "${rn}"?\n\nThis will only work if no users are assigned to it.`
+      `Retire role "${rn}"?\n\nThis will mark the role inactive (no hard deletes) and only works if no users are currently assigned to it.`
     );
     if (!ok) return;
 
-    setDeletingRole(true);
+    setRetiringRole(true);
     setErr(null);
     try {
       await apiFetch(`/admin/roles/${encodeURIComponent(rn)}`, { method: "DELETE" });
@@ -231,9 +238,9 @@ export default function AdminUsersView() {
       setSelectedRole("ADMIN");
       await loadRolePermissions("ADMIN");
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to delete role");
+      setErr(e?.message ?? "Failed to retire role");
     } finally {
-      setDeletingRole(false);
+      setRetiringRole(false);
     }
   };
 
@@ -245,8 +252,6 @@ export default function AdminUsersView() {
     setSavingPerms(true);
     setErr(null);
 
-    // Backend expects:
-    // { role_name, permissions: [{permission_key, granted}, ...] }
     const payload = {
       role_name: selectedRole,
       permissions: permissions.map((p) => ({
@@ -282,7 +287,7 @@ export default function AdminUsersView() {
     return groups;
   }, [permissions]);
 
-  const canDeleteRole = useMemo(() => {
+  const canRetireRole = useMemo(() => {
     const rn = (selectedRole || "").trim().toUpperCase();
     return rn.length > 0 && !SYSTEM_ROLES.has(rn);
   }, [selectedRole]);
@@ -394,7 +399,6 @@ export default function AdminUsersView() {
                               style={{ maxWidth: 220 }}
                               value={u.role}
                               onChange={(e) => updateUser(u.id, { role: e.target.value })}
-                              // frontend safety too (backend is authoritative)
                               disabled={u.username === "admin"}
                             >
                               {roles.map((r) => (
@@ -410,7 +414,6 @@ export default function AdminUsersView() {
                               style={{ maxWidth: 160 }}
                               value={u.is_active ? "true" : "false"}
                               onChange={(e) => updateUser(u.id, { is_active: e.target.value === "true" })}
-                              // frontend safety too
                               disabled={u.username === "admin"}
                             >
                               <option value="true">Active</option>
@@ -489,7 +492,6 @@ export default function AdminUsersView() {
                 </div>
 
                 <div className="card-body">
-                  {/* tidy action row: dropdown + delete + save (uniform height) */}
                   <div
                     className="form-grid"
                     style={{
@@ -512,17 +514,17 @@ export default function AdminUsersView() {
                     <div className="form-group" style={{ justifyContent: "flex-end" }}>
                       <button
                         className="btn"
-                        onClick={deleteSelectedRole}
-                        disabled={!canDeleteRole || deletingRole}
+                        onClick={retireSelectedRole}
+                        disabled={!canRetireRole || retiringRole}
                         style={{
-                          background: canDeleteRole ? "#ff4d4f" : "rgba(255,255,255,0.08)",
+                          background: canRetireRole ? "#ff4d4f" : "rgba(255,255,255,0.08)",
                           color: "#000",
                           border: "1px solid rgba(0,0,0,0.25)",
                           minWidth: 140,
                         }}
-                        title={canDeleteRole ? "Delete selected role" : "System roles cannot be deleted"}
+                        title={canRetireRole ? "Retire selected role" : "System roles cannot be retired"}
                       >
-                        {deletingRole ? "Deleting…" : "Delete role"}
+                        {retiringRole ? "Retiring…" : "Retire role"}
                       </button>
                     </div>
 
@@ -572,11 +574,7 @@ export default function AdminUsersView() {
                                     )}
                                   </span>
 
-                                  <input
-                                    type="checkbox"
-                                    checked={!!rolePerms[p.key]}
-                                    onChange={() => togglePerm(p.key)}
-                                  />
+                                  <input type="checkbox" checked={!!rolePerms[p.key]} onChange={() => togglePerm(p.key)} />
                                 </label>
                               ))}
                             </div>

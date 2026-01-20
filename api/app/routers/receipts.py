@@ -1,6 +1,7 @@
 # app/routers/receipts.py
 from datetime import datetime, date, time
 from typing import List
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
@@ -23,6 +24,26 @@ from ..security import require_permission, user_has_permission
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
 
+# ---------------------------------------------------------------------------
+# Decimal rounding rules
+# ---------------------------------------------------------------------------
+QTY_Q = Decimal("0.000001")      # 6dp qty
+UNIT_Q = Decimal("0.0001")       # keep your existing 4dp unit price behaviour
+MONEY_Q = Decimal("0.01")        # money rounding
+
+
+def q_qty(x: Decimal) -> Decimal:
+    return x.quantize(QTY_Q, rounding=ROUND_HALF_UP)
+
+
+def q_unit(x: Decimal) -> Decimal:
+    return x.quantize(UNIT_Q, rounding=ROUND_HALF_UP)
+
+
+def q_money(x: Decimal) -> Decimal:
+    return x.quantize(MONEY_Q, rounding=ROUND_HALF_UP)
+
+
 def _normalise_receipt_datetime(value: datetime | date) -> datetime:
     if isinstance(value, datetime):
         return value
@@ -31,39 +52,30 @@ def _normalise_receipt_datetime(value: datetime | date) -> datetime:
     return datetime.utcnow()
 
 
-def _round_money(value: float | None) -> float | None:
-    if value is None:
-        return None
-    return round(float(value) + 1e-12, 2)
-
-
-def _round_unit(value: float | None) -> float | None:
-    if value is None:
-        return None
-    return round(float(value) + 1e-12, 4)
-
-
-def _derive_costs(qty: float, unit_price: float | None, total_value: float | None) -> tuple[float | None, float | None]:
+def _derive_costs(
+    qty: Decimal,
+    unit_price: Decimal | None,
+    total_value: Decimal | None,
+) -> tuple[Decimal | None, Decimal | None]:
     """
-    Costing rules:
+    Costing rules (preserves your existing behaviour):
     - If total_value provided: derive unit_price = total_value / qty (4dp), keep total_value (2dp)
     - Else if unit_price provided: derive total_value = qty * unit_price (2dp), keep unit_price (4dp)
     - Else: both None
     """
-    q = float(qty or 0.0)
+    q = Decimal(qty or 0)
     if q <= 0:
-        # qty is required/validated elsewhere, but guard anyway
         return None, None
 
     if total_value is not None:
-        tv = float(total_value)
-        up = tv / q
-        return _round_unit(up), _round_money(tv)
+        tv = q_money(Decimal(total_value))
+        up = q_unit(tv / q)
+        return up, tv
 
     if unit_price is not None:
-        up = float(unit_price)
-        tv = q * up
-        return _round_unit(up), _round_money(tv)
+        up = q_unit(Decimal(unit_price))
+        tv = q_money(q * up)
+        return up, tv
 
     return None, None
 
@@ -156,7 +168,7 @@ def create_receipt(
 
     # ✅ D1 costing flip: accept total_value from UI, derive unit_price
     derived_unit_price, derived_total_value = _derive_costs(
-        qty=float(payload.qty),
+        qty=Decimal(payload.qty),
         unit_price=payload.unit_price,
         total_value=payload.total_value,
     )
@@ -164,7 +176,7 @@ def create_receipt(
     txn = StockTransaction(
         material_lot_id=lot.id,
         txn_type="RECEIPT",
-        qty=payload.qty,
+        qty=q_qty(Decimal(payload.qty)),
         uom_code=payload.uom_code,
         direction=1,
         unit_price=derived_unit_price,
@@ -292,8 +304,7 @@ def update_receipt(
         )
 
         if target and target.id != lot.id:
-            # Collision: we will MERGE by repointing all transactions and status changes to the target lot,
-            # then deleting the source lot segment (superuser-only, deviation-controlled).
+            # Collision: MERGE (superuser-only, deviation-controlled).
             if not payload.force_merge:
                 raise HTTPException(
                     status_code=409,
@@ -305,21 +316,16 @@ def update_receipt(
 
             target_before = MaterialLotEdit.snapshot_lot(target)
 
-            # Move all transactions to target lot id (this preserves stock math and makes history consistent)
             db.query(StockTransaction).filter(StockTransaction.material_lot_id == lot.id).update(
                 {"material_lot_id": target.id}
             )
-
-            # Move lot status changes as well
             db.query(LotStatusChange).filter(LotStatusChange.material_lot_id == lot.id).update(
                 {"material_lot_id": target.id}
             )
 
-            # Delete the now-orphaned lot segment
             db.delete(lot)
             db.flush()
 
-            # Audit (rename merge)
             db.add(
                 MaterialLotEdit(
                     edited_by=user.username,
@@ -331,9 +337,8 @@ def update_receipt(
                 )
             )
 
-            lot = target  # continue with the target as the lot for this receipt txn
+            lot = target
         else:
-            # No collision: simple rename in-place
             lot.lot_number = new_lot_no
             db.add(
                 MaterialLotEdit(
@@ -346,7 +351,6 @@ def update_receipt(
                 )
             )
     elif wants_expiry_change:
-        # expiry-only edit audit
         db.add(
             MaterialLotEdit(
                 edited_by=user.username,
@@ -358,29 +362,30 @@ def update_receipt(
             )
         )
 
-
     before_json = StockTransactionEdit.snapshot_txn(txn)
 
-    current_balance = (
-        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
+    # Current balance is Decimal (DB is numeric); keep as Decimal for integrity.
+    current_balance: Decimal = (
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0))
         .filter(StockTransaction.material_lot_id == txn.material_lot_id)
         .scalar()
-    )
-    current_balance = float(current_balance or 0.0)
+    ) or Decimal("0")
 
     # Remove old receipt, apply new qty, ensure non-negative
-    balance_without_old = current_balance - float(txn.qty or 0.0)
-    new_balance = balance_without_old + float(payload.qty)
-    if new_balance < -1e-9:
+    balance_without_old = current_balance - (txn.qty or Decimal("0"))
+    new_qty = q_qty(Decimal(payload.qty))
+    new_balance = balance_without_old + new_qty
+
+    if new_balance < Decimal("0"):
         raise HTTPException(
             status_code=400,
             detail=(
                 "Edit would make lot balance negative. "
-                f"Lot {lot.lot_number} would become {new_balance:.3f}."
+                f"Lot {lot.lot_number} would become {new_balance}."
             ),
         )
 
-    txn.qty = float(payload.qty)
+    txn.qty = new_qty
 
     # ✅ Costing edit logic:
     # - If user supplies total_value -> derive unit_price from total/qty
@@ -390,20 +395,19 @@ def update_receipt(
     incoming_total = payload.total_value if payload.total_value is not None else txn.total_value
 
     if payload.total_value is not None:
-        derived_unit_price, derived_total_value = _derive_costs(txn.qty, None, float(payload.total_value))
+        derived_unit_price, derived_total_value = _derive_costs(txn.qty, None, payload.total_value)
         txn.unit_price = derived_unit_price
         txn.total_value = derived_total_value
     elif payload.unit_price is not None:
-        derived_unit_price, derived_total_value = _derive_costs(txn.qty, float(payload.unit_price), None)
+        derived_unit_price, derived_total_value = _derive_costs(txn.qty, payload.unit_price, None)
         txn.unit_price = derived_unit_price
         txn.total_value = derived_total_value
     else:
-        # no explicit costing fields provided; keep unit_price and recompute total_value if possible
-        txn.unit_price = _round_unit(incoming_unit) if incoming_unit is not None else None
+        txn.unit_price = q_unit(Decimal(incoming_unit)) if incoming_unit is not None else None
         if txn.unit_price is not None:
-            txn.total_value = _round_money(txn.qty * txn.unit_price)
+            txn.total_value = q_money(txn.qty * txn.unit_price)
         else:
-            txn.total_value = _round_money(incoming_total) if incoming_total is not None else None
+            txn.total_value = q_money(Decimal(incoming_total)) if incoming_total is not None else None
 
     txn.target_ref = payload.target_ref
     txn.comment = payload.comment

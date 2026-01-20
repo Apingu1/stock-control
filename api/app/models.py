@@ -1,5 +1,6 @@
 # app/models.py
 from __future__ import annotations
+from decimal import Decimal
 
 from datetime import datetime, date
 from typing import Optional
@@ -118,9 +119,9 @@ class Material(Base):
     supplier: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
         # Phase D4: per-material alerts & auto-quarantine overrides (nullable)
-    low_stock_threshold_qty: Mapped[Optional[float]] = mapped_column(
-        Numeric(18, 6), nullable=True
-    )  # CHECK >= 0 via migration
+    low_stock_threshold_qty: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
+
+     # CHECK >= 0 via migration
     expiry_alert_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # CHECK >= 0
     auto_quarantine_override_days: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
@@ -210,7 +211,9 @@ class MaterialEdit(Base):
             "created_at": m.created_at.isoformat() if m.created_at else None,
             "created_by": m.created_by,
             "updated_at": m.updated_at.isoformat() if m.updated_at else None,
-            "low_stock_threshold_qty": float(m.low_stock_threshold_qty) if m.low_stock_threshold_qty is not None else None,
+            "low_stock_threshold_qty": (
+                str(m.low_stock_threshold_qty) if m.low_stock_threshold_qty is not None else None
+            ),
             "expiry_alert_days": m.expiry_alert_days,
             "auto_quarantine_override_days": m.auto_quarantine_override_days,
 
@@ -319,13 +322,13 @@ class StockTransaction(Base):
         String(20), nullable=False, default="USAGE"
     )
 
-    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    qty: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     uom_code: Mapped[str] = mapped_column(String(50), nullable=False)
 
     direction: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    total_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    unit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
+    total_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
 
     target_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
@@ -398,11 +401,11 @@ class StockTransactionEdit(Base):
             "material_lot_id": txn.material_lot_id,
             "txn_type": txn.txn_type,
             "consumption_type": txn.consumption_type,
-            "qty": txn.qty,
+            "qty": str(txn.qty) if txn.qty is not None else None,
             "uom_code": txn.uom_code,
             "direction": txn.direction,
-            "unit_price": txn.unit_price,
-            "total_value": txn.total_value,
+            "unit_price": str(txn.unit_price) if txn.unit_price is not None else None,
+            "total_value": str(txn.total_value) if txn.total_value is not None else None,
             "target_ref": txn.target_ref,
             "product_batch_no": txn.product_batch_no,
             "product_manufacture_date": (

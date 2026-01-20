@@ -1,4 +1,3 @@
-// src/components/receipts/GoodsReceiptsView.tsx
 import React, { useMemo, useState } from "react";
 import type { Receipt } from "../../types";
 import { formatDate } from "../../utils/format";
@@ -21,6 +20,36 @@ type CsvExportParams = {
   fromDate: string | null;
   toDate: string | null;
   respectFilters: boolean;
+};
+
+/**
+ * ✅ Decimal-safe formatting helpers.
+ * After moving backend money/qty fields to DECIMAL, FastAPI may return them as strings.
+ * These helpers accept number | string | null and prevent runtime crashes.
+ */
+const asNumber = (v: unknown): number | null => {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  try {
+    const n = Number(v as any);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+};
+
+const toFixedSafe = (v: unknown, dp: number): string => {
+  const n = asNumber(v);
+  if (n === null) return "";
+  return n.toFixed(dp);
 };
 
 const exportToCsv = (
@@ -111,10 +140,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
       if (supplierFilter !== "ALL" && r.supplier !== supplierFilter) {
         return false;
       }
-      if (
-        manufacturerFilter !== "ALL" &&
-        r.manufacturer !== manufacturerFilter
-      ) {
+      if (manufacturerFilter !== "ALL" && r.manufacturer !== manufacturerFilter) {
         return false;
       }
 
@@ -137,11 +163,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
     });
   }, [receipts, search, dateFilter, supplierFilter, manufacturerFilter]);
 
-  const handleExportConfirm = ({
-    fromDate,
-    toDate,
-    respectFilters,
-  }: CsvExportParams) => {
+  const handleExportConfirm = ({ fromDate, toDate, respectFilters }: CsvExportParams) => {
     const base = respectFilters ? filteredReceipts : receipts;
 
     const from = fromDate ? new Date(fromDate) : null;
@@ -169,7 +191,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
       "Qty",
       "UOM",
       "Unit Price",
-      "Total cost", // ✅ changed
+      "Total cost",
       "Supplier",
       "Manufacturer",
       "ES Criteria",
@@ -181,6 +203,9 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
       if (r.complies_es_criteria === true) esLabel = "Complies";
       else if (r.complies_es_criteria === false) esLabel = "No";
 
+      const unitPriceCell = r.unit_price != null ? toFixedSafe(r.unit_price as any, 2) : "";
+      const totalValueCell = r.total_value != null ? `£${toFixedSafe(r.total_value as any, 2)}` : "";
+
       return [
         r.created_at ? formatDate(r.created_at) : "",
         r.material_code,
@@ -189,8 +214,8 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
         r.expiry_date ? formatDate(r.expiry_date) : "",
         r.qty,
         r.uom_code,
-        r.unit_price != null ? r.unit_price.toFixed(2) : "",
-        r.total_value != null ? `£${r.total_value.toFixed(2)}` : "", // ✅ £ sign
+        unitPriceCell,
+        totalValueCell,
         r.supplier || "",
         r.manufacturer || "",
         esLabel,
@@ -211,11 +236,10 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           <div>
             <div className="card-title">Goods Receipts</div>
             <div className="card-subtitle">
-              Log and review incoming goods. The Goods Receipt Date is the
-              actual receipt date from the GRN, not just the record creation
-              time.
+              Log and review incoming goods. The Goods Receipt Date is the actual receipt date from the GRN, not just the record creation time.
             </div>
           </div>
+
           <div className="card-actions card-actions-wrap">
             <input
               className="input"
@@ -271,17 +295,11 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           </div>
         </div>
 
-        {loadingReceipts && (
-          <div className="info-row">Loading goods receipts…</div>
-        )}
-        {receiptsError && !loadingReceipts && (
-          <div className="error-row">{receiptsError}</div>
-        )}
+        {loadingReceipts && <div className="info-row">Loading goods receipts…</div>}
+        {receiptsError && !loadingReceipts && <div className="error-row">{receiptsError}</div>}
+
         {!loadingReceipts && !receiptsError && (
-          <div
-            className="table-wrapper"
-            style={{ maxHeight: 480, overflowY: "auto" }}
-          >
+          <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
             <table className="table">
               <thead
                 style={{
@@ -300,10 +318,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                   <th className="numeric">Qty</th>
                   <th>UOM</th>
                   <th>Unit Price</th>
-
-                  {/* ✅ changed */}
                   <th>Total cost</th>
-
                   <th>Supplier</th>
                   <th>Manufacturer</th>
                   <th>ES Criteria</th>
@@ -311,6 +326,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                   {showActions && <th>Actions</th>}
                 </tr>
               </thead>
+
               <tbody>
                 {filteredReceipts.length === 0 && (
                   <tr>
@@ -332,6 +348,12 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                     esClass = "tag tag-warning";
                   }
 
+                  const unitPriceText =
+                    r.unit_price != null ? toFixedSafe(r.unit_price as any, 2) : "—";
+
+                  const totalCostText =
+                    r.total_value != null ? `£${toFixedSafe(r.total_value as any, 2)}` : "—";
+
                   return (
                     <tr key={r.id}>
                       <td>{formatDate(r.created_at)}</td>
@@ -341,16 +363,9 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                       <td>{formatDate(r.expiry_date)}</td>
                       <td className="numeric">{r.qty}</td>
                       <td>{r.uom_code}</td>
-                      <td className="numeric">
-                        {r.unit_price != null ? r.unit_price.toFixed(2) : "—"}
-                      </td>
 
-                      {/* ✅ £ sign */}
-                      <td className="numeric">
-                        {r.total_value != null
-                          ? `£${r.total_value.toFixed(2)}`
-                          : "—"}
-                      </td>
+                      <td className="numeric">{unitPriceText}</td>
+                      <td className="numeric">{totalCostText}</td>
 
                       <td>{r.supplier || "—"}</td>
                       <td>{r.manufacturer || "—"}</td>
@@ -383,7 +398,6 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           </div>
         )}
 
-        {/* CSV Export modal */}
         <CsvExportModal
           open={exportModalOpen}
           title="Export Goods Receipts"

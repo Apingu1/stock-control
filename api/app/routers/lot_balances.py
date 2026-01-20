@@ -1,7 +1,8 @@
 # app/routers/lot_balances.py
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime
 import logging
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import text, func
@@ -10,11 +11,17 @@ from sqlalchemy.exc import IntegrityError
 
 from ..db import get_db
 from ..schemas import LotBalanceOut, LotStatusChangeCreate
-from ..models import MaterialLot, LotStatusChange, StockTransaction, Material, User, ExpiryThresholdSetting
+from ..models import (
+    MaterialLot,
+    LotStatusChange,
+    StockTransaction,
+    Material,
+    User,
+    ExpiryThresholdSetting,
+)
 from ..security import require_permission  # ✅ Phase B: permission guard (server enforced)
 
 router = APIRouter(prefix="/lot-balances", tags=["lot-balances"])
-
 logger = logging.getLogger(__name__)
 
 ALLOWED_LOT_STATUSES = {"AVAILABLE", "QUARANTINE", "REJECTED"}
@@ -29,18 +36,48 @@ STATUS_ALIASES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Decimal helpers
+# - qty in DB is numeric(18,6) => keep 6dp for movements/balances
+# - IMPORTANT: never Decimal(float); always Decimal(str(x)) to avoid IEEE-754 artifacts
+# ---------------------------------------------------------------------------
+
+QTY_Q = Decimal("0.000001")  # 6dp
+
+
+def _to_decimal(value: Any) -> Optional[Decimal]:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _q_qty(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(QTY_Q, rounding=ROUND_HALF_UP)
+
+
 def _normalise_status(s: Optional[str]) -> str:
     val = (s or "").strip().upper()
     return STATUS_ALIASES.get(val, val)
 
 
-def _get_lot_balance(db: Session, lot_id: int) -> float:
+def _get_lot_balance(db: Session, lot_id: int) -> Decimal:
+    """
+    Returns Decimal balance for the lot (sum(qty * direction)).
+    """
     bal = (
-        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0.0))
+        db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0))
         .filter(StockTransaction.material_lot_id == lot_id)
         .scalar()
     )
-    return float(bal or 0.0)
+    bal_dec = _to_decimal(bal) or Decimal("0")
+    return _q_qty(bal_dec) or Decimal("0")
 
 
 def _run_auto_quarantine_low_expiry(db: Session) -> None:
@@ -225,6 +262,10 @@ def list_lot_balances(
     params["limit"] = limit
 
     rows = db.execute(text(sql), params).mappings().all()
+
+    # IMPORTANT:
+    # - Do NOT cast lot_unit_price/lot_value to float (keeps precision from NUMERIC view).
+    # - Pydantic will serialize Decimal; if your schema still expects float, it will coerce.
     return [
         LotBalanceOut(
             material_lot_id=row["material_lot_id"],
@@ -243,8 +284,8 @@ def list_lot_balances(
             last_status_changed_at=row.get("last_status_changed_at"),
             days_to_expiry=row.get("days_to_expiry"),
             expiry_threshold_days=row.get("expiry_threshold_days"),
-            lot_unit_price=float(row["lot_unit_price"]) if row.get("lot_unit_price") is not None else None,
-            lot_value=float(row["lot_value"]) if row.get("lot_value") is not None else None,
+            lot_unit_price=row.get("lot_unit_price"),
+            lot_value=row.get("lot_value"),
         )
         for row in rows
     ]
@@ -287,25 +328,26 @@ def change_lot_status(
 
     whole_lot = bool(payload.whole_lot)
 
-    move_qty = payload.move_qty
-    if not whole_lot and move_qty is None:
+    move_qty_raw = payload.move_qty
+    if not whole_lot and move_qty_raw is None:
         raise HTTPException(status_code=400, detail="move_qty is required for partial status changes")
 
     if whole_lot:
         move_qty = current_balance
+    else:
+        move_qty = _to_decimal(move_qty_raw)
 
-    try:
-        move_qty_f = float(move_qty)
-    except Exception:
+    if move_qty is None:
         raise HTTPException(status_code=400, detail="move_qty must be a number")
 
-    if move_qty_f <= 0:
+    move_qty = _q_qty(move_qty)
+    if move_qty is None or move_qty <= 0:
         raise HTTPException(status_code=400, detail="move_qty must be > 0")
 
-    if move_qty_f > current_balance:
+    if move_qty > current_balance:
         raise HTTPException(
             status_code=400,
-            detail=f"move_qty exceeds current balance (balance {current_balance}, requested {move_qty_f})",
+            detail=f"move_qty exceeds current balance (balance {current_balance}, requested {move_qty})",
         )
 
     base_reason = payload.reason.strip()
@@ -314,7 +356,7 @@ def change_lot_status(
     material = db.query(Material).filter(Material.id == lot.material_id).one()
     uom_code = material.base_uom_code
 
-    reason_with_qty = f"{base_reason} | qty={move_qty_f} {uom_code}"
+    reason_with_qty = f"{base_reason} | qty={move_qty} {uom_code}"
 
     dest_statuses = [new_status]
     if new_status == "AVAILABLE":
@@ -339,10 +381,10 @@ def change_lot_status(
                 StockTransaction(
                     material_lot_id=lot.id,
                     txn_type="STATUS_MOVE",
-                    qty=move_qty_f,
+                    qty=move_qty,
                     uom_code=uom_code,
                     direction=-1,
-                    comment=f"Moved {move_qty_f} {uom_code} from {old_status} to {new_status}. Reason: {base_reason}",
+                    comment=f"Moved {move_qty} {uom_code} from {old_status} to {new_status}. Reason: {base_reason}",
                     created_by=changed_by,
                 )
             )
@@ -350,10 +392,10 @@ def change_lot_status(
                 StockTransaction(
                     material_lot_id=dest_lot.id,
                     txn_type="STATUS_MOVE",
-                    qty=move_qty_f,
+                    qty=move_qty,
                     uom_code=uom_code,
                     direction=+1,
-                    comment=f"Received {move_qty_f} {uom_code} from {old_status} segment. Reason: {base_reason}",
+                    comment=f"Received {move_qty} {uom_code} from {old_status} segment. Reason: {base_reason}",
                     created_by=changed_by,
                 )
             )
@@ -373,7 +415,7 @@ def change_lot_status(
                     material_lot_id=dest_lot.id,
                     old_status=_normalise_status(dest_lot.status),
                     new_status=new_status,
-                    reason=f"Merged in qty={move_qty_f} {uom_code} from {old_status}. {base_reason}",
+                    reason=f"Merged in qty={move_qty} {uom_code} from {old_status}. {base_reason}",
                     changed_by=changed_by,
                 )
             )
@@ -411,10 +453,10 @@ def change_lot_status(
                     StockTransaction(
                         material_lot_id=lot.id,
                         txn_type="STATUS_MOVE",
-                        qty=move_qty_f,
+                        qty=move_qty,
                         uom_code=uom_code,
                         direction=-1,
-                        comment=f"Moved {move_qty_f} {uom_code} from {old_status} to new {new_status} segment. Reason: {base_reason}",
+                        comment=f"Moved {move_qty} {uom_code} from {old_status} to new {new_status} segment. Reason: {base_reason}",
                         created_by=changed_by,
                     )
                 )
@@ -422,10 +464,10 @@ def change_lot_status(
                     StockTransaction(
                         material_lot_id=new_lot.id,
                         txn_type="STATUS_MOVE",
-                        qty=move_qty_f,
+                        qty=move_qty,
                         uom_code=uom_code,
                         direction=+1,
-                        comment=f"Received {move_qty_f} {uom_code} from {old_status} segment. Reason: {base_reason}",
+                        comment=f"Received {move_qty} {uom_code} from {old_status} segment. Reason: {base_reason}",
                         created_by=changed_by,
                     )
                 )
@@ -495,6 +537,6 @@ def change_lot_status(
         uom_code=row["uom_code"],
         last_status_reason=row.get("last_status_reason"),
         last_status_changed_at=row.get("last_status_changed_at"),
-        lot_unit_price=float(row["lot_unit_price"]) if row.get("lot_unit_price") is not None else None,
-        lot_value=float(row["lot_value"]) if row.get("lot_value") is not None else None,
+        lot_unit_price=row.get("lot_unit_price"),
+        lot_value=row.get("lot_value"),
     )

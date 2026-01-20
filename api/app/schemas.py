@@ -1,32 +1,46 @@
 # app/schemas.py
 from datetime import datetime, date
 from typing import Optional, List, Any
+from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, condecimal
+
+# ---------------------------------------------------------------------------
+# Decimal standards (GMP / ALCOA+ accuracy)
+# ---------------------------------------------------------------------------
+# Quantities and stored costing columns are NUMERIC(18,6) in DB.
+Dec6 = condecimal(max_digits=18, decimal_places=6)
+
+
+class ApiBaseModel(BaseModel):
+    class Config:
+        # Ensures Decimal values remain exact when serialized (no float drift)
+        json_encoders = {Decimal: str}
+        orm_mode = True  # Pydantic v1 alias; safe to keep
 
 
 # ---------------------------------------------------------------------------
 # AUTH (Phase A)
 # ---------------------------------------------------------------------------
 
-class LoginRequest(BaseModel):
+class LoginRequest(ApiBaseModel):
     username: str
     password: str
 
 
-class TokenOut(BaseModel):
+class TokenOut(ApiBaseModel):
     access_token: str
     token_type: str = "bearer"
 
 
-class UserMeOut(BaseModel):
+class UserMeOut(ApiBaseModel):
     id: int
     username: str
     role: str
     is_active: bool
 
 
-class UserOut(BaseModel):
+class UserOut(ApiBaseModel):
     id: int
     username: str
     role: str
@@ -36,16 +50,17 @@ class UserOut(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
-class UserCreate(BaseModel):
+class UserCreate(ApiBaseModel):
     username: str
     password: str
     role: str = "OPERATOR"
     is_active: bool = True
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(ApiBaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
@@ -53,7 +68,7 @@ class UserUpdate(BaseModel):
 
 # --- Approved manufacturers ---------------------------------------------------
 
-class ApprovedManufacturerBase(BaseModel):
+class ApprovedManufacturerBase(ApiBaseModel):
     manufacturer_name: str
     is_active: bool = True
 
@@ -71,11 +86,12 @@ class ApprovedManufacturerOut(ApprovedManufacturerBase):
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
 # --- Materials ---------------------------------------------------------------
 
-class MaterialBase(BaseModel):
+class MaterialBase(ApiBaseModel):
     material_code: str = Field(..., description="Canonical material code, e.g. MAT0327")
     name: str
     category_code: str
@@ -86,7 +102,7 @@ class MaterialBase(BaseModel):
     complies_es_criteria: bool = True
     status: str = "ACTIVE"
     # Phase D4: per-material alerts & auto-quarantine override (nullable)
-    low_stock_threshold_qty: Optional[float] = Field(None, ge=0)
+    low_stock_threshold_qty: Optional[Dec6] = Field(None, ge=0)
     expiry_alert_days: Optional[int] = Field(None, ge=0)
     auto_quarantine_override_days: Optional[int] = Field(None, ge=0)
 
@@ -95,7 +111,7 @@ class MaterialCreate(MaterialBase):
     created_by: Optional[str] = None
 
 
-class MaterialUpdate(BaseModel):
+class MaterialUpdate(ApiBaseModel):
     name: str
     category_code: str
     type_code: str
@@ -109,10 +125,9 @@ class MaterialUpdate(BaseModel):
     edit_reason: Optional[str] = None
 
     # Phase D4: per-material alerts & auto-quarantine override (nullable)
-    low_stock_threshold_qty: Optional[float] = Field(None, ge=0)
+    low_stock_threshold_qty: Optional[Dec6] = Field(None, ge=0)
     expiry_alert_days: Optional[int] = Field(None, ge=0)
     auto_quarantine_override_days: Optional[int] = Field(None, ge=0)
-
 
 
 class MaterialOut(MaterialBase):
@@ -125,19 +140,20 @@ class MaterialOut(MaterialBase):
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
 # --- Receipts (Purchased) ----------------------------------------------------
 
-class ReceiptCreate(BaseModel):
+class ReceiptCreate(ApiBaseModel):
     material_code: str
     lot_number: str
     expiry_date: Optional[datetime] = None
     receipt_date: date
-    qty: float
+    qty: Dec6
     uom_code: str
-    unit_price: Optional[float] = None
-    total_value: Optional[float] = None
+    unit_price: Optional[Dec6] = None
+    total_value: Optional[Dec6] = None
     target_ref: Optional[str] = None
     supplier: Optional[str] = None
     manufacturer: Optional[str] = None
@@ -150,14 +166,14 @@ class ReceiptCreate(BaseModel):
 
 
 # ✅ NEW: used for edits (PUT /receipts/{id})
-class ReceiptUpdate(BaseModel):
+class ReceiptUpdate(ApiBaseModel):
     """
     Edit an existing RECEIPT transaction.
     Audit reason is mandatory.
     """
-    qty: float
-    unit_price: Optional[float] = None
-    total_value: Optional[float] = None
+    qty: Dec6
+    unit_price: Optional[Dec6] = None
+    total_value: Optional[Dec6] = None
     target_ref: Optional[str] = None
     comment: Optional[str] = None
     receipt_date: Optional[date] = None
@@ -166,16 +182,17 @@ class ReceiptUpdate(BaseModel):
     force_merge: Optional[bool] = False  # superuser-only (for lot rename collision)
     edit_reason: str
 
-class ReceiptOut(BaseModel):
+
+class ReceiptOut(ApiBaseModel):
     id: int
     material_code: str
     material_name: str
     lot_number: str
     expiry_date: Optional[datetime] = None
-    qty: float
+    qty: Dec6
     uom_code: str
-    unit_price: Optional[float] = None
-    total_value: Optional[float] = None
+    unit_price: Optional[Dec6] = None
+    total_value: Optional[Dec6] = None
     target_ref: Optional[str] = None
     supplier: Optional[str] = None
     manufacturer: Optional[str] = None
@@ -186,11 +203,12 @@ class ReceiptOut(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
 # --- Issues (Used) -----------------------------------------------------------
 
-class IssueCreate(BaseModel):
+class IssueCreate(ApiBaseModel):
     """
     One row from your 'Used' tab.
     """
@@ -200,7 +218,7 @@ class IssueCreate(BaseModel):
     # preferred for split-lots (exact segment)
     material_lot_id: Optional[int] = None
 
-    qty: float
+    qty: Dec6
     uom_code: str
     es_product_code: Optional[str] = None  # ES Product Code (e.g., DULO2)
     product_batch_no: Optional[str] = None
@@ -215,12 +233,12 @@ class IssueCreate(BaseModel):
 
 
 # ✅ NEW: used for edits (PUT /issues/{id})
-class IssueUpdate(BaseModel):
+class IssueUpdate(ApiBaseModel):
     """
     Edit an existing ISSUE transaction.
     Audit reason is mandatory.
     """
-    qty: float
+    qty: Dec6
     uom_code: Optional[str] = None  # optional; most sites keep UOM fixed on edit, but safe.
     es_product_code: Optional[str] = None
     product_batch_no: Optional[str] = None
@@ -230,19 +248,20 @@ class IssueUpdate(BaseModel):
     comment: Optional[str] = None
     edit_reason: str
 
-class IssueOut(BaseModel):
+
+class IssueOut(ApiBaseModel):
     id: int
     material_code: str
     material_name: str
     lot_number: str
     expiry_date: Optional[datetime] = None
-    qty: float
+    qty: Dec6
     uom_code: str
     es_product_code: Optional[str] = None
 
     # ✅ Costing (stored on ISSUE txn at time of posting)
-    unit_price: Optional[float] = None
-    total_value: Optional[float] = None
+    unit_price: Optional[Dec6] = None
+    total_value: Optional[Dec6] = None
 
     product_batch_no: Optional[str] = None
     manufacturer: Optional[str] = None
@@ -259,11 +278,12 @@ class IssueOut(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
 # --- Lot balances (view) -----------------------------------------------------
 
-class LotBalanceOut(BaseModel):
+class LotBalanceOut(ApiBaseModel):
     material_lot_id: int
     material_code: str
     category_code: str
@@ -274,12 +294,12 @@ class LotBalanceOut(BaseModel):
     status: str
     manufacturer: Optional[str] = None
     supplier: Optional[str] = None
-    balance_qty: float
+    balance_qty: Dec6
     uom_code: str
 
     # ✅ Costing (per-lot; derived from receipts)
-    lot_unit_price: Optional[float] = None
-    lot_value: Optional[float] = None
+    lot_unit_price: Optional[Dec6] = None
+    lot_value: Optional[Dec6] = None
 
     last_status_reason: Optional[str] = None
     last_status_changed_at: Optional[datetime] = None
@@ -288,12 +308,12 @@ class LotBalanceOut(BaseModel):
     days_to_expiry: Optional[int] = None
     expiry_threshold_days: Optional[int] = None
 
-
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
-class LotStatusChangeCreate(BaseModel):
+class LotStatusChangeCreate(ApiBaseModel):
     new_status: str
     reason: str
 
@@ -301,7 +321,7 @@ class LotStatusChangeCreate(BaseModel):
     changed_by: Optional[str] = None
 
     whole_lot: bool = True
-    move_qty: Optional[float] = None
+    move_qty: Optional[Dec6] = None
 
 
 # --- RBAC (Phase B) ----------------------------------------------------------
@@ -309,36 +329,38 @@ class LotStatusChangeCreate(BaseModel):
 # admin.py expects RolePermissionOut / RolePermissionsOut etc.
 # We define these explicitly and also keep "Item" naming for UI convenience.
 
-class RoleOut(BaseModel):
+class RoleOut(ApiBaseModel):
     name: str
     description: Optional[str] = None
     is_active: bool = True
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
-class RoleCreate(BaseModel):
+class RoleCreate(ApiBaseModel):
     name: str = Field(..., description="Role name (will be uppercased)")
     description: Optional[str] = None
     is_active: bool = True
 
 
-class RoleUpdate(BaseModel):
+class RoleUpdate(ApiBaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
 
 
-class PermissionOut(BaseModel):
+class PermissionOut(ApiBaseModel):
     key: str
     description: Optional[str] = None
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
 # Single permission toggle row (what admin.py likely wants)
-class RolePermissionOut(BaseModel):
+class RolePermissionOut(ApiBaseModel):
     permission_key: str
     granted: bool
 
@@ -347,16 +369,16 @@ class RolePermissionOut(BaseModel):
 RolePermissionItem = RolePermissionOut
 
 
-class RolePermissionsOut(BaseModel):
+class RolePermissionsOut(ApiBaseModel):
     role_name: str
     permissions: List[RolePermissionOut]
 
 
-class RolePermissionsUpdate(BaseModel):
+class RolePermissionsUpdate(ApiBaseModel):
     permissions: List[RolePermissionOut]
 
 
-class RolePermissionSet(BaseModel):
+class RolePermissionSet(ApiBaseModel):
     """
     UI currently sends: { role: "READ ONLY", permissions: [...] }
     But the canonical role name is taken from the URL:
@@ -369,13 +391,14 @@ class RolePermissionSet(BaseModel):
     permissions: List[RolePermissionOut]
 
 
-class MyPermissionsOut(BaseModel):
+class MyPermissionsOut(ApiBaseModel):
     role: str
     permissions: List[str]
 
+
 # --- Audit feed (unified view) ----------------------------------------------
 
-class AuditEventOut(BaseModel):
+class AuditEventOut(ApiBaseModel):
     event_type: str
     event_at: datetime
     actor_username: Optional[str] = None
@@ -385,9 +408,10 @@ class AuditEventOut(BaseModel):
     before_json: Optional[Any] = None
     after_json: Optional[Any] = None
 
+
 # --- Phase D3: Expiry threshold settings (admin page) -------------------------
 
-class ExpiryThresholdSettingOut(BaseModel):
+class ExpiryThresholdSettingOut(ApiBaseModel):
     id: int
     category_code: str
     type_code: str
@@ -398,17 +422,19 @@ class ExpiryThresholdSettingOut(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}
 
 
-class ExpiryThresholdSettingUpdate(BaseModel):
+class ExpiryThresholdSettingUpdate(ApiBaseModel):
     threshold_days: Optional[int] = None
     is_active: Optional[bool] = None
+
 
 # ---------------------------------------------------------------------------
 # ALERTS (Phase D4+: Server-persisted alert actions)
 # ---------------------------------------------------------------------------
 
-class AlertActionBase(BaseModel):
+class AlertActionBase(ApiBaseModel):
     alert_key: str
     alert_type: str  # LOW_STOCK / LOW_EXPIRY
     material_code: str
@@ -416,7 +442,7 @@ class AlertActionBase(BaseModel):
 
     state: str  # NEW/ACKNOWLEDGED/ON_ORDER/DELAYED/UNAVAILABLE/NOT_REQUIRED
     eta_text: Optional[str] = None
-    last_seen_available_qty: Optional[float] = None
+    last_seen_available_qty: Optional[Dec6] = None
 
 
 class AlertActionUpsert(AlertActionBase):
@@ -431,3 +457,4 @@ class AlertActionOut(AlertActionBase):
 
     class Config:
         from_attributes = True
+        json_encoders = {Decimal: str}

@@ -35,6 +35,41 @@ const CONSUMPTION_TYPE_LABELS: Record<string, string> = {
   R_AND_D: "R&D usage",
 };
 
+/**
+ * ✅ Decimal-safe formatting helpers.
+ * After migrating backend DECIMAL fields, API may return them as strings (e.g. "12.340000").
+ */
+const asNumber = (v: unknown): number | null => {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  try {
+    const n = Number(v as any);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+};
+
+const formatMoney = (v: unknown): string => {
+  const n = asNumber(v);
+  if (n === null) return "—";
+  return `£${n.toFixed(2)}`;
+};
+
+const formatUnitMoney = (v: unknown): string => {
+  const n = asNumber(v);
+  if (n === null) return "—";
+  return `£${n.toFixed(4)}`;
+};
+
 const exportToCsv = (
   filename: string,
   rows: (string | number | null | undefined)[][]
@@ -51,7 +86,12 @@ const exportToCsv = (
   const csvContent =
     rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  // ✅ Fix Excel “Â£” issue: add UTF-8 BOM
+  const BOM = "\ufeff";
+  const blob = new Blob([BOM + csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -60,18 +100,6 @@ const exportToCsv = (
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-};
-
-const formatMoney = (v: number | null | undefined): string => {
-  if (v === null || v === undefined) return "—";
-  if (!Number.isFinite(v)) return "—";
-  return `£${v.toFixed(2)}`;
-};
-
-const formatUnitMoney = (v: number | null | undefined): string => {
-  if (v === null || v === undefined) return "—";
-  if (!Number.isFinite(v)) return "—";
-  return `£${v.toFixed(4)}`;
 };
 
 const ConsumptionView: React.FC<ConsumptionViewProps> = ({
@@ -129,7 +157,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         if (dateFilter === "365" && diffDays > 365) return false;
       }
 
-      if (manufacturerFilter !== "ALL" && i.manufacturer !== manufacturerFilter) {
+      if (
+        manufacturerFilter !== "ALL" &&
+        i.manufacturer !== manufacturerFilter
+      ) {
         return false;
       }
 
@@ -211,9 +242,6 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       const esProduct = isBatchRelevant ? i.es_product_code || "—" : "N/A";
       const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
 
-      const total = i.total_value ?? null;
-      const unit = i.unit_price ?? null;
-
       return [
         formatDate(i.created_at),
         formatDate(i.product_manufacture_date),
@@ -226,8 +254,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         formatDate(i.expiry_date),
         i.qty,
         i.uom_code,
-        total != null ? formatMoney(total) : "—",
-        unit != null ? formatUnitMoney(unit) : "—",
+        formatMoney(i.total_value ?? null),
+        formatUnitMoney(i.unit_price ?? null),
         i.manufacturer || "—",
         i.material_status_at_txn || "—",
         i.comment && i.comment.trim().length > 0 ? i.comment : "—",
@@ -316,9 +344,19 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
           <div className="error-row">{issuesError}</div>
         )}
         {!loadingIssues && !issuesError && (
-          <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
+          <div
+            className="table-wrapper"
+            style={{ maxHeight: 480, overflowY: "auto" }}
+          >
             <table className="table">
-              <thead style={{ position: "sticky", top: 0, zIndex: 1, background: "#050816" }}>
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  background: "#050816",
+                }}
+              >
                 <tr>
                   <th>Issue Date</th>
                   <th>Product Mfg Date</th>
@@ -332,7 +370,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th className="numeric">Qty</th>
                   <th>UOM</th>
 
-                  {/* ✅ D2: Cost column */}
+                  {/* ✅ Cost column */}
                   <th className="numeric">Cost (£)</th>
 
                   <th>Manufacturer</th>
@@ -342,6 +380,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   {showActions && <th>Actions</th>}
                 </tr>
               </thead>
+
               <tbody>
                 {filteredIssues.length === 0 && (
                   <tr>
@@ -372,6 +411,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td className="numeric">{i.qty}</td>
                       <td>{i.uom_code}</td>
 
+                      {/* ✅ Decimal-safe */}
                       <td className="numeric">{formatMoney(i.total_value ?? null)}</td>
 
                       <td>{i.manufacturer || "—"}</td>
@@ -399,7 +439,6 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
           </div>
         )}
 
-        {/* CSV export modal */}
         <CsvExportModal
           open={exportModalOpen}
           title="Export Issue / Consumption History"
