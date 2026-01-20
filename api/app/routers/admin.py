@@ -1,4 +1,4 @@
-# app/routers/admin.py
+# api/app/routers/admin.py
 from typing import List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,10 +49,13 @@ def _is_demoting_or_disabling_admin(u: User, payload: UserUpdate) -> bool:
     current_is_admin = (u.role or "").upper() == "ADMIN"
     current_active = bool(u.is_active)
 
-    new_role = (payload.role.strip().upper() if payload.role is not None else (u.role or "").upper())
-    new_active = (bool(payload.is_active) if payload.is_active is not None else current_active)
+    new_role = (
+        payload.role.strip().upper()
+        if payload.role is not None
+        else (u.role or "").upper()
+    )
+    new_active = bool(payload.is_active) if payload.is_active is not None else current_active
 
-    # If they end up not ADMIN, or inactive, then they are not an active admin.
     return current_is_admin and current_active and (new_role != "ADMIN" or not new_active)
 
 
@@ -119,19 +122,14 @@ def update_user(
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # -----------------------------------------------------------------------
     # HARD SAFETY: the built-in 'admin' account can NEVER be disabled or demoted
-    # -----------------------------------------------------------------------
     if u.username == PROTECTED_ADMIN_USERNAME:
         if payload.is_active is not None and payload.is_active is False:
             raise HTTPException(status_code=400, detail="The 'admin' user cannot be made inactive")
         if payload.role is not None and payload.role.strip().upper() != "ADMIN":
             raise HTTPException(status_code=400, detail="The 'admin' user role cannot be changed")
 
-    # -----------------------------------------------------------------------
-    # SAFETY: never allow the system to end up with 0 active ADMIN users
-    # (blocks disabling/demoting the last active admin)
-    # -----------------------------------------------------------------------
+    # SAFETY: never allow 0 active ADMIN users
     if _is_demoting_or_disabling_admin(u, payload):
         active_admins = _active_admin_count(db)
         if active_admins <= 1:
@@ -171,6 +169,7 @@ def list_roles(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin_access),
 ) -> List[RoleOut]:
+    # Return active + inactive (frontend can filter)
     return db.query(Role).order_by(Role.name.asc()).all()
 
 
@@ -191,7 +190,7 @@ def create_role(
     r = Role(
         name=name,
         description=payload.description,
-        is_active=bool(payload.is_active),
+        is_active=True if payload.is_active is None else bool(payload.is_active),
     )
     db.add(r)
 
@@ -247,6 +246,10 @@ def retire_role(
     role = db.query(Role).filter(Role.name == rn).one_or_none()
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
+
+    # already retired -> idempotent 204
+    if role.is_active is False:
+        return
 
     # Block retire if any users currently have this role
     user_count = db.query(func.count(User.id)).filter(User.role == rn).scalar() or 0
@@ -364,7 +367,11 @@ def update_expiry_threshold(
     db: Session = Depends(get_db),
     admin_user: User = Depends(require_admin_access),
 ):
-    row = db.query(ExpiryThresholdSetting).filter(ExpiryThresholdSetting.id == threshold_id).one_or_none()
+    row = (
+        db.query(ExpiryThresholdSetting)
+        .filter(ExpiryThresholdSetting.id == threshold_id)
+        .one_or_none()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Expiry threshold not found")
 

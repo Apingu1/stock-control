@@ -23,6 +23,11 @@ function groupForPermissionKey(key: string): string {
   return "Other";
 }
 
+function roleLabel(role: AdminRole): string {
+  const inactive = role.is_active === false;
+  return inactive ? `${role.name} (inactive)` : role.name;
+}
+
 export default function AdminUsersView() {
   const [tab, setTab] = useState<Tab>("users");
 
@@ -34,7 +39,7 @@ export default function AdminUsersView() {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [roles, setRoles] = useState<Role[]>(FALLBACK_ROLES);
 
-  // create user form
+  // create user form (must be blank by default)
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<Role>("OPERATOR");
@@ -48,6 +53,8 @@ export default function AdminUsersView() {
   const [rolePerms, setRolePerms] = useState<Record<string, boolean>>({});
   const [savingPerms, setSavingPerms] = useState(false);
   const [retiringRole, setRetiringRole] = useState(false);
+  const [activatingRole, setActivatingRole] = useState(false);
+  const [showInactiveRoles, setShowInactiveRoles] = useState(false);
 
   // create role
   const [roleName, setRoleName] = useState("");
@@ -73,11 +80,11 @@ export default function AdminUsersView() {
 
       setRoles(activeNames.length ? (activeNames as Role[]) : FALLBACK_ROLES);
 
-      // For roles tab: if current selection disappeared, pick first available (active or inactive).
+      // If current selection disappeared, pick first available role (active or inactive).
       const allNames = data.map((r) => r.name).filter(Boolean);
       if (allNames.length && !allNames.includes(selectedRole)) setSelectedRole(allNames[0]);
     } catch {
-      setAdminRoles(FALLBACK_ROLES.map((n) => ({ name: n })));
+      setAdminRoles(FALLBACK_ROLES.map((n) => ({ name: n, is_active: true })));
       setRoles(FALLBACK_ROLES);
     }
   };
@@ -86,6 +93,7 @@ export default function AdminUsersView() {
     try {
       const res = await apiFetch("/admin/permissions");
       const data = (await res.json()) as PermissionDef[];
+      // Hide any legacy ".delete" style perms in UI (backend still enforces).
       setPermissions(data.filter((p) => !p.key.endsWith(".delete")));
     } catch {
       // fallback list (keeps UI usable if endpoint ever missing)
@@ -113,7 +121,6 @@ export default function AdminUsersView() {
     const res = await apiFetch(`/admin/roles/${encodeURIComponent(roleName)}/permissions`);
     const data = (await res.json()) as RolePermissionRow[];
 
-    // Backend returns list of {permission_key, granted}
     const map: Record<string, boolean> = {};
     for (const row of data) map[row.permission_key] = !!row.granted;
     setRolePerms(map);
@@ -138,7 +145,6 @@ export default function AdminUsersView() {
   }, []);
 
   useEffect(() => {
-    // when role changes, refresh its perms
     if (!selectedRole) return;
     loadRolePermissions(selectedRole).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,10 +169,12 @@ export default function AdminUsersView() {
         }),
       });
 
+      // reset fields (blank by default)
       setNewUsername("");
       setNewPassword("");
       setNewRole("OPERATOR");
       setNewActive(true);
+
       await loadUsers();
     } catch (e: any) {
       setErr(e?.message ?? "Failed to create user");
@@ -234,13 +242,38 @@ export default function AdminUsersView() {
       await apiFetch(`/admin/roles/${encodeURIComponent(rn)}`, { method: "DELETE" });
       await loadRoles();
 
-      // choose a safe next role
-      setSelectedRole("ADMIN");
-      await loadRolePermissions("ADMIN");
+      // Keep selection if still exists; otherwise fall back
+      setSelectedRole(rn);
+      await loadRolePermissions(rn);
     } catch (e: any) {
       setErr(e?.message ?? "Failed to retire role");
     } finally {
       setRetiringRole(false);
+    }
+  };
+
+  const activateSelectedRole = async () => {
+    const rn = (selectedRole || "").trim().toUpperCase();
+    if (!rn) return;
+    if (SYSTEM_ROLES.has(rn)) return setErr("System roles cannot be changed.");
+
+    const ok = window.confirm(`Activate role "${rn}"?`);
+    if (!ok) return;
+
+    setActivatingRole(true);
+    setErr(null);
+    try {
+      await apiFetch(`/admin/roles/${encodeURIComponent(rn)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: true }),
+      });
+      await loadRoles();
+      await loadRolePermissions(rn);
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to activate role");
+    } finally {
+      setActivatingRole(false);
     }
   };
 
@@ -287,10 +320,26 @@ export default function AdminUsersView() {
     return groups;
   }, [permissions]);
 
-  const canRetireRole = useMemo(() => {
+  const selectedRoleObj = useMemo(() => {
+    const rn = (selectedRole || "").trim().toUpperCase();
+    return adminRoles.find((r) => (r.name || "").toUpperCase() === rn) || null;
+  }, [adminRoles, selectedRole]);
+
+  const isSelectedRoleInactive = useMemo(() => selectedRoleObj?.is_active === false, [selectedRoleObj]);
+
+  const canChangeSelectedRoleActiveState = useMemo(() => {
     const rn = (selectedRole || "").trim().toUpperCase();
     return rn.length > 0 && !SYSTEM_ROLES.has(rn);
   }, [selectedRole]);
+
+  const visibleAdminRoles = useMemo(() => {
+    const rows = adminRoles.length ? adminRoles : FALLBACK_ROLES.map((n) => ({ name: n, is_active: true }));
+    return showInactiveRoles ? rows : rows.filter((r) => r.is_active !== false);
+  }, [adminRoles, showInactiveRoles]);
+
+  const actionBtnLabel = isSelectedRoleInactive ? "Activate role" : "Retire role";
+  const actionBtnBusy = isSelectedRoleInactive ? activatingRole : retiringRole;
+  const actionBtnOnClick = isSelectedRoleInactive ? activateSelectedRole : retireSelectedRole;
 
   return (
     <section className="content">
@@ -331,7 +380,14 @@ export default function AdminUsersView() {
                   <div className="form-grid" style={{ alignItems: "end" }}>
                     <div className="form-group">
                       <label className="label">Username</label>
-                      <input className="input" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
+                      <input
+                        className="input"
+                        name="new-username"
+                        autoComplete="off"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                        placeholder=""
+                      />
                     </div>
 
                     <div className="form-group">
@@ -339,8 +395,11 @@ export default function AdminUsersView() {
                       <input
                         className="input"
                         type="password"
+                        name="new-password"
+                        autoComplete="new-password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder=""
                       />
                     </div>
 
@@ -492,48 +551,119 @@ export default function AdminUsersView() {
                 </div>
 
                 <div className="card-body">
+                  {/* One-line control row: Role dropdown, status, show inactive, retire/activate, save */}
                   <div
                     className="form-grid"
                     style={{
-                      gridTemplateColumns: "minmax(0,1fr) auto auto",
-                      alignItems: "end",
+                      gridTemplateColumns: "auto auto auto auto auto",
+                      alignItems: "center",
                       gap: 12,
                     }}
                   >
-                    <div className="form-group">
+                    <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="label">Select role</label>
-                      <select className="input" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}>
-                        {(adminRoles.length ? adminRoles : roles.map((r) => ({ name: r }))).map((r) => (
+                      <select
+                        className="input"
+                        value={selectedRole}
+                        onChange={(e) => setSelectedRole(e.target.value)}
+                        style={{ width: 240 }} // shorten dropdown
+                      >
+                        {visibleAdminRoles.map((r) => (
                           <option key={r.name} value={r.name}>
-                            {r.name}
+                            {roleLabel(r)}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    <div className="form-group" style={{ justifyContent: "flex-end" }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="label">Status</label>
+                      {selectedRoleObj ? (
+                        <div
+                          className="chip"
+                          style={{
+                            userSelect: "none",
+                            whiteSpace: "nowrap",
+                            border: "1px solid rgba(255,255,255,0.10)",
+                            background:
+                              selectedRoleObj.is_active === false
+                                ? "rgba(255,77,79,0.18)"
+                                : "rgba(46,204,113,0.15)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            height: 36,
+                          }}
+                          title={selectedRoleObj.is_active === false ? "Role is inactive (retired)" : "Role is active"}
+                        >
+                          {selectedRoleObj.is_active === false ? "Inactive" : "Active"}
+                        </div>
+                      ) : (
+                        <div className="chip" style={{ height: 36, display: "inline-flex", alignItems: "center" }}>
+                          —
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="label">Show inactive</label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, height: 36 }}>
+                        <input
+                          type="checkbox"
+                          checked={showInactiveRoles}
+                          onChange={(e) => setShowInactiveRoles(e.target.checked)}
+                        />
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Include inactive roles</span>
+                      </label>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0, justifyContent: "flex-end" }}>
+                      <label className="label">&nbsp;</label>
                       <button
                         className="btn"
-                        onClick={retireSelectedRole}
-                        disabled={!canRetireRole || retiringRole}
+                        onClick={actionBtnOnClick}
+                        disabled={!canChangeSelectedRoleActiveState || actionBtnBusy}
                         style={{
-                          background: canRetireRole ? "#ff4d4f" : "rgba(255,255,255,0.08)",
+                          minWidth: 160,
+                          height: 40,
+                          background: canChangeSelectedRoleActiveState
+                            ? isSelectedRoleInactive
+                              ? "rgba(46,204,113,0.85)"
+                              : "#ff4d4f"
+                            : "rgba(255,255,255,0.08)",
                           color: "#000",
                           border: "1px solid rgba(0,0,0,0.25)",
-                          minWidth: 140,
                         }}
-                        title={canRetireRole ? "Retire selected role" : "System roles cannot be retired"}
+                        title={
+                          canChangeSelectedRoleActiveState
+                            ? isSelectedRoleInactive
+                              ? "Activate selected role"
+                              : "Retire selected role"
+                            : "System roles cannot be changed"
+                        }
                       >
-                        {retiringRole ? "Retiring…" : "Retire role"}
+                        {actionBtnBusy ? (isSelectedRoleInactive ? "Activating…" : "Retiring…") : actionBtnLabel}
                       </button>
                     </div>
 
-                    <div className="form-group" style={{ justifyContent: "flex-end" }}>
-                      <button className="btn btn-primary" onClick={savePermissions} disabled={savingPerms}>
+                    <div className="form-group" style={{ marginBottom: 0, justifyContent: "flex-end" }}>
+                      <label className="label">&nbsp;</label>
+                      <button
+                        className="btn btn-primary"
+                        onClick={savePermissions}
+                        disabled={savingPerms || isSelectedRoleInactive}
+                        style={{ minWidth: 160, height: 40 }}
+                        title={isSelectedRoleInactive ? "Cannot edit permissions for an inactive role" : "Save permissions"}
+                      >
                         {savingPerms ? "Saving…" : "Save permissions"}
                       </button>
                     </div>
                   </div>
+
+                  {isSelectedRoleInactive && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>
+                      This role is inactive. Permission edits are disabled.
+                    </div>
+                  )}
 
                   <div style={{ marginTop: 14 }}>
                     {Object.keys(groupedPerms)
@@ -553,30 +683,41 @@ export default function AdminUsersView() {
 
                           <div className="card-body" style={{ paddingTop: 0 }}>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                              {groupedPerms[group].map((p) => (
-                                <label
-                                  key={p.key}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    padding: "10px 12px",
-                                    borderRadius: 12,
-                                    border: "1px solid rgba(255,255,255,0.06)",
-                                    background: "rgba(255,255,255,0.03)",
-                                  }}
-                                >
-                                  <span style={{ display: "flex", flexDirection: "column" }}>
-                                    <span style={{ fontWeight: 600, fontSize: 13 }}>{p.key}</span>
-                                    {p.description && (
-                                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{p.description}</span>
-                                    )}
-                                  </span>
+                              {groupedPerms[group].map((p) => {
+                                const disabled = isSelectedRoleInactive;
+                                return (
+                                  <label
+                                    key={p.key}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: 10,
+                                      padding: "10px 12px",
+                                      borderRadius: 12,
+                                      border: "1px solid rgba(255,255,255,0.06)",
+                                      background: "rgba(255,255,255,0.03)",
+                                      opacity: disabled ? 0.55 : 1,
+                                      cursor: disabled ? "not-allowed" : "pointer",
+                                    }}
+                                    title={disabled ? "Role is inactive" : "Toggle permission"}
+                                  >
+                                    <span style={{ display: "flex", flexDirection: "column" }}>
+                                      <span style={{ fontWeight: 600, fontSize: 13 }}>{p.key}</span>
+                                      {p.description && (
+                                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{p.description}</span>
+                                      )}
+                                    </span>
 
-                                  <input type="checkbox" checked={!!rolePerms[p.key]} onChange={() => togglePerm(p.key)} />
-                                </label>
-                              ))}
+                                    <input
+                                      type="checkbox"
+                                      checked={!!rolePerms[p.key]}
+                                      onChange={() => togglePerm(p.key)}
+                                      disabled={disabled}
+                                    />
+                                  </label>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>

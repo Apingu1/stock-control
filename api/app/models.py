@@ -1,7 +1,7 @@
-# app/models.py
+# api/app/models.py
 from __future__ import annotations
-from decimal import Decimal
 
+from decimal import Decimal
 from datetime import datetime, date
 from typing import Optional
 import json
@@ -21,8 +21,6 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-# ✅ FIX 1: JSONB is used by MaterialLotEdit but was not imported
 from sqlalchemy.dialects.postgresql import JSONB
 
 
@@ -118,15 +116,17 @@ class Material(Base):
     manufacturer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     supplier: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-        # Phase D4: per-material alerts & auto-quarantine overrides (nullable)
-    low_stock_threshold_qty: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
+    # Phase D4: per-material alerts & auto-quarantine overrides (nullable)
+    low_stock_threshold_qty: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 6), nullable=True
+    )  # CHECK >= 0 via migration
 
-     # CHECK >= 0 via migration
-    expiry_alert_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # CHECK >= 0
+    expiry_alert_days: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )  # CHECK >= 0
     auto_quarantine_override_days: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )  # CHECK >= 0
-
 
     complies_es_criteria: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
@@ -158,7 +158,7 @@ class Material(Base):
         cascade="all, delete-orphan",
     )
 
-    # ✅ NEW: immutable audit trail for material edits
+    # immutable audit trail for material edits
     edits: Mapped[list["MaterialEdit"]] = relationship(
         "MaterialEdit",
         back_populates="material",
@@ -175,6 +175,7 @@ class Material(Base):
 
 class MaterialEdit(Base):
     """Immutable audit trail for edits to materials rows."""
+
     __tablename__ = "material_edits"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -212,11 +213,12 @@ class MaterialEdit(Base):
             "created_by": m.created_by,
             "updated_at": m.updated_at.isoformat() if m.updated_at else None,
             "low_stock_threshold_qty": (
-                str(m.low_stock_threshold_qty) if m.low_stock_threshold_qty is not None else None
+                str(m.low_stock_threshold_qty)
+                if m.low_stock_threshold_qty is not None
+                else None
             ),
             "expiry_alert_days": m.expiry_alert_days,
             "auto_quarantine_override_days": m.auto_quarantine_override_days,
-
         }
         return json.dumps(payload, sort_keys=True)
 
@@ -298,7 +300,6 @@ class MaterialLot(Base):
         cascade="all, delete-orphan",
     )
 
-    # ✅ FIX 2: MaterialLotEdit.back_populates="edits" requires this relationship on MaterialLot.
     edits: Mapped[list["MaterialLotEdit"]] = relationship(
         "MaterialLotEdit",
         back_populates="lot",
@@ -322,6 +323,7 @@ class StockTransaction(Base):
         String(20), nullable=False, default="USAGE"
     )
 
+    # ✅ CRITICAL: use Decimal + Numeric (matches DB)
     qty: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     uom_code: Mapped[str] = mapped_column(String(50), nullable=False)
 
@@ -338,9 +340,6 @@ class StockTransaction(Base):
 
     comment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
-    # Snapshot of the lot status at the time this transaction was created.
-    # Added by migration (you already applied):
-    #   ALTER TABLE stock_transactions ADD COLUMN material_status_at_txn TEXT NULL;
     material_status_at_txn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -367,11 +366,9 @@ class StockTransaction(Base):
     )
 
 
-# --- Transaction edit audit trail -------------------------------------------
-
-
 class StockTransactionEdit(Base):
     """Immutable audit trail for edits to stock_transactions rows."""
+
     __tablename__ = "stock_transaction_edits"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -409,7 +406,9 @@ class StockTransactionEdit(Base):
             "target_ref": txn.target_ref,
             "product_batch_no": txn.product_batch_no,
             "product_manufacture_date": (
-                txn.product_manufacture_date.isoformat() if txn.product_manufacture_date else None
+                txn.product_manufacture_date.isoformat()
+                if txn.product_manufacture_date
+                else None
             ),
             "comment": txn.comment,
             "created_at": txn.created_at.isoformat() if txn.created_at else None,
@@ -419,15 +418,9 @@ class StockTransactionEdit(Base):
         return json.dumps(payload, sort_keys=True)
 
 
-# --- Lot status change history ----------------------------------------------
-
-
-
-# --- Material lot edit audit trail -------------------------------------------
-
-
 class MaterialLotEdit(Base):
     """Immutable audit trail for edits/merges to material_lots rows."""
+
     __tablename__ = "material_lot_edits"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -467,9 +460,6 @@ class LotStatusChange(Base):
     __tablename__ = "lot_status_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-
-    # ✅ NOTE: edits relationship does NOT belong here; it belongs on MaterialLot.
-    # (It was previously placed here by mistake and will break mapper config.)
 
     material_lot_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("material_lots.id"), nullable=False
@@ -529,7 +519,9 @@ class RolePermission(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-# --- Phase D3: Admin-configurable expiry auto-quarantine thresholds ------------
+
+# --- Phase D3: Admin-configurable expiry auto-quarantine thresholds ----------
+
 
 class ExpiryThresholdSetting(Base):
     __tablename__ = "expiry_threshold_settings"
@@ -543,7 +535,10 @@ class ExpiryThresholdSetting(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
     updated_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
@@ -551,7 +546,9 @@ class ExpiryThresholdSetting(Base):
         UniqueConstraint("category_code", "type_code", name="uq_expiry_threshold_cat_type"),
     )
 
+
 # --- Phase D4+: Alert actions (server-side persistence) ----------------------
+
 
 class AlertAction(Base):
     __tablename__ = "alert_actions"
@@ -565,7 +562,11 @@ class AlertAction(Base):
 
     state: Mapped[str] = mapped_column(Text, nullable=False)  # NEW/ACKNOWLEDGED/...
     eta_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    last_seen_available_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # ✅ change to Decimal to remove float drift in alerts too
+    last_seen_available_qty: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 6), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
