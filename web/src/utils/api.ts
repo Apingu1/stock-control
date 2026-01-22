@@ -3,26 +3,25 @@
 const TOKEN_KEY = "sc_jwt";
 
 function normalizeBase(base: string): string {
+  // Keep leading slash (for relative bases) but remove trailing slashes
   return base.replace(/\/+$/, "");
 }
 
 function getApiBase(): string {
+  // Prefer explicit override if provided
   const envBase = (import.meta as any).env?.VITE_API_BASE as string | undefined;
-  if (envBase && envBase.trim().length > 0) return normalizeBase(envBase.trim());
-
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname || "localhost";
-    const protocol = window.location.protocol || "http:";
-
-    if (host.endsWith(".app.github.dev")) {
-      const apiHost = host.replace(/-5173\.app\.github\.dev$/, "-8080.app.github.dev");
-      return normalizeBase(`${protocol}//${apiHost}/api`);
-    }
-
-    return normalizeBase(`http://${host}:8080/api`);
+  if (envBase && envBase.trim().length > 0) {
+    return normalizeBase(envBase.trim());
   }
 
-  return "http://localhost:8080/api";
+  /**
+   * Default: SAME ORIGIN.
+   * - In production (served by nginx on :8080): "/api" works directly.
+   * - In dev (vite :5173): "/api" must be proxied to the backend (vite.config proxy).
+   *
+   * This avoids cross-origin calls and the CORS preflight failures you’re seeing.
+   */
+  return "/api";
 }
 
 export function setToken(token: string) {
@@ -40,12 +39,15 @@ export function clearToken() {
 export async function apiFetch(path: string, init: RequestInit = {}) {
   const base = getApiBase();
   const p = path.startsWith("/") ? path : `/${path}`;
+
+  // If caller passes full URL, respect it.
   const url = path.startsWith("http") ? path : `${base}${p}`;
 
   const token = getToken();
   const headers = new Headers(init.headers || {});
 
-  if (!headers.has("Content-Type") && init.body) {
+  // Only set JSON content-type if we’re sending a body and caller didn’t already set one.
+  if (!headers.has("Content-Type") && init.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -73,6 +75,7 @@ export async function login(username: string, password: string) {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
+
   const data = (await res.json()) as { access_token: string; token_type: string };
   setToken(data.access_token);
   return data;
@@ -96,7 +99,7 @@ export async function fetchMyPermissions() {
   };
 }
 
-// ✅ NEW: Audit events feed
+// ✅ Audit events feed
 export async function fetchAuditEvents(params: {
   date_from?: string;
   date_to?: string;
@@ -129,13 +132,7 @@ export type AlertActionRow = {
   alert_type: "LOW_STOCK" | "LOW_EXPIRY";
   material_code: string;
   lot_number?: string | null;
-  state:
-    | "NEW"
-    | "ACKNOWLEDGED"
-    | "ON_ORDER"
-    | "DELAYED"
-    | "UNAVAILABLE"
-    | "NOT_REQUIRED";
+  state: "NEW" | "ACKNOWLEDGED" | "ON_ORDER" | "DELAYED" | "UNAVAILABLE" | "NOT_REQUIRED";
   eta_text?: string | null;
   last_seen_available_qty?: number | null;
   created_at: string;
@@ -155,13 +152,7 @@ export async function upsertAlertAction(row: {
   alert_type: "LOW_STOCK" | "LOW_EXPIRY";
   material_code: string;
   lot_number?: string | null;
-  state:
-    | "NEW"
-    | "ACKNOWLEDGED"
-    | "ON_ORDER"
-    | "DELAYED"
-    | "UNAVAILABLE"
-    | "NOT_REQUIRED";
+  state: "NEW" | "ACKNOWLEDGED" | "ON_ORDER" | "DELAYED" | "UNAVAILABLE" | "NOT_REQUIRED";
   eta_text?: string | null;
   last_seen_available_qty?: number | null;
 }) {

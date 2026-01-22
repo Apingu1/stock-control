@@ -90,9 +90,11 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         <label className="label">Category</label>
         <select
           className="input"
-          value={props.categoryCode}
+          value={props.categoryCode ?? ""}
           onChange={(e) => props.setCategoryCode(e.target.value)}
         >
+          {/* ✅ Keep layout identical; add a real empty option so state/UI match */}
+          <option value="">— Select category —</option>
           {MATERIAL_CATEGORY_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
@@ -105,9 +107,11 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         <label className="label">Type</label>
         <select
           className="input"
-          value={props.typeCode}
+          value={props.typeCode ?? ""}
           onChange={(e) => props.setTypeCode(e.target.value)}
         >
+          {/* ✅ Keep layout identical; add a real empty option so state/UI match */}
+          <option value="">— Select type —</option>
           {MATERIAL_TYPE_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
@@ -120,9 +124,11 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         <label className="label">Base UOM</label>
         <select
           className="input"
-          value={props.baseUomCode}
+          value={props.baseUomCode ?? ""}
           onChange={(e) => props.setBaseUomCode(e.target.value)}
         >
+          {/* ✅ Keep layout identical; add a real empty option so state/UI match */}
+          <option value="">— Select base UOM —</option>
           {MATERIAL_UOM_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
