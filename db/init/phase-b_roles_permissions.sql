@@ -48,6 +48,9 @@ INSERT INTO permissions (key, description) VALUES
   ('lots.status_change','Change lot status'),
 
   ('admin.full',      'Full access to Users & Roles admin')
+
+  ('analytics.view','View analytics dashboards and drilldowns'),
+
 ON CONFLICT (key) DO NOTHING;
 
 -- 3) Role ↔ Permission mapping

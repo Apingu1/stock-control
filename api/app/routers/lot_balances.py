@@ -1,6 +1,5 @@
 # app/routers/lot_balances.py
 from typing import List, Optional, Any
-from datetime import datetime
 import logging
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
@@ -40,10 +39,16 @@ STATUS_ALIASES = {
 # Decimal helpers
 # - qty in DB is numeric(18,6) => keep 6dp for movements/balances
 # - IMPORTANT: never Decimal(float); always Decimal(str(x)) to avoid IEEE-754 artifacts
+#
+# Key bugfix for your 500 on /lot-balances:
+# Pydantic v2 validates Decimal max_digits. Views can yield "unbounded-looking"
+# decimals (e.g. 0.333333333333...) which can exceed schema digit limits.
+# So: quantize BEFORE constructing LotBalanceOut.
 # ---------------------------------------------------------------------------
 
-QTY_Q = Decimal("0.000001")  # 6dp
-
+QTY_Q = Decimal("0.000001")          # 6dp
+UNIT_PRICE_Q = Decimal("0.000001")   # 6dp (safe default; matches typical unit price precision)
+MONEY_Q = Decimal("0.01")            # 2dp (currency)
 
 def _to_decimal(value: Any) -> Optional[Decimal]:
     if value is None:
@@ -60,6 +65,18 @@ def _q_qty(value: Decimal | None) -> Decimal | None:
     if value is None:
         return None
     return value.quantize(QTY_Q, rounding=ROUND_HALF_UP)
+
+
+def _q_unit_price(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(UNIT_PRICE_Q, rounding=ROUND_HALF_UP)
+
+
+def _q_money(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(MONEY_Q, rounding=ROUND_HALF_UP)
 
 
 def _normalise_status(s: Optional[str]) -> str:
@@ -208,7 +225,12 @@ def list_lot_balances(
     include_zero: bool = Query(False, description="Include lots with zero balance"),
     limit: int = Query(200, ge=1, le=1000),
 ):
-    _run_auto_quarantine_low_expiry(db)
+    # ✅ Best-effort only; never block the page if auto-quarantine fails
+    try:
+        _run_auto_quarantine_low_expiry(db)
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Auto-quarantine skipped due to error: {type(e).__name__}: {e}")
 
     sql = """
         SELECT
@@ -263,32 +285,37 @@ def list_lot_balances(
 
     rows = db.execute(text(sql), params).mappings().all()
 
-    # IMPORTANT:
-    # - Do NOT cast lot_unit_price/lot_value to float (keeps precision from NUMERIC view).
-    # - Pydantic will serialize Decimal; if your schema still expects float, it will coerce.
-    return [
-        LotBalanceOut(
-            material_lot_id=row["material_lot_id"],
-            material_code=row["material_code"],
-            material_name=row["material_name"],
-            category_code=row["category_code"],
-            type_code=row["type_code"],
-            lot_number=row["lot_number"],
-            expiry_date=row["expiry_date"],
-            status=row["status"],
-            manufacturer=row["manufacturer"],
-            supplier=row["supplier"],
-            balance_qty=row["balance_qty"],
-            uom_code=row["uom_code"],
-            last_status_reason=row.get("last_status_reason"),
-            last_status_changed_at=row.get("last_status_changed_at"),
-            days_to_expiry=row.get("days_to_expiry"),
-            expiry_threshold_days=row.get("expiry_threshold_days"),
-            lot_unit_price=row.get("lot_unit_price"),
-            lot_value=row.get("lot_value"),
+    # ✅ Critical fix: quantize Decimals BEFORE Pydantic validates LotBalanceOut
+    out: List[LotBalanceOut] = []
+    for row in rows:
+        balance_qty = _q_qty(_to_decimal(row.get("balance_qty"))) or Decimal("0")
+        lot_unit_price = _q_unit_price(_to_decimal(row.get("lot_unit_price")))
+        lot_value = _q_money(_to_decimal(row.get("lot_value")))
+
+        out.append(
+            LotBalanceOut(
+                material_lot_id=row["material_lot_id"],
+                material_code=row["material_code"],
+                material_name=row["material_name"],
+                category_code=row["category_code"],
+                type_code=row["type_code"],
+                lot_number=row["lot_number"],
+                expiry_date=row["expiry_date"],
+                status=row["status"],
+                manufacturer=row["manufacturer"],
+                supplier=row["supplier"],
+                balance_qty=balance_qty,
+                uom_code=row["uom_code"],
+                last_status_reason=row.get("last_status_reason"),
+                last_status_changed_at=row.get("last_status_changed_at"),
+                days_to_expiry=row.get("days_to_expiry"),
+                expiry_threshold_days=row.get("expiry_threshold_days"),
+                lot_unit_price=lot_unit_price,
+                lot_value=lot_value,
+            )
         )
-        for row in rows
-    ]
+
+    return out
 
 
 @router.post("/{material_lot_id}/status-change", response_model=LotBalanceOut)
@@ -420,7 +447,7 @@ def change_lot_status(
                 )
             )
 
-            # ✅ CRITICAL FIX:
+            # ✅ CRITICAL:
             # Do NOT set lot.status=new_status when dest exists (unique constraint).
             # We rely on STATUS_MOVE txns to drain source to 0.
             db.commit()
@@ -522,6 +549,11 @@ def change_lot_status(
         {"lot_id": material_lot_id},
     ).mappings().one()
 
+    # ✅ Apply the same quantize guards here too (prevents sporadic 500s after status changes)
+    balance_qty = _q_qty(_to_decimal(row.get("balance_qty"))) or Decimal("0")
+    lot_unit_price = _q_unit_price(_to_decimal(row.get("lot_unit_price")))
+    lot_value = _q_money(_to_decimal(row.get("lot_value")))
+
     return LotBalanceOut(
         material_lot_id=row["material_lot_id"],
         material_code=row["material_code"],
@@ -533,10 +565,10 @@ def change_lot_status(
         status=row["status"],
         manufacturer=row["manufacturer"],
         supplier=row["supplier"],
-        balance_qty=row["balance_qty"],
+        balance_qty=balance_qty,
         uom_code=row["uom_code"],
         last_status_reason=row.get("last_status_reason"),
         last_status_changed_at=row.get("last_status_changed_at"),
-        lot_unit_price=row.get("lot_unit_price"),
-        lot_value=row.get("lot_value"),
+        lot_unit_price=lot_unit_price,
+        lot_value=lot_value,
     )

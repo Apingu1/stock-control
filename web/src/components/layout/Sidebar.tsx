@@ -47,6 +47,19 @@ const Sidebar: React.FC<Props> = ({
             <span className="badge">Today</span>
           </button>
         </li>
+<li className="nav-item">
+  <button
+    type="button"
+    className={"nav-link as-button " + (view === "analytics" ? "active" : "")}
+    onClick={() => setView("analytics")}
+    disabled={!me}
+    title={!me ? "Please sign in" : ""}
+  >
+    <span className="nav-icon">📈</span>
+    <span className="nav-text">Analytics</span>
+  </button>
+</li>
+
 
         <li className="nav-item">
           <button

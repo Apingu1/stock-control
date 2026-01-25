@@ -23,6 +23,7 @@ from .db import get_db  # noqa: F401,E402
 from .models import Base  # noqa: F401,E402
 
 from .routers import materials, receipts, issues, lot_balances, summary  # noqa: E402
+from .routers import analytics  # noqa: E402
 from .routers import auth, admin  # noqa: E402
 from .routers import audit
 from .routers import alerts
@@ -32,6 +33,7 @@ app.include_router(receipts.router)
 app.include_router(issues.router)
 app.include_router(lot_balances.router)
 app.include_router(summary.router)
+app.include_router(analytics.router)
 
 app.include_router(auth.router)
 app.include_router(admin.router)

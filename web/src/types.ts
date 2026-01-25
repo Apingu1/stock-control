@@ -7,6 +7,7 @@ export type ViewMode =
   | "consumption"
   | "lots"
   | "alerts" // ✅ Phase D4: Low Stock & Expiry page
+  | "analytics"
   | "admin"
   | "admin-settings"
   | "audit";

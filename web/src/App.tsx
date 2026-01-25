@@ -16,6 +16,7 @@ import MaterialsLibraryView from "./components/materials/MaterialsLibraryView";
 import GoodsReceiptsView from "./components/receipts/GoodsReceiptsView";
 import ConsumptionView from "./components/issues/ConsumptionView";
 import LiveLotsView from "./components/lots/LiveLotsView";
+import AnalyticsView from "./components/analytics/AnalyticsView";
 import AuditTrailView from "./components/audit/AuditTrailView";
 import LowStockExpiryView from "./components/alerts/LowStockExpiryView";
 
@@ -154,6 +155,8 @@ const App: React.FC = () => {
         return { tag: "Workspace", title: "Live Lots", subtitle: signed };
       case "alerts":
         return { tag: "Risk & Quality", title: "Low Stock & Expiry", subtitle: signed };
+      case "analytics":
+        return { tag: "Analytics", title: "Inventory Analytics", subtitle: signed };
       case "audit":
         return { tag: "Risk & Quality", title: "Audit Trail", subtitle: signed };
       case "admin":
@@ -250,6 +253,8 @@ const App: React.FC = () => {
             canChangeStatus={!!canChangeStatus}
           />
         )}
+
+        {view === "analytics" && <AnalyticsView />}
 
         {view === "audit" && canViewAudit && <AuditTrailView />}
 
