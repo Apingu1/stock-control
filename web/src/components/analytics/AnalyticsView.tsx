@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
+import { SearchModal } from "./SearchModal";
+import type { SearchResult } from "./SearchModal";
+import { buildCsv, downloadCsv, firstDayOfMonth, todayYmd } from "./csv";
 
 type MonthlyRow = {
   month_bucket: string;
@@ -10,11 +13,47 @@ type MonthlyRow = {
   unique_batches_issued: number;
 };
 
-type DashboardResp = {
+type DashboardLegacyResp = {
   meta: { data_cut: string | null; timezone_month_bucket: string; logic_version: string };
   monthly: MonthlyRow[];
   top_products: { es_product_code: string; unique_batch_count: number; last_issue_at: string | null }[];
 };
+
+type DashboardRangeResp = {
+  meta: { data_cut: string | null; timezone_day_bounds: string; logic_version: string };
+  range: { date_from: string | null; date_to: string | null };
+  kpis: {
+    receipt_total_value: string;
+    issue_total_value: string;
+    receipt_txn_count: number;
+    issue_txn_count: number;
+    unique_batches_issued: number;
+  };
+  by_product: {
+    es_product_code: string;
+    unique_batches: number;
+    total_cost: string;
+    avg_cost_per_batch: string;
+    issue_txn_count: number;
+    first_issue_at: string | null;
+    last_issue_at: string | null;
+  }[];
+  by_material: {
+    material_code: string;
+    material_name: string | null;
+    uom_code: string | null;
+    unique_batches: number;
+    total_cost: string;
+    avg_cost_per_batch: string;
+    issue_qty_total: string;
+    issue_txn_count: number;
+    first_issue_at: string | null;
+    last_issue_at: string | null;
+  }[];
+  monthly: MonthlyRow[];
+};
+
+type DashboardResp = DashboardLegacyResp | DashboardRangeResp;
 
 type ProductSummary = {
   es_product_code: string;
@@ -71,7 +110,7 @@ type MaterialSummary = {
   material_code: string;
   material_name: string;
   uom_code: string | null;
-  window_months: number;
+  window_months: number | null;
   issue_qty_total: string;
   issue_value_total: string;
   receipt_qty_total: string;
@@ -83,13 +122,6 @@ type MaterialSummary = {
   calc_notes: string[];
 };
 
-type SearchResult = {
-  entity_type: "material" | "lot" | "product" | "batch";
-  key: string;
-  label: string;
-  sublabel?: string | null;
-};
-
 type Page =
   | { kind: "dashboard" }
   | { kind: "product"; productCode: string }
@@ -97,11 +129,7 @@ type Page =
   | { kind: "material"; materialCode: string }
   | { kind: "permission_error" };
 
-type Crumb = {
-  label: string;
-  onClick: () => void;
-  tag?: string;
-};
+type Crumb = { label: string; onClick: () => void; tag?: string };
 
 function money(v: string | null | undefined) {
   if (!v) return "£0.00";
@@ -140,136 +168,22 @@ const Chip: React.FC<{ children: React.ReactNode; variant?: "blue" | "purple" | 
   return <span className={cls}>{children}</span>;
 };
 
-const SearchModal: React.FC<{
-  open: boolean;
-  onClose: () => void;
-  onPick: (r: SearchResult) => void;
-}> = ({ open, onClose, onPick }) => {
-  const [searchType, setSearchType] = useState<
-    "material_code" | "material_name" | "lot_number" | "product_code" | "batch_no"
-  >("material_code");
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [busy, setBusy] = useState(false);
+type DashView = "product" | "material";
+type DashSort = "most_batches" | "least_batches" | "highest_avg_cost" | "lowest_avg_cost";
 
-  async function run() {
-    const qq = q.trim();
-    if (!qq) {
-      setResults([]);
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await apiFetch(
-        `/analytics/search?search_type=${encodeURIComponent(searchType)}&q=${encodeURIComponent(qq)}&limit=15`
-      );
-      if (res.status === 403) {
-        setResults([]);
-        return;
-      }
-      const data = (await res.json()) as SearchResult[];
-      setResults(data || []);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    const t = setTimeout(() => run(), 200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, searchType, open]);
-
-  if (!open) return null;
-
-  return (
-    <div className="analytics-overlay" onClick={onClose}>
-      <div className="analytics-modal card" onClick={(e) => e.stopPropagation()}>
-        <div className="analytics-modal-head">
-          <div>
-            <div className="card-title">Search / Explore</div>
-            <div className="card-subtitle">Drill into Product → Batch → Material with reconcilable numbers.</div>
-          </div>
-          <button className="btn-secondary" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-
-        <div className="analytics-modal-body">
-          <div className="analytics-modal-left">
-            <label className="analytics-label">Search type</label>
-            <select className="analytics-input" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
-              <option value="material_code">By Material Code</option>
-              <option value="material_name">By Material Name</option>
-              <option value="lot_number">By Lot Number</option>
-              <option value="product_code">By Product Code (e.g. DULO2)</option>
-              <option value="batch_no">By ES Batch Number</option>
-            </select>
-
-            <label className="analytics-label" style={{ marginTop: 12 }}>
-              Query
-            </label>
-            <input
-              className="analytics-input"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="e.g. SORB-001 / Sorbitol / LOT-24-1187 / DULO2 / ES000287"
-              autoFocus
-            />
-          </div>
-
-          <div className="analytics-modal-right">
-            <div className="analytics-results-head">
-              <div className="rowline">
-                <Chip variant="purple">Results</Chip>
-                <span className="muted">Click to open analytics</span>
-              </div>
-              <span className="mono">{busy ? "Searching…" : `${results.length} result(s)`}</span>
-            </div>
-
-            <div className="analytics-results-list">
-              {results.map((r) => (
-                <button
-                  key={`${r.entity_type}:${r.key}`}
-                  className="analytics-result-item"
-                  onClick={() => {
-                    onPick(r);
-                    onClose();
-                  }}
-                >
-                  <div className="analytics-result-left">
-                    <div className="analytics-result-title">
-                      <span className="mono">{r.label}</span>{" "}
-                      <Chip variant={r.entity_type === "product" ? "blue" : r.entity_type === "batch" ? "purple" : "green"}>
-                        {r.entity_type.toUpperCase()}
-                      </Chip>
-                    </div>
-                    <div className="analytics-result-sub">{r.sublabel || ""}</div>
-                  </div>
-                  <div className="analytics-result-right">Open →</div>
-                </button>
-              ))}
-              {results.length === 0 && !busy ? <div className="analytics-empty">No results</div> : null}
-            </div>
-          </div>
-        </div>
-
-        <div className="analytics-modal-foot">
-          <button className="btn-secondary" onClick={onClose}>
-            Close
-          </button>
-          <button className="btn-primary" onClick={() => run()} disabled={busy}>
-            🔎 Search
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+function isRangeDash(d: DashboardResp | null): d is DashboardRangeResp {
+  return !!d && (d as any).kpis !== undefined;
+}
 
 export const AnalyticsView: React.FC = () => {
   const [page, setPage] = useState<Page>({ kind: "dashboard" });
+
+  // Global date range (applies to dashboard/product/material; batch unchanged)
+  const [dateFrom, setDateFrom] = useState<string>(firstDayOfMonth());
+  const [dateTo, setDateTo] = useState<string>(todayYmd());
+
+  const [dashView, setDashView] = useState<DashView>("product");
+  const [dashSort, setDashSort] = useState<DashSort>("most_batches");
 
   const [dash, setDash] = useState<DashboardResp | null>(null);
   const [productSummary, setProductSummary] = useState<ProductSummary | null>(null);
@@ -288,7 +202,11 @@ export const AnalyticsView: React.FC = () => {
       base.push({ label: "Product", tag: page.productCode, onClick: () => {} });
     } else if (page.kind === "batch") {
       if (page.productCode) {
-        base.push({ label: "Product", tag: page.productCode, onClick: () => setPage({ kind: "product", productCode: page.productCode! }) });
+        base.push({
+          label: "Product",
+          tag: page.productCode,
+          onClick: () => setPage({ kind: "product", productCode: page.productCode! }),
+        });
       }
       base.push({ label: "Batch", tag: page.batchNo, onClick: () => {} });
     } else if (page.kind === "material") {
@@ -297,9 +215,14 @@ export const AnalyticsView: React.FC = () => {
     return base;
   }, [page]);
 
+  function rangeQuery() {
+    // Only send when on pages where range applies
+    return `date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`;
+  }
+
   async function loadDashboard() {
     setErrorMsg(null);
-    const res = await apiFetch(`/analytics/dashboard?top_n=10`);
+    const res = await apiFetch(`/analytics/dashboard?${rangeQuery()}`);
     if (res.status === 403) {
       setPage({ kind: "permission_error" });
       return;
@@ -315,9 +238,10 @@ export const AnalyticsView: React.FC = () => {
 
   async function loadProduct(productCode: string) {
     setErrorMsg(null);
+    const qp = rangeQuery();
     const [sRes, bRes] = await Promise.all([
-      apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/summary`),
-      apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/batches?limit=200&offset=0`),
+      apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/summary?${qp}`),
+      apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/batches?limit=200&offset=0&${qp}`),
     ]);
     if (sRes.status === 403 || bRes.status === 403) {
       setPage({ kind: "permission_error" });
@@ -330,6 +254,7 @@ export const AnalyticsView: React.FC = () => {
   }
 
   async function loadBatch(batchNo: string) {
+    // Batch analytics is NOT date-filtered by design
     setErrorMsg(null);
     const res = await apiFetch(`/analytics/batches/${encodeURIComponent(batchNo)}`);
     if (res.status === 403) {
@@ -342,9 +267,10 @@ export const AnalyticsView: React.FC = () => {
 
   async function loadMaterial(materialCode: string) {
     setErrorMsg(null);
+    const qp = rangeQuery();
     const [mRes, sRes] = await Promise.all([
-      apiFetch(`/analytics/materials/${encodeURIComponent(materialCode)}/monthly`),
-      apiFetch(`/analytics/materials/${encodeURIComponent(materialCode)}/summary?window_months=6&safety_factor=1.25`),
+      apiFetch(`/analytics/materials/${encodeURIComponent(materialCode)}/monthly?${qp}`),
+      apiFetch(`/analytics/materials/${encodeURIComponent(materialCode)}/summary?window_months=6&safety_factor=1.25&${qp}`),
     ]);
     if (mRes.status === 403 || sRes.status === 403) {
       setPage({ kind: "permission_error" });
@@ -356,11 +282,13 @@ export const AnalyticsView: React.FC = () => {
     setMaterialSummary((await sRes.json()) as MaterialSummary);
   }
 
+  // Initial load
   useEffect(() => {
     loadDashboard().catch((e) => setErrorMsg(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Page changes
   useEffect(() => {
     (async () => {
       if (page.kind === "product") await loadProduct(page.productCode);
@@ -371,10 +299,227 @@ export const AnalyticsView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page.kind, (page as any).productCode, (page as any).batchNo, (page as any).materialCode]);
 
+  // Date range changes: reload dashboard/product/material; batch unchanged
+  useEffect(() => {
+    (async () => {
+      if (page.kind === "dashboard") await loadDashboard();
+      if (page.kind === "product") await loadProduct(page.productCode);
+      if (page.kind === "material") await loadMaterial(page.materialCode);
+    })().catch((e) => setErrorMsg(String(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo]);
+
   function pickSearch(r: SearchResult) {
     if (r.entity_type === "product") setPage({ kind: "product", productCode: r.key });
     if (r.entity_type === "batch") setPage({ kind: "batch", batchNo: r.key });
     if (r.entity_type === "material") setPage({ kind: "material", materialCode: r.key });
+  }
+
+  const dashList = useMemo(() => {
+    if (!dash || !isRangeDash(dash)) return [];
+    if (dashView === "product") {
+      const arr = [...dash.by_product].filter((x) => x.es_product_code);
+      arr.sort((a, b) => {
+        if (dashSort === "most_batches") return (b.unique_batches ?? 0) - (a.unique_batches ?? 0);
+        if (dashSort === "least_batches") return (a.unique_batches ?? 0) - (b.unique_batches ?? 0);
+        if (dashSort === "highest_avg_cost") return Number(b.avg_cost_per_batch) - Number(a.avg_cost_per_batch);
+        if (dashSort === "lowest_avg_cost") return Number(a.avg_cost_per_batch) - Number(b.avg_cost_per_batch);
+        return 0;
+      });
+      return arr.map((x) => ({
+        key: x.es_product_code,
+        title: x.es_product_code,
+        subtitle: x.last_issue_at ? `Last manufactured: ${dtFmt(x.last_issue_at)}` : "",
+        batches: x.unique_batches,
+        avgCost: x.avg_cost_per_batch,
+        kind: "product" as const,
+      }));
+    }
+
+    const arr = [...dash.by_material].filter((x) => x.material_code);
+    arr.sort((a, b) => {
+      if (dashSort === "most_batches") return (b.unique_batches ?? 0) - (a.unique_batches ?? 0);
+      if (dashSort === "least_batches") return (a.unique_batches ?? 0) - (b.unique_batches ?? 0);
+      if (dashSort === "highest_avg_cost") return Number(b.avg_cost_per_batch) - Number(a.avg_cost_per_batch);
+      if (dashSort === "lowest_avg_cost") return Number(a.avg_cost_per_batch) - Number(b.avg_cost_per_batch);
+      return 0;
+    });
+    return arr.map((x) => ({
+      key: x.material_code,
+      title: x.material_code,
+      subtitle: x.material_name || "",
+      batches: x.unique_batches,
+      avgCost: x.avg_cost_per_batch,
+      kind: "material" as const,
+    }));
+  }, [dash, dashView, dashSort]);
+
+  function exportDashboardCsv() {
+    if (!dash || !isRangeDash(dash)) return;
+
+    const headers = [
+      "date_from",
+      "date_to",
+      "total_spend_receipts",
+      "total_consumption_issues",
+      "unique_batches",
+      "view",
+      "entity_code",
+      "entity_name",
+      "unique_batches_in_entity",
+      "avg_cost_per_batch",
+      "total_cost_in_entity",
+    ];
+
+    const rows: any[][] = [];
+
+    rows.push([
+      dateFrom,
+      dateTo,
+      dash.kpis.receipt_total_value,
+      dash.kpis.issue_total_value,
+      dash.kpis.unique_batches_issued,
+      dashView,
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+
+    if (dashView === "product") {
+      for (const p of dash.by_product) {
+        rows.push([
+          dateFrom,
+          dateTo,
+          dash.kpis.receipt_total_value,
+          dash.kpis.issue_total_value,
+          dash.kpis.unique_batches_issued,
+          "product",
+          p.es_product_code,
+          "",
+          p.unique_batches,
+          p.avg_cost_per_batch,
+          p.total_cost,
+        ]);
+      }
+    } else {
+      for (const m of dash.by_material) {
+        rows.push([
+          dateFrom,
+          dateTo,
+          dash.kpis.receipt_total_value,
+          dash.kpis.issue_total_value,
+          dash.kpis.unique_batches_issued,
+          "material",
+          m.material_code,
+          m.material_name || "",
+          m.unique_batches,
+          m.avg_cost_per_batch,
+          m.total_cost,
+        ]);
+      }
+    }
+
+    const csv = buildCsv(headers, rows);
+    downloadCsv(`analytics_dashboard_${dashView}_${dateFrom}_to_${dateTo}.csv`, csv);
+  }
+
+  function exportProductCsv() {
+    if (!productSummary) return;
+    const headers = ["date_from", "date_to", "product_code", "unique_batches", "total_cost", "avg_cost_per_batch", "batch_no", "batch_total_cost", "issue_txn_count", "last_issue_at"];
+    const rows: any[][] = [];
+
+    rows.push([
+      dateFrom,
+      dateTo,
+      productSummary.es_product_code,
+      productSummary.unique_batches,
+      productSummary.total_cost,
+      productSummary.avg_cost_per_batch,
+      "",
+      "",
+      "",
+      "",
+    ]);
+
+    for (const b of productBatches) {
+      rows.push([
+        dateFrom,
+        dateTo,
+        productSummary.es_product_code,
+        productSummary.unique_batches,
+        productSummary.total_cost,
+        productSummary.avg_cost_per_batch,
+        b.product_batch_no,
+        b.batch_total_cost,
+        b.issue_txn_count,
+        b.last_issue_at,
+      ]);
+    }
+
+    const csv = buildCsv(headers, rows);
+    downloadCsv(`analytics_product_${productSummary.es_product_code}_${dateFrom}_to_${dateTo}.csv`, csv);
+  }
+
+  function exportMaterialCsv() {
+    if (!materialSummary) return;
+    const headers = [
+      "date_from",
+      "date_to",
+      "material_code",
+      "material_name",
+      "issue_qty_total",
+      "issue_value_total",
+      "receipt_qty_total",
+      "receipt_value_total",
+      "avg_daily_usage",
+      "month_bucket",
+      "issue_qty_sum",
+      "issue_value_sum",
+      "receipt_qty_sum",
+      "receipt_value_sum",
+    ];
+    const rows: any[][] = [];
+
+    rows.push([
+      dateFrom,
+      dateTo,
+      materialSummary.material_code,
+      materialSummary.material_name,
+      materialSummary.issue_qty_total,
+      materialSummary.issue_value_total,
+      materialSummary.receipt_qty_total,
+      materialSummary.receipt_value_total,
+      materialSummary.avg_daily_usage,
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+
+    for (const r of materialMonthly) {
+      rows.push([
+        dateFrom,
+        dateTo,
+        r.material_code,
+        r.material_name,
+        "",
+        "",
+        "",
+        "",
+        "",
+        r.month_bucket,
+        r.issue_qty_sum,
+        r.issue_value_sum,
+        r.receipt_qty_sum,
+        r.receipt_value_sum,
+      ]);
+    }
+
+    const csv = buildCsv(headers, rows);
+    downloadCsv(`analytics_material_${materialSummary.material_code}_${dateFrom}_to_${dateTo}.csv`, csv);
   }
 
   return (
@@ -403,6 +548,28 @@ export const AnalyticsView: React.FC = () => {
         </div>
       </div>
 
+      {/* Global date range (does NOT apply to Batch page) */}
+      {page.kind !== "batch" && page.kind !== "permission_error" ? (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="rowline" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div className="card-title">Date range</div>
+              <div className="card-subtitle">Applies to Dashboard / Product / Material analytics (Batch is snapshot and unfiltered).</div>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="muted">From</span>
+                <input className="analytics-input" style={{ width: 170 }} type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="muted">To</span>
+                <input className="analytics-input" style={{ width: 170 }} type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {page.kind === "permission_error" ? (
         <div className="card">
           <div className="card-title">Analytics permission required</div>
@@ -426,68 +593,104 @@ export const AnalyticsView: React.FC = () => {
         </div>
       ) : null}
 
-      {page.kind === "dashboard" && dash ? (
+      {/* DASHBOARD */}
+      {page.kind === "dashboard" && dash && isRangeDash(dash) ? (
         <div className="card">
           <div className="card-header">
-            <div>
-              <div className="card-title">Analytics Dashboard</div>
-              <div className="card-subtitle">
-                Monthly KPIs grouped by calendar month • source: <span className="mono">stock_transactions</span>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div>
+                <div className="card-title">Analytics Dashboard</div>
+                <div className="card-subtitle">
+                  Filtered totals from <span className="mono">stock_transactions</span> (no historical recalculation).
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button className="btn-secondary" onClick={exportDashboardCsv}>
+                  ⬇ CSV Export
+                </button>
+
+                <select className="analytics-input" style={{ width: 190 }} value={dashView} onChange={(e) => setDashView(e.target.value as DashView)}>
+                  <option value="product">ES Product view</option>
+                  <option value="material">Material view</option>
+                </select>
+
+                <select className="analytics-input" style={{ width: 240 }} value={dashSort} onChange={(e) => setDashSort(e.target.value as DashSort)}>
+                  <option value="most_batches">Most → least manufactured</option>
+                  <option value="least_batches">Least → most manufactured</option>
+                  <option value="highest_avg_cost">Highest → lowest avg cost/batch</option>
+                  <option value="lowest_avg_cost">Lowest → highest avg cost/batch</option>
+                </select>
               </div>
             </div>
           </div>
 
           <div className="metrics-row analytics-metrics">
             <div className="metric-card">
-              <div className="metric-label">This month spend (Receipts)</div>
-              <div className="metric-value">{money(dash.monthly.at(-1)?.receipt_total_value)}</div>
+              <div className="metric-label">Total spend (Receipts)</div>
+              <div className="metric-value">{money(dash.kpis.receipt_total_value)}</div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">This month consumption cost (Issues)</div>
-              <div className="metric-value">{money(dash.monthly.at(-1)?.issue_total_value)}</div>
+              <div className="metric-label">Total consumption cost (Issues)</div>
+              <div className="metric-value">{money(dash.kpis.issue_total_value)}</div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Unique batches manufactured (month)</div>
-              <div className="metric-value">{dash.monthly.at(-1)?.unique_batches_issued ?? 0}</div>
+              <div className="metric-label">Unique ES batches (range)</div>
+              <div className="metric-value">{dash.kpis.unique_batches_issued ?? 0}</div>
             </div>
           </div>
 
           <div style={{ marginTop: 14 }}>
             <div className="rowline">
-              <Chip variant="blue">Commonly manufactured products</Chip>
-              <span className="muted">count(distinct ES batch numbers) per product code</span>
+              <Chip variant={dashView === "product" ? "blue" : "green"}>
+                {dashView === "product" ? "Products manufactured (filtered)" : "Materials used (filtered)"}
+              </Chip>
+              <span className="muted">Shows all entities in the selected date range.</span>
             </div>
 
             <table className="analytics-table" style={{ marginTop: 10 }}>
               <thead>
                 <tr>
-                  <th>Product code</th>
-                  <th>Unique batches</th>
-                  <th>Last manufactured</th>
+                  <th>{dashView === "product" ? "Product code" : "Material code"}</th>
+                  <th>{dashView === "product" ? "Unique batches" : "Unique batches fed into"}</th>
+                  <th>Avg cost per batch</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {dash.top_products.map((p) => (
-                  <tr key={p.es_product_code}>
+                {dashList.map((x) => (
+                  <tr key={x.key}>
                     <td>
-                      <button className="link mono" onClick={() => setPage({ kind: "product", productCode: p.es_product_code })}>
-                        {p.es_product_code}
+                      <button
+                        className="link mono"
+                        onClick={() => {
+                          if (x.kind === "product") setPage({ kind: "product", productCode: x.key });
+                          if (x.kind === "material") setPage({ kind: "material", materialCode: x.key });
+                        }}
+                      >
+                        {x.title}
                       </button>
+                      {x.subtitle ? <div className="muted">{x.subtitle}</div> : null}
                     </td>
-                    <td className="mono">{p.unique_batch_count}</td>
-                    <td className="mono muted">{p.last_issue_at ? dtFmt(p.last_issue_at) : "-"}</td>
+                    <td className="mono">{x.batches}</td>
+                    <td className="mono">{money(x.avgCost)}</td>
                     <td>
-                      <button className="btn-mini" onClick={() => setPage({ kind: "product", productCode: p.es_product_code })}>
+                      <button
+                        className="btn-mini"
+                        onClick={() => {
+                          if (x.kind === "product") setPage({ kind: "product", productCode: x.key });
+                          if (x.kind === "material") setPage({ kind: "material", materialCode: x.key });
+                        }}
+                      >
                         Open →
                       </button>
                     </td>
                   </tr>
                 ))}
-                {dash.top_products.length === 0 ? (
+                {dashList.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="muted">
-                      No products found (issues history empty)
+                      No data found in this date range.
                     </td>
                   </tr>
                 ) : null}
@@ -497,14 +700,21 @@ export const AnalyticsView: React.FC = () => {
         </div>
       ) : null}
 
+      {/* PRODUCT */}
       {page.kind === "product" ? (
         <div className="card">
           <div className="card-header">
-            <div>
-              <div className="card-title">
-                Product Analytics <Chip variant="blue">{page.productCode}</Chip>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div>
+                <div className="card-title">
+                  Product Analytics <Chip variant="blue">{page.productCode}</Chip>
+                </div>
+                <div className="card-subtitle">Date range filtered. Click a batch to drill down (batch page is snapshot).</div>
               </div>
-              <div className="card-subtitle">Click a batch to drill down.</div>
+
+              <button className="btn-secondary" onClick={exportProductCsv} disabled={!productSummary}>
+                ⬇ CSV Export
+              </button>
             </div>
           </div>
 
@@ -548,7 +758,7 @@ export const AnalyticsView: React.FC = () => {
               {productBatches.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="muted">
-                    No batches found for this product code.
+                    No batches found for this product code in the selected date range.
                   </td>
                 </tr>
               ) : null}
@@ -557,6 +767,7 @@ export const AnalyticsView: React.FC = () => {
         </div>
       ) : null}
 
+      {/* BATCH (unchanged: no date range) */}
       {page.kind === "batch" ? (
         <div className="card">
           <div className="card-header">
@@ -622,24 +833,31 @@ export const AnalyticsView: React.FC = () => {
         </div>
       ) : null}
 
+      {/* MATERIAL */}
       {page.kind === "material" ? (
         <div className="card">
           <div className="card-header">
-            <div>
-              <div className="card-title">
-                Material Analytics <Chip variant="green">{page.materialCode}</Chip>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div>
+                <div className="card-title">
+                  Material Analytics <Chip variant="green">{page.materialCode}</Chip>
+                </div>
+                <div className="card-subtitle">Date range filtered totals + monthly breakdown.</div>
               </div>
-              <div className="card-subtitle">Monthly usage/spend + advisory low-stock suggestion (explainable).</div>
+
+              <button className="btn-secondary" onClick={exportMaterialCsv} disabled={!materialSummary}>
+                ⬇ CSV Export
+              </button>
             </div>
           </div>
 
           <div className="metrics-row analytics-metrics">
             <div className="metric-card">
-              <div className="metric-label">Usage (issues) • 6 months</div>
+              <div className="metric-label">Usage (issues)</div>
               <div className="metric-value">{qtyFmt(materialSummary?.issue_qty_total)}</div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Spend (receipts) • 6 months</div>
+              <div className="metric-label">Spend (receipts)</div>
               <div className="metric-value">{money(materialSummary?.receipt_value_total)}</div>
             </div>
             <div className="metric-card">
@@ -671,7 +889,7 @@ export const AnalyticsView: React.FC = () => {
               {materialMonthly.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="muted">
-                    No monthly data for this material yet.
+                    No monthly data for this material in the selected date range.
                   </td>
                 </tr>
               ) : null}
