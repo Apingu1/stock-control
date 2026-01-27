@@ -706,6 +706,136 @@ def material_summary(
         raise HTTPException(status_code=500, detail=f"Material summary failed: {type(e).__name__}: {e}")
 
 
+@router.get("/materials/{material_code}/lots")
+def material_lots(
+    material_code: str,
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD (Europe/London)"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD (Europe/London)"),
+    lot_number: Optional[str] = Query(None, description="Optional lot filter (exact or partial)"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_any_permission("analytics.view", "admin.full")),
+):
+    """
+    Lots in scope for a material within the selected date range:
+      - Lots that had any stock_transactions rows in range (receipt or issue) for this material.
+      - Material resolved via material_lots -> materials (stock_transactions has no material_code).
+      - Current status/qty/expiry pulled from lot_balances_view (authoritative current-state view).
+    """
+    try:
+        start_utc, end_utc = london_day_bounds_utc(date_from, date_to)
+
+        params: Dict[str, Any] = {"material_code": material_code, "start_utc": start_utc, "end_utc": end_utc}
+        where_parts = ["m.material_code = :material_code"]
+        if start_utc is not None:
+            where_parts.append("st.created_at >= :start_utc")
+        if end_utc is not None:
+            where_parts.append("st.created_at <= :end_utc")
+        where_sql = " AND ".join(where_parts)
+
+        lot_filter_sql = ""
+        if lot_number and lot_number.strip():
+            params["lot_number_like"] = f"%{lot_number.strip()}%"
+            lot_filter_sql = " AND ml.lot_number ILIKE :lot_number_like "
+
+        payload = rows(
+            db,
+            f"""
+            WITH txn_lots AS (
+              SELECT
+                ml.id AS material_lot_id,
+                ml.lot_number,
+                MIN(st.created_at) AS first_txn_at,
+                MAX(st.created_at) AS last_txn_at
+              FROM stock_transactions st
+              JOIN material_lots ml ON ml.id = st.material_lot_id
+              JOIN materials m ON m.id = ml.material_id
+              WHERE {where_sql}
+              {lot_filter_sql}
+              GROUP BY ml.id, ml.lot_number
+            )
+            SELECT
+              t.material_lot_id,
+              t.lot_number,
+              COALESCE(v.status, 'UNKNOWN') AS status,
+              COALESCE(v.balance_qty, 0)::numeric AS current_qty,
+              v.expiry_date,
+              t.first_txn_at,
+              t.last_txn_at
+            FROM txn_lots t
+            LEFT JOIN lot_balances_view v ON v.material_lot_id = t.material_lot_id
+            ORDER BY t.last_txn_at DESC, t.lot_number ASC;
+            """,
+            params,
+        )
+        return jsonable_encoder(payload)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Material lots failed: {type(e).__name__}: {e}")
+
+@router.get("/materials/{material_code}/traceability")
+def material_traceability(
+    material_code: str,
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD (Europe/London)"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD (Europe/London)"),
+    lot_number: Optional[str] = Query(None, description="Optional lot filter (exact or partial)"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_any_permission("analytics.view", "admin.full")),
+):
+    """
+    Traceability: material (and optionally a specific lot) -> ES batches it was issued into, within date range.
+    Uses stock_transactions (authoritative), ISSUE rows only.
+    Material resolved via material_lots -> materials (stock_transactions has no material_code).
+    """
+    try:
+        start_utc, end_utc = london_day_bounds_utc(date_from, date_to)
+
+        params: Dict[str, Any] = {"material_code": material_code, "start_utc": start_utc, "end_utc": end_utc}
+
+        where_parts = [
+            "st.txn_type='ISSUE'",
+            "m.material_code = :material_code",
+            "st.product_batch_no IS NOT NULL",
+            "st.es_product_code IS NOT NULL",
+        ]
+        if start_utc is not None:
+            where_parts.append("st.created_at >= :start_utc")
+        if end_utc is not None:
+            where_parts.append("st.created_at <= :end_utc")
+        where_sql = " AND ".join(where_parts)
+
+        lot_filter_sql = ""
+        if lot_number and lot_number.strip():
+            params["lot_number_like"] = f"%{lot_number.strip()}%"
+            lot_filter_sql = " AND ml.lot_number ILIKE :lot_number_like "
+
+        payload = rows(
+            db,
+            f"""
+            SELECT
+              st.product_batch_no,
+              st.es_product_code,
+              COALESCE(SUM(st.qty),0)::numeric AS issue_qty_sum,
+              COALESCE(SUM(st.total_value),0)::numeric AS issue_value_sum,
+              MAX(st.created_at) AS last_issue_at
+            FROM stock_transactions st
+            JOIN material_lots ml ON ml.id = st.material_lot_id
+            JOIN materials m ON m.id = ml.material_id
+            WHERE {where_sql}
+            {lot_filter_sql}
+            GROUP BY st.product_batch_no, st.es_product_code
+            ORDER BY last_issue_at DESC, st.product_batch_no ASC;
+            """,
+            params,
+        )
+        return jsonable_encoder(payload)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Material traceability failed: {type(e).__name__}: {e}")
+
 @router.get("/search")
 def analytics_search(
     search_type: str = Query(..., pattern="^(material_code|material_name|lot_number|product_code|batch_no)$"),
