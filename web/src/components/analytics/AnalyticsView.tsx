@@ -24,7 +24,7 @@ type Page =
   | { kind: "dashboard" }
   | { kind: "product"; productCode: string }
   | { kind: "batch"; batchNo: string; productCode?: string }
-  | { kind: "material"; materialCode: string }
+  | { kind: "material"; materialCode: string; initialLotFilter?: string }
   | { kind: "permission_error" };
 
 type Crumb = { label: string; onClick: () => void; tag?: string };
@@ -43,6 +43,8 @@ export type MaterialLotRow = {
 export type MaterialTraceRow = {
   product_batch_no: string;
   es_product_code: string;
+  // NOTE: backend 3C-2 will add lot_number; keep optional for backwards compat
+  lot_number?: string;
   issue_qty_sum: string;
   issue_value_sum: string;
   last_issue_at: string | null;
@@ -196,9 +198,33 @@ export const AnalyticsView: React.FC = () => {
   }, [materialLotFilter]);
 
   function pickSearch(r: SearchResult) {
-    if (r.entity_type === "product") setPage({ kind: "product", productCode: r.key });
-    if (r.entity_type === "batch") setPage({ kind: "batch", batchNo: r.key });
-    if (r.entity_type === "material") setPage({ kind: "material", materialCode: r.key });
+    if (r.entity_type === "product") {
+      setMaterialLotFilter("");
+      setPage({ kind: "product", productCode: r.key });
+      return;
+    }
+
+    if (r.entity_type === "batch") {
+      setMaterialLotFilter("");
+      setPage({ kind: "batch", batchNo: r.key });
+      return;
+    }
+
+    if (r.entity_type === "material") {
+      setMaterialLotFilter("");
+      setPage({ kind: "material", materialCode: r.key });
+      return;
+    }
+
+    // ✅ 3C-2: lot search should open material analytics + auto-set lot filter
+    if (r.entity_type === "lot") {
+      // SearchModal must provide material_code on lot results
+      const mc = (r as any).material_code as string | undefined;
+      if (!mc) return;
+      setMaterialLotFilter(r.key); // immediate filter
+      setPage({ kind: "material", materialCode: mc, initialLotFilter: r.key });
+      return;
+    }
   }
 
   const showDateBar = page.kind !== "batch" && page.kind !== "permission_error";
@@ -252,12 +278,7 @@ export const AnalyticsView: React.FC = () => {
               </div>
               <div className="analytics-dategroup">
                 <span className="muted">To</span>
-                <input
-                  className="analytics-input"
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
+                <input className="analytics-input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
             </div>
           </div>
@@ -297,8 +318,14 @@ export const AnalyticsView: React.FC = () => {
           dashSort={dashSort}
           setDashView={setDashView}
           setDashSort={setDashSort}
-          onOpenProduct={(code) => setPage({ kind: "product", productCode: code })}
-          onOpenMaterial={(code) => setPage({ kind: "material", materialCode: code })}
+          onOpenProduct={(code) => {
+            setMaterialLotFilter("");
+            setPage({ kind: "product", productCode: code });
+          }}
+          onOpenMaterial={(code) => {
+            setMaterialLotFilter("");
+            setPage({ kind: "material", materialCode: code });
+          }}
         />
       ) : null}
 
@@ -309,7 +336,10 @@ export const AnalyticsView: React.FC = () => {
           dateTo={dateTo}
           summary={productSummary}
           batches={productBatches}
-          onOpenBatch={(batchNo) => setPage({ kind: "batch", batchNo, productCode: page.productCode })}
+          onOpenBatch={(batchNo) => {
+            setMaterialLotFilter("");
+            setPage({ kind: "batch", batchNo, productCode: page.productCode });
+          }}
         />
       ) : null}
 
@@ -317,7 +347,10 @@ export const AnalyticsView: React.FC = () => {
         <BatchPanel
           batchNo={page.batchNo}
           batch={batch}
-          onOpenMaterial={(materialCode) => setPage({ kind: "material", materialCode })}
+          onOpenMaterial={(materialCode) => {
+            setMaterialLotFilter("");
+            setPage({ kind: "material", materialCode });
+          }}
         />
       ) : null}
 
@@ -332,6 +365,7 @@ export const AnalyticsView: React.FC = () => {
           trace={materialTrace}
           lotFilter={materialLotFilter}
           setLotFilter={setMaterialLotFilter}
+          initialLotFilter={page.initialLotFilter}
         />
       ) : null}
 

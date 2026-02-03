@@ -1205,3 +1205,251 @@ body {
   border: 1px dashed rgba(0,0,0,0.18);
   background: rgba(255,255,255,0.55);
 }
+
+
+/* =========================================================
+   ANALYTICS — Phase 3C (Premium/Boujee polish)
+   Append-only overrides. No logic changes.
+   ========================================================= */
+
+:root{
+  --glass-bg: rgba(15, 23, 42, 0.38);
+  --glass-bg-2: rgba(15, 23, 42, 0.55);
+  --glass-border: rgba(148, 163, 184, 0.12);
+  --glass-border-strong: rgba(148, 163, 184, 0.18);
+  --shadow-soft: 0 10px 30px rgba(0,0,0,0.25);
+  --shadow-tight: 0 8px 18px rgba(0,0,0,0.22);
+}
+
+/* Shell spacing */
+.analytics-shell{
+  display: block;
+  padding-bottom: 24px;
+}
+
+/* Command bar / breadcrumbs (supports your newer classnames too) */
+.analytics-commandbar,
+.analytics-topbar{
+  position: sticky;
+  top: 12px;
+  z-index: 40;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: linear-gradient(180deg, rgba(2,6,23,0.55), rgba(2,6,23,0.35));
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow-tight);
+  margin-bottom: 14px;
+}
+
+.analytics-command-actions,
+.analytics-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+/* Breadcrumb container variants */
+.analytics-crumbs{
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.analytics-crumb{
+  border-radius: 12px;
+  padding: 6px 8px;
+}
+.analytics-crumb:hover{
+  background: rgba(255,255,255,0.04);
+}
+
+/* Tags (pill) */
+.analytics-tag{
+  box-shadow: inset 0 0 0 1px rgba(99,102,241,0.25);
+}
+
+/* Cards — premium glass */
+.card.analytics-card{
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.card.analytics-card:hover{
+  border-color: var(--glass-border-strong);
+}
+
+/* Card headers + toolbars (your panels use these) */
+.analytics-cardhead{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap: 12px;
+  padding: 14px 14px 10px 14px;
+}
+
+.analytics-toolbar{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Subtle divider inside cards */
+.analytics-divider{
+  background: rgba(255,255,255,0.08);
+}
+
+/* Inputs */
+.analytics-input{
+  background: rgba(2, 6, 23, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--text-primary);
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.analytics-input:focus{
+  border-color: rgba(99,102,241,0.40);
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.12);
+  background: rgba(2, 6, 23, 0.45);
+}
+
+/* Buttons — slightly more premium */
+.btn-primary, .btn-secondary, .btn-mini{
+  transition: transform .06s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-mini:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.22);
+}
+
+/* Tabs */
+.analytics-tabs{
+  display:flex;
+  gap: 8px;
+  padding: 0 14px 12px 14px;
+}
+
+.analytics-tab{
+  background: rgba(2, 6, 23, 0.25);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.analytics-tab:hover{
+  background: rgba(255,255,255,0.04);
+}
+
+.analytics-tab.active{
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(99,102,241,0.18);
+}
+
+/* Metric cards (KPI tiles) */
+.analytics-metricgrid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 14px 6px 14px;
+}
+@media (max-width: 900px){
+  .analytics-metricgrid{ grid-template-columns: 1fr; }
+}
+
+.metric-card{
+  background: rgba(2, 6, 23, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  padding: 12px 12px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+}
+.metric-card:hover{
+  border-color: rgba(148, 163, 184, 0.20);
+}
+
+.metric-label{
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.metric-value{
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-top: 6px;
+}
+
+.metric-sub{
+  margin-top: 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* Tables — sticky headers + nicer hover */
+.analytics-tablewrap{
+  overflow: auto;
+  max-height: 520px;
+  border-radius: 16px;
+  margin: 10px 14px 14px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(2, 6, 23, 0.18);
+}
+
+.analytics-table{
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  width: 100%;
+}
+
+.analytics-table th{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.analytics-table td{
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.analytics-table tr:hover td{
+  background: rgba(99, 102, 241, 0.06);
+}
+
+/* Search modal polish (keeps your existing layout fix) */
+.analytics-modal{
+  border-radius: 18px;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+.analytics-results-list{
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+/* Small helper */
+.chip{
+  background: rgba(2, 6, 23, 0.25);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 999px;
+  padding: 6px 10px;
+}

@@ -1,26 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { buildCsv, downloadCsv } from "./csv";
-import { Chip, dtFmt, money, qtyFmt } from "./analyticsShared";
+import { Chip, money, qtyFmt } from "./analyticsShared";
 import type { MaterialMonthlyRow, MaterialSummary } from "./analyticsShared";
-
-/** Phase 3B: local types so we don't need to touch analyticsShared.tsx */
-export type MaterialLotRow = {
-  material_lot_id: number;
-  lot_number: string;
-  status: string;
-  current_qty: string;
-  expiry_date: string | null;
-  first_txn_at: string | null;
-  last_txn_at: string | null;
-};
-
-export type MaterialTraceRow = {
-  product_batch_no: string;
-  es_product_code: string;
-  issue_qty_sum: string;
-  issue_value_sum: string;
-  last_issue_at: string | null;
-};
+import type { MaterialLotRow, MaterialTraceRow } from "./AnalyticsView";
 
 type Tab = "overview" | "lots";
 
@@ -31,17 +13,48 @@ export const MaterialPanel: React.FC<{
   summary: MaterialSummary | null;
   monthly: MaterialMonthlyRow[];
 
-  // Phase 3B:
+  // ✅ Phase-3B lifted state
   lots: MaterialLotRow[];
   trace: MaterialTraceRow[];
   lotFilter: string;
-  setLotFilter: (v: string) => void;
-}> = ({ materialCode, dateFrom, dateTo, summary, monthly, lots, trace, lotFilter, setLotFilter }) => {
+  setLotFilter: React.Dispatch<React.SetStateAction<string>>;
+
+  // ✅ Optional: set when arriving from SearchModal lot result
+  initialLotFilter?: string;
+}> = ({
+  materialCode,
+  dateFrom,
+  dateTo,
+  summary,
+  monthly,
+  lots,
+  trace,
+  lotFilter,
+  setLotFilter,
+  initialLotFilter,
+}) => {
   const [tab, setTab] = useState<Tab>("overview");
+
   const title = useMemo(() => summary?.material_name || "", [summary]);
+
+  // If we land here from a LOT search, auto-apply and switch tab
+  useEffect(() => {
+    if (initialLotFilter && initialLotFilter.trim()) {
+      setTab("lots");
+      setLotFilter(initialLotFilter.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialCode, initialLotFilter]);
+
+  const lotsFiltered = useMemo(() => {
+    const f = lotFilter.trim().toLowerCase();
+    if (!f) return lots;
+    return lots.filter((r) => (r.lot_number || "").toLowerCase().includes(f));
+  }, [lots, lotFilter]);
 
   function exportOverviewCsv() {
     if (!summary) return;
+
     const headers = [
       "date_from",
       "date_to",
@@ -58,6 +71,7 @@ export const MaterialPanel: React.FC<{
       "receipt_qty_sum",
       "receipt_value_sum",
     ];
+
     const rows: any[][] = [];
     rows.push([
       dateFrom,
@@ -75,6 +89,7 @@ export const MaterialPanel: React.FC<{
       "",
       "",
     ]);
+
     for (const r of monthly) {
       rows.push([
         dateFrom,
@@ -93,19 +108,18 @@ export const MaterialPanel: React.FC<{
         r.receipt_value_sum,
       ]);
     }
+
     downloadCsv(
-      `analytics_material_${summary.material_code}_overview_${dateFrom}_to_${dateTo}.csv`,
+      `analytics_material_${summary.material_code}_${dateFrom}_to_${dateTo}.csv`,
       buildCsv(headers, rows)
     );
   }
 
   function exportLotsCsv() {
     const headers = [
+      "material_code",
       "date_from",
       "date_to",
-      "material_code",
-      "lot_filter",
-      "material_lot_id",
       "lot_number",
       "status",
       "current_qty",
@@ -113,45 +127,50 @@ export const MaterialPanel: React.FC<{
       "first_txn_at",
       "last_txn_at",
     ];
-    const rows = lots.map((l) => [
+
+    const rows: any[][] = lotsFiltered.map((r) => [
+      materialCode,
       dateFrom,
       dateTo,
-      materialCode,
-      lotFilter || "",
-      l.material_lot_id,
-      l.lot_number,
-      l.status,
-      l.current_qty,
-      l.expiry_date || "",
-      l.first_txn_at || "",
-      l.last_txn_at || "",
+      r.lot_number,
+      r.status,
+      r.current_qty,
+      r.expiry_date || "",
+      r.first_txn_at || "",
+      r.last_txn_at || "",
     ]);
-    downloadCsv(`analytics_material_${materialCode}_lots_${dateFrom}_to_${dateTo}.csv`, buildCsv(headers, rows));
+
+    downloadCsv(
+      `analytics_material_${materialCode}_lots_${dateFrom}_to_${dateTo}.csv`,
+      buildCsv(headers, rows)
+    );
   }
 
   function exportTraceCsv() {
     const headers = [
+      "material_code",
       "date_from",
       "date_to",
-      "material_code",
-      "lot_filter",
       "product_batch_no",
       "es_product_code",
+      "lot_number",
       "issue_qty_sum",
       "issue_value_sum",
       "last_issue_at",
     ];
-    const rows = trace.map((t) => [
+
+    const rows: any[][] = trace.map((r) => [
+      materialCode,
       dateFrom,
       dateTo,
-      materialCode,
-      lotFilter || "",
-      t.product_batch_no,
-      t.es_product_code,
-      t.issue_qty_sum,
-      t.issue_value_sum,
-      t.last_issue_at || "",
+      r.product_batch_no,
+      r.es_product_code || "",
+      r.lot_number || "",
+      r.issue_qty_sum,
+      r.issue_value_sum,
+      r.last_issue_at || "",
     ]);
+
     downloadCsv(
       `analytics_material_${materialCode}_traceability_${dateFrom}_to_${dateTo}.csv`,
       buildCsv(headers, rows)
@@ -197,10 +216,16 @@ export const MaterialPanel: React.FC<{
         </div>
 
         <div className="analytics-tabs">
-          <button className={tab === "overview" ? "analytics-tab active" : "analytics-tab"} onClick={() => setTab("overview")}>
+          <button
+            className={tab === "overview" ? "analytics-tab active" : "analytics-tab"}
+            onClick={() => setTab("overview")}
+          >
             Overview
           </button>
-          <button className={tab === "lots" ? "analytics-tab active" : "analytics-tab"} onClick={() => setTab("lots")}>
+          <button
+            className={tab === "lots" ? "analytics-tab active" : "analytics-tab"}
+            onClick={() => setTab("lots")}
+          >
             Lots & Traceability
           </button>
         </div>
@@ -213,15 +238,21 @@ export const MaterialPanel: React.FC<{
                 <div className="metric-value">{qtyFmt(summary?.issue_qty_total)}</div>
                 <div className="metric-sub">Total issued qty in range</div>
               </div>
+
               <div className="metric-card">
                 <div className="metric-label">Spend (receipts)</div>
-                <div className="metric-value">{money(summary?.receipt_value_total)}</div>
+                <div className="metric-value">
+                  {money(summary?.receipt_value_total != null ? String(summary.receipt_value_total) : "0")}
+                </div>
                 <div className="metric-sub">Total receipt value in range</div>
               </div>
+
               <div className="metric-card">
-                <div className="metric-label">Suggested low-stock (advisory)</div>
-                <div className="metric-value">{qtyFmt(summary?.suggested_low_stock_threshold)}</div>
-                <div className="metric-sub">Configured threshold (no auto actions)</div>
+                <div className="metric-label">Consumption cost (issues)</div>
+                <div className="metric-value">
+                  {money(summary?.issue_value_total != null ? String(summary.issue_value_total) : "0")}
+                </div>
+                <div className="metric-sub">Total issue value in range</div>
               </div>
             </div>
 
@@ -248,9 +279,9 @@ export const MaterialPanel: React.FC<{
                     <tr key={r.month_bucket}>
                       <td className="mono">{r.month_bucket}</td>
                       <td className="mono">{qtyFmt(r.issue_qty_sum)}</td>
-                      <td className="mono">{money(r.issue_value_sum)}</td>
+                      <td className="mono">{money(String(r.issue_value_sum))}</td>
                       <td className="mono">{qtyFmt(r.receipt_qty_sum)}</td>
-                      <td className="mono">{money(r.receipt_value_sum)}</td>
+                      <td className="mono">{money(String(r.receipt_value_sum))}</td>
                     </tr>
                   ))}
                   {monthly.length === 0 ? (
@@ -263,124 +294,110 @@ export const MaterialPanel: React.FC<{
                 </tbody>
               </table>
             </div>
-
-            <div className="analytics-note" style={{ marginTop: 12 }}>
-              <strong>Calculation notes</strong>
-              <ul className="analytics-notes-list">
-                {(summary?.calc_notes || []).map((n, i) => (
-                  <li key={i} className="muted">
-                    {n}
-                  </li>
-                ))}
-              </ul>
-            </div>
           </>
         ) : (
           <>
-            <div className="card analytics-card" style={{ marginTop: 12 }}>
-              <div className="analytics-cardhead">
+            <div className="card analytics-card" style={{ marginTop: 10 }}>
+              <div className="rowline" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div className="card-title">Lot filter</div>
-                  <div className="card-subtitle">Optional: filter both tables by lot number (partial match).</div>
+                  <div className="card-subtitle">Optional: filters both tables by lot number (partial match).</div>
                 </div>
-                <div className="analytics-toolbar">
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <input
                     className="analytics-input"
-                    placeholder="e.g. LOT123 / partial"
                     value={lotFilter}
                     onChange={(e) => setLotFilter(e.target.value)}
-                    style={{ minWidth: 260 }}
+                    placeholder="e.g. LOT123 / partial"
+                    style={{ width: 280 }}
                   />
-                  <button className="btn-mini" onClick={() => setLotFilter("")} disabled={!lotFilter}>
+                  <button className="btn-secondary" onClick={() => setLotFilter("")}>
                     Clear
                   </button>
                 </div>
               </div>
             </div>
 
-            <div className="card analytics-card">
-              <div className="analytics-tablehead">
-                <div className="rowline">
-                  <Chip variant="green">Lots in scope</Chip>
-                  <span className="muted">{lots.length} lot(s)</span>
-                </div>
-              </div>
-
-              <div className="analytics-tablewrap">
-                <table className="analytics-table">
-                  <thead>
-                    <tr>
-                      <th>Lot</th>
-                      <th>Status</th>
-                      <th>Current qty</th>
-                      <th>Expiry</th>
-                      <th>First txn in range</th>
-                      <th>Last txn in range</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lots.map((l) => (
-                      <tr key={l.material_lot_id}>
-                        <td className="mono">{l.lot_number}</td>
-                        <td className="mono muted">{l.status}</td>
-                        <td className="mono">{qtyFmt(l.current_qty)}</td>
-                        <td className="mono muted">{l.expiry_date || "-"}</td>
-                        <td className="mono muted">{dtFmt(l.first_txn_at)}</td>
-                        <td className="mono muted">{dtFmt(l.last_txn_at)}</td>
-                      </tr>
-                    ))}
-                    {lots.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="muted">
-                          No lots found for this material in the selected range (and lot filter, if set).
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+            <div className="analytics-tablehead" style={{ marginTop: 10 }}>
+              <div className="rowline">
+                <Chip variant="green">Lots in scope</Chip>
+                <span className="muted">{lotsFiltered.length} lot(s)</span>
               </div>
             </div>
 
-            <div className="card analytics-card">
-              <div className="analytics-tablehead">
-                <div className="rowline">
-                  <Chip variant="green">Traceability</Chip>
-                  <span className="muted">{trace.length} row(s)</span>
-                </div>
-              </div>
-
-              <div className="analytics-tablewrap">
-                <table className="analytics-table">
-                  <thead>
-                    <tr>
-                      <th>ES batch no</th>
-                      <th>Product code</th>
-                      <th>Issue qty</th>
-                      <th>Issue cost</th>
-                      <th>Last issue</th>
+            <div className="analytics-tablewrap">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Lot</th>
+                    <th>Status</th>
+                    <th>Current qty</th>
+                    <th>Expiry</th>
+                    <th>First txn in range</th>
+                    <th>Last txn in range</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lotsFiltered.map((r) => (
+                    <tr key={`${r.material_lot_id}-${r.lot_number}`}>
+                      <td className="mono">{r.lot_number}</td>
+                      <td className="mono">{r.status}</td>
+                      <td className="mono">{qtyFmt(r.current_qty)}</td>
+                      <td className="mono">{r.expiry_date || ""}</td>
+                      <td className="mono">{r.first_txn_at || ""}</td>
+                      <td className="mono">{r.last_txn_at || ""}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {trace.map((t) => (
-                      <tr key={`${t.product_batch_no}:${t.es_product_code}`}>
-                        <td className="mono">{t.product_batch_no}</td>
-                        <td className="mono muted">{t.es_product_code}</td>
-                        <td className="mono">{qtyFmt(t.issue_qty_sum)}</td>
-                        <td className="mono">{money(t.issue_value_sum)}</td>
-                        <td className="mono muted">{dtFmt(t.last_issue_at)}</td>
-                      </tr>
-                    ))}
-                    {trace.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="muted">
-                          No traceability rows found (issues into batches) for this material in the selected range (and lot
-                          filter, if set).
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+                  ))}
+                  {lotsFiltered.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="muted">
+                        No lots in this date range (or match your filter).
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="analytics-tablehead" style={{ marginTop: 16 }}>
+              <div className="rowline">
+                <Chip variant="green">Traceability</Chip>
+                <span className="muted">{trace.length} row(s)</span>
               </div>
+            </div>
+
+            <div className="analytics-tablewrap">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>ES batch no</th>
+                    <th>Lot</th>
+                    <th>Product code</th>
+                    <th>Issue qty</th>
+                    <th>Issue cost</th>
+                    <th>Last issue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trace.map((r, idx) => (
+                    <tr key={`${r.product_batch_no}-${r.lot_number || ""}-${idx}`}>
+                      <td className="mono">{r.product_batch_no}</td>
+                      <td className="mono">{r.lot_number || ""}</td>
+                      <td className="mono">{r.es_product_code || ""}</td>
+                      <td className="mono">{qtyFmt(r.issue_qty_sum)}</td>
+                      <td className="mono">{money(String(r.issue_value_sum))}</td>
+                      <td className="mono">{r.last_issue_at || ""}</td>
+                    </tr>
+                  ))}
+                  {trace.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="muted">
+                        No traceability rows in this date range (or match your filter).
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
           </>
         )}

@@ -1,26 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
 
+export type SearchType = "material_code" | "material_name" | "lot_number" | "product_code" | "batch_no";
+
 export type SearchResult = {
-  entity_type: "material" | "lot" | "product" | "batch";
+  entity_type: "material" | "product" | "batch" | "lot";
   key: string;
   label: string;
-  sublabel?: string | null;
-};
+  sublabel?: string;
 
-const Chip: React.FC<{ children: React.ReactNode; variant?: "blue" | "purple" | "green" | "muted" }> = ({
-  children,
-  variant = "muted",
-}) => {
-  const cls =
-    variant === "blue"
-      ? "analytics-chip analytics-chip-blue"
-      : variant === "purple"
-      ? "analytics-chip analytics-chip-purple"
-      : variant === "green"
-      ? "analytics-chip analytics-chip-green"
-      : "analytics-chip";
-  return <span className={cls}>{children}</span>;
+  // ✅ only present for lot results (backend now returns these)
+  material_code?: string;
+  material_name?: string;
 };
 
 export const SearchModal: React.FC<{
@@ -28,122 +19,182 @@ export const SearchModal: React.FC<{
   onClose: () => void;
   onPick: (r: SearchResult) => void;
 }> = ({ open, onClose, onPick }) => {
-  const [searchType, setSearchType] = useState<
-    "material_code" | "material_name" | "lot_number" | "product_code" | "batch_no"
-  >("material_code");
+  const [searchType, setSearchType] = useState<SearchType>("product_code");
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<SearchResult[]>([]);
+  const [err, setErr] = useState<string | null>(null);
 
-  async function run() {
-    const qq = q.trim();
-    if (!qq) {
-      setResults([]);
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await apiFetch(
-        `/analytics/search?search_type=${encodeURIComponent(searchType)}&q=${encodeURIComponent(qq)}&limit=15`
-      );
-      if (res.status === 403) {
-        setResults([]);
-        return;
-      }
-      const data = (await res.json()) as SearchResult[];
-      setResults(data || []);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const canSearch = useMemo(() => q.trim().length >= 1, [q]);
 
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => run(), 200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, searchType, open]);
+    setErr(null);
+    setRows([]);
+    setQ("");
+    // keep last searchType (intentional)
+  }, [open]);
+
+  async function runSearch() {
+    if (!canSearch) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const url = `/analytics/search?search_type=${encodeURIComponent(searchType)}&q=${encodeURIComponent(q.trim())}&limit=25`;
+      const res = await apiFetch(url);
+      if (!res.ok) {
+        setErr(`Search failed: HTTP ${res.status} — ${await res.text()}`);
+        setRows([]);
+        return;
+      }
+      setRows((await res.json()) as SearchResult[]);
+    } catch (e: any) {
+      setErr(String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function pick(r: SearchResult) {
+    onPick(r);
+    onClose();
+  }
 
   if (!open) return null;
 
   return (
-    <div className="analytics-overlay" onClick={onClose}>
-      <div className="analytics-modal card analytics-modal-v2" onClick={(e) => e.stopPropagation()}>
-        <div className="analytics-modal-head">
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div
+        className="modal analytics-modal"
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          width: "min(980px, calc(100vw - 48px))",
+          maxHeight: "min(720px, calc(100vh - 64px))",
+        }}
+      >
+        <div className="modal-head">
           <div>
             <div className="card-title">Search / Explore</div>
             <div className="card-subtitle">Drill into Product → Batch → Material with reconcilable numbers.</div>
           </div>
-          <button className="btn-secondary" onClick={onClose}>
+          <button className="btn-icon" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
 
-        <div className="analytics-modal-body-v2">
-          <div className="analytics-modal-controls">
+        {/* ✅ controls fixed, aligned grid (fixes left skew) */}
+        <div
+          className="modal-controls"
+          style={{
+            padding: "14px 14px 10px 14px",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "260px 1fr",
+              gap: 12,
+              alignItems: "end",
+            }}
+          >
             <div>
-              <label className="analytics-label">Search type</label>
-              <select className="analytics-input" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
-                <option value="material_code">By Material Code</option>
-                <option value="material_name">By Material Name</option>
-                <option value="lot_number">By Lot Number</option>
-                <option value="product_code">By Product Code (e.g. DULO2)</option>
-                <option value="batch_no">By ES Batch Number</option>
+              <div className="muted" style={{ marginBottom: 6 }}>
+                Search type
+              </div>
+              <select className="analytics-input" value={searchType} onChange={(e) => setSearchType(e.target.value as SearchType)}>
+                <option value="product_code">Product code</option>
+                <option value="batch_no">ES batch number</option>
+                <option value="material_code">Material code</option>
+                <option value="material_name">Material name</option>
+                <option value="lot_number">Material lot number</option>
               </select>
             </div>
 
             <div>
-              <label className="analytics-label">Query</label>
+              <div className="muted" style={{ marginBottom: 6 }}>
+                Query
+              </div>
               <input
                 className="analytics-input"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="e.g. SORB-001 / Sorbitol / LOT-24-1187 / DULO2 / ES000287"
-                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") runSearch();
+                }}
+                placeholder="e.g. DULO2 / ES2643 / MAT001 / LOT123"
               />
             </div>
           </div>
 
-          <div className="analytics-results-head">
-            <div className="rowline">
-              <Chip variant="purple">Results</Chip>
-              <span className="muted">Click to open analytics</span>
+          <div className="rowline" style={{ justifyContent: "space-between", marginTop: 12 }}>
+            <div className="muted">
+              {loading ? "Searching…" : rows.length ? `${rows.length} result(s)` : "Results"}
             </div>
-            <span className="mono">{busy ? "Searching…" : `${results.length} result(s)`}</span>
+            <button className="btn-primary" onClick={runSearch} disabled={!canSearch || loading}>
+              🔎 Search
+            </button>
           </div>
 
-          <div className="analytics-results-list analytics-results-list-v2">
-            {results.map((r) => (
-              <button
-                key={`${r.entity_type}:${r.key}`}
-                className="analytics-result-item"
-                onClick={() => {
-                  onPick(r);
-                  onClose();
-                }}
-              >
-                <div className="analytics-result-left">
-                  <div className="analytics-result-title">
-                    <span className="mono">{r.label}</span>{" "}
-                    <Chip variant={r.entity_type === "product" ? "blue" : r.entity_type === "batch" ? "purple" : "green"}>
-                      {r.entity_type.toUpperCase()}
-                    </Chip>
-                  </div>
-                  <div className="analytics-result-sub">{r.sublabel || ""}</div>
-                </div>
-                <div className="analytics-result-right">Open →</div>
-              </button>
-            ))}
-            {results.length === 0 && !busy ? <div className="analytics-empty">No results</div> : null}
-          </div>
+          {err ? (
+            <div className="analytics-note" style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
+              {err}
+            </div>
+          ) : null}
         </div>
 
-        <div className="analytics-modal-foot">
+        {/* ✅ results scroll independently */}
+        <div
+          className="modal-body"
+          style={{
+            padding: 14,
+            overflow: "auto",
+            maxHeight: "calc(min(720px, (100vh - 64px)) - 170px)",
+          }}
+        >
+          {rows.map((r, idx) => (
+            <button
+              key={`${r.entity_type}-${r.key}-${idx}`}
+              className="search-result"
+              onClick={() => pick(r)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "12px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.06)",
+                background: "rgba(255,255,255,0.02)",
+                marginBottom: 10,
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div className="mono" style={{ fontWeight: 700 }}>
+                  {r.label}{" "}
+                  <span className="chip" style={{ marginLeft: 10 }}>
+                    {r.entity_type === "lot" ? "LOT" : r.entity_type.toUpperCase()}
+                  </span>
+                </div>
+                {r.sublabel ? <div className="muted" style={{ marginTop: 4 }}>{r.sublabel}</div> : null}
+              </div>
+              <div className="muted">Open →</div>
+            </button>
+          ))}
+
+          {rows.length === 0 && !loading ? (
+            <div className="muted" style={{ padding: "18px 6px" }}>
+              No results. Try a broader query.
+            </div>
+          ) : null}
+        </div>
+
+        <div className="modal-foot">
           <button className="btn-secondary" onClick={onClose}>
             Close
-          </button>
-          <button className="btn-primary" onClick={() => run()} disabled={busy}>
-            🔎 Search
           </button>
         </div>
       </div>

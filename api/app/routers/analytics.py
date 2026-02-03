@@ -816,6 +816,7 @@ def material_traceability(
             SELECT
               st.product_batch_no,
               st.es_product_code,
+              ml.lot_number,
               COALESCE(SUM(st.qty),0)::numeric AS issue_qty_sum,
               COALESCE(SUM(st.total_value),0)::numeric AS issue_value_sum,
               MAX(st.created_at) AS last_issue_at
@@ -824,8 +825,8 @@ def material_traceability(
             JOIN materials m ON m.id = ml.material_id
             WHERE {where_sql}
             {lot_filter_sql}
-            GROUP BY st.product_batch_no, st.es_product_code
-            ORDER BY last_issue_at DESC, st.product_batch_no ASC;
+            GROUP BY st.product_batch_no, st.es_product_code, ml.lot_number
+            ORDER BY last_issue_at DESC, st.product_batch_no ASC, ml.lot_number ASC;
             """,
             params,
         )
@@ -890,7 +891,9 @@ def analytics_search(
                   'lot'::text AS entity_type,
                   ml.lot_number AS key,
                   ml.lot_number AS label,
-                  (m.material_code || ' — ' || m.name) AS sublabel
+                  (m.material_code || ' — ' || m.name) AS sublabel,
+                  m.material_code AS material_code,
+                  m.name AS material_name
                 FROM material_lots ml
                 JOIN materials m ON m.id = ml.material_id
                 WHERE ml.lot_number ILIKE :p
@@ -900,6 +903,7 @@ def analytics_search(
                 {"p": f"%{qq}%", "limit": limit},
             )
             return jsonable_encoder(payload)
+
 
         if search_type == "product_code":
             payload = rows(
