@@ -135,20 +135,56 @@ export function money(v: string | null | undefined) {
   if (Number.isNaN(n)) return `£${v}`;
   return n.toLocaleString(undefined, { style: "currency", currency: "GBP" });
 }
+
 export function qtyFmt(v: string | null | undefined) {
   if (!v) return "0";
   const n = Number(v);
   if (Number.isNaN(n)) return String(v);
   return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
+
+/**
+ * Date-only formatter for YYYY-MM-DD → DD-MM-YYYY
+ * (use this where you currently print dateFrom/dateTo strings).
+ */
+export function dmyFmt(ymd: string | null | undefined) {
+  if (!ymd) return "";
+  const s = String(ymd);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return s;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+/**
+ * Robust datetime formatter.
+ * Handles Postgres ISO strings with microseconds (6dp) which JS Date won't parse:
+ *   2026-01-23T02:16:59.141442+00:00
+ * We trim fractional seconds to milliseconds before parsing.
+ * Output matches your Product/Batch style (en-GB, 24h, with seconds).
+ */
 export function dtFmt(v: string | null | undefined) {
   if (!v) return "-";
-  try {
-    const d = new Date(v);
-    return d.toLocaleString();
-  } catch {
-    return v;
+
+  const raw = String(v);
+
+  // Trim microseconds to milliseconds if present (.123456 -> .123)
+  const normalized = raw.replace(/\.(\d{3})\d+/, ".$1");
+
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) {
+    // Fall back to raw string if still unparseable
+    return raw;
   }
+
+  return d.toLocaleString("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 }
 
 /** ---------- Small UI atoms ---------- */
@@ -184,4 +220,7 @@ export type MaterialTraceRow = {
   issue_qty_sum: string;
   issue_value_sum: string;
   last_issue_at: string | null;
+
+  // optional if you include it in the payload (you do)
+  lot_number?: string | null;
 };

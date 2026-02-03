@@ -1,13 +1,121 @@
 import React from "react";
 import type { BatchAnalyticsResp } from "./analyticsShared";
 import { Chip, dtFmt, money, qtyFmt } from "./analyticsShared";
-
+import { buildCsv, downloadCsv } from "./csv";
+import { escapeHtml, moneyText, openPrintWindow } from "./reportPrint";
 
 export const BatchPanel: React.FC<{
   batchNo: string;
   batch: BatchAnalyticsResp | null;
   onOpenMaterial: (materialCode: string) => void;
 }> = ({ batchNo, batch, onOpenMaterial }) => {
+  function exportCsv() {
+    if (!batch) return;
+
+    const headers = [
+      "product_batch_no",
+      "es_product_code",
+      "batch_total_cost",
+      "issue_txn_count",
+      "first_issue_at",
+      "last_issue_at",
+      "material_code",
+      "material_name",
+      "lot_number",
+      "qty",
+      "uom_code",
+      "unit_price",
+      "total_value",
+    ];
+
+    const out: any[][] = [];
+    out.push([
+      batch.header.product_batch_no,
+      batch.header.es_product_code,
+      batch.header.batch_total_cost,
+      batch.header.issue_txn_count,
+      batch.header.first_issue_at,
+      batch.header.last_issue_at,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+
+    for (const m of batch.materials || []) {
+      out.push([
+        batch.header.product_batch_no,
+        batch.header.es_product_code,
+        batch.header.batch_total_cost,
+        batch.header.issue_txn_count,
+        batch.header.first_issue_at,
+        batch.header.last_issue_at,
+        m.material_code,
+        m.material_name,
+        m.lot_number,
+        m.qty,
+        m.uom_code,
+        m.unit_price ?? "",
+        m.total_value ?? "",
+      ]);
+    }
+
+    downloadCsv(`analytics_batch_${batchNo}.csv`, buildCsv(headers, out));
+  }
+
+  function exportPdf() {
+    if (!batch) return;
+
+    const hdr = `
+      <div class="hdr">
+        <div>
+          <h1 class="h1">${escapeHtml(`Batch Analytics: ${batchNo}`)}</h1>
+          <div class="sub">
+            <span class="pill">Snapshot (no date filtering)</span>
+            <span class="pill" style="margin-left:8px;">Product: <span class="mono">${escapeHtml(batch.header.es_product_code || "-")}</span></span>
+          </div>
+        </div>
+        <div class="pill">Stock Control • Analytics</div>
+      </div>
+      <div class="grid">
+        <div class="kpi"><div class="lab">Batch total cost</div><div class="val">${escapeHtml(moneyText(batch.header.batch_total_cost))}</div></div>
+        <div class="kpi"><div class="lab">Issue rows</div><div class="val">${escapeHtml(batch.header.issue_txn_count ?? "-")}</div></div>
+        <div class="kpi"><div class="lab">First → Last issue</div><div class="val">${escapeHtml(`${dtFmt(batch.header.first_issue_at)} → ${dtFmt(batch.header.last_issue_at)}`)}</div></div>
+      </div>
+    `;
+
+    const rows = (batch.materials || [])
+      .map(
+        (m) => `
+        <tr>
+          <td><div class="mono">${escapeHtml(m.material_code)}</div><div class="muted">${escapeHtml(m.material_name || "")}</div></td>
+          <td class="mono">${escapeHtml(m.lot_number || "")}</td>
+          <td class="mono">${escapeHtml(m.qty)}</td>
+          <td class="mono">${escapeHtml(m.uom_code)}</td>
+          <td class="mono">${escapeHtml(m.unit_price ? moneyText(m.unit_price) : "")}</td>
+          <td class="mono">${escapeHtml(m.total_value ? moneyText(m.total_value) : "")}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const body = `
+      ${hdr}
+      <div class="card">
+        <div class="ct">Materials (as shown)</div>
+        <table>
+          <thead><tr><th>Material</th><th class="mono">Lot</th><th class="mono">Qty</th><th class="mono">UoM</th><th class="mono">Unit</th><th class="mono">Total</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="6" class="muted">No materials found for this batch.</td></tr>`}</tbody>
+        </table>
+      </div>
+    `;
+
+    openPrintWindow(`batch_${batchNo}`, body);
+  }
+
   return (
     <div className="analytics-stack">
       <div className="card analytics-card">
@@ -17,6 +125,15 @@ export const BatchPanel: React.FC<{
               Batch Analytics <Chip variant="purple">{batchNo}</Chip>
             </div>
             <div className="card-subtitle">Snapshot view (no date filtering). Costs are the ISSUE snapshots.</div>
+          </div>
+
+          <div className="analytics-toolbar">
+            <button className="btn-secondary" onClick={exportCsv} disabled={!batch}>
+              ⬇ CSV Export
+            </button>
+            <button className="btn-secondary" onClick={exportPdf} disabled={!batch}>
+              🖨 PDF Report
+            </button>
           </div>
         </div>
 
@@ -94,3 +211,5 @@ export const BatchPanel: React.FC<{
     </div>
   );
 };
+
+export default BatchPanel;

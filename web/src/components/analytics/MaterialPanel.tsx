@@ -3,6 +3,7 @@ import { buildCsv, downloadCsv } from "./csv";
 import { Chip, money, qtyFmt } from "./analyticsShared";
 import type { MaterialMonthlyRow, MaterialSummary } from "./analyticsShared";
 import type { MaterialLotRow, MaterialTraceRow } from "./AnalyticsView";
+import { escapeHtml, moneyText, openPrintWindow } from "./reportPrint";
 
 type Tab = "overview" | "lots";
 
@@ -13,31 +14,16 @@ export const MaterialPanel: React.FC<{
   summary: MaterialSummary | null;
   monthly: MaterialMonthlyRow[];
 
-  // ✅ Phase-3B lifted state
   lots: MaterialLotRow[];
   trace: MaterialTraceRow[];
   lotFilter: string;
   setLotFilter: React.Dispatch<React.SetStateAction<string>>;
-
-  // ✅ Optional: set when arriving from SearchModal lot result
   initialLotFilter?: string;
-}> = ({
-  materialCode,
-  dateFrom,
-  dateTo,
-  summary,
-  monthly,
-  lots,
-  trace,
-  lotFilter,
-  setLotFilter,
-  initialLotFilter,
-}) => {
+}> = ({ materialCode, dateFrom, dateTo, summary, monthly, lots, trace, lotFilter, setLotFilter, initialLotFilter }) => {
   const [tab, setTab] = useState<Tab>("overview");
 
   const title = useMemo(() => summary?.material_name || "", [summary]);
 
-  // If we land here from a LOT search, auto-apply and switch tab
   useEffect(() => {
     if (initialLotFilter && initialLotFilter.trim()) {
       setTab("lots");
@@ -51,6 +37,44 @@ export const MaterialPanel: React.FC<{
     if (!f) return lots;
     return lots.filter((r) => (r.lot_number || "").toLowerCase().includes(f));
   }, [lots, lotFilter]);
+
+  /**
+   * UI datetime formatter:
+   * - Postgres can return microseconds (6dp) which JS Date doesn't parse reliably.
+   * - Normalise and truncate fractional seconds to 3dp (ms) so Date() can parse.
+   * - Format using en-GB for consistency with the Product page look/feel.
+   */
+  function dtUi(v: string | null | undefined) {
+    if (!v) return "";
+    const raw = String(v);
+
+    // Common shapes we may see:
+    //  - 2026-01-23T02:16:59.141442+00:00
+    //  - 2026-01-23 02:16:59.141442+00:00
+    //  - 2026-01-23T02:16:59+00:00
+    //  - 2026-01-23T02:16:59.141Z
+    let s = raw.trim();
+
+    // replace first space between date/time with "T" (keeps timezone part intact)
+    if (s.includes(" ") && !s.includes("T")) {
+      const i = s.indexOf(" ");
+      s = s.slice(0, i) + "T" + s.slice(i + 1);
+    }
+
+    // truncate microseconds -> milliseconds (keep 3 dp) when followed by Z or timezone
+    // e.g. .141442+00:00 -> .141+00:00
+    s = s.replace(/(\.\d{3})\d+(?=(Z|[+-]\d{2}:?\d{2})$)/, "$1");
+
+    // also handle timestamps that might not have timezone suffix but do have long fractions
+    // e.g. .141442 -> .141
+    s = s.replace(/(\.\d{3})\d+$/, "$1");
+
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return raw;
+
+    // Match the Product page vibe (UK format)
+    return d.toLocaleString("en-GB");
+  }
 
   function exportOverviewCsv() {
     if (!summary) return;
@@ -109,24 +133,11 @@ export const MaterialPanel: React.FC<{
       ]);
     }
 
-    downloadCsv(
-      `analytics_material_${summary.material_code}_${dateFrom}_to_${dateTo}.csv`,
-      buildCsv(headers, rows)
-    );
+    downloadCsv(`analytics_material_${summary.material_code}_${dateFrom}_to_${dateTo}.csv`, buildCsv(headers, rows));
   }
 
   function exportLotsCsv() {
-    const headers = [
-      "material_code",
-      "date_from",
-      "date_to",
-      "lot_number",
-      "status",
-      "current_qty",
-      "expiry_date",
-      "first_txn_at",
-      "last_txn_at",
-    ];
+    const headers = ["material_code", "date_from", "date_to", "lot_number", "status", "current_qty", "expiry_date", "first_txn_at", "last_txn_at"];
 
     const rows: any[][] = lotsFiltered.map((r) => [
       materialCode,
@@ -140,24 +151,11 @@ export const MaterialPanel: React.FC<{
       r.last_txn_at || "",
     ]);
 
-    downloadCsv(
-      `analytics_material_${materialCode}_lots_${dateFrom}_to_${dateTo}.csv`,
-      buildCsv(headers, rows)
-    );
+    downloadCsv(`analytics_material_${materialCode}_lots_${dateFrom}_to_${dateTo}.csv`, buildCsv(headers, rows));
   }
 
   function exportTraceCsv() {
-    const headers = [
-      "material_code",
-      "date_from",
-      "date_to",
-      "product_batch_no",
-      "es_product_code",
-      "lot_number",
-      "issue_qty_sum",
-      "issue_value_sum",
-      "last_issue_at",
-    ];
+    const headers = ["material_code", "date_from", "date_to", "product_batch_no", "es_product_code", "lot_number", "issue_qty_sum", "issue_value_sum", "last_issue_at"];
 
     const rows: any[][] = trace.map((r) => [
       materialCode,
@@ -171,10 +169,113 @@ export const MaterialPanel: React.FC<{
       r.last_issue_at || "",
     ]);
 
-    downloadCsv(
-      `analytics_material_${materialCode}_traceability_${dateFrom}_to_${dateTo}.csv`,
-      buildCsv(headers, rows)
-    );
+    downloadCsv(`analytics_material_${materialCode}_traceability_${dateFrom}_to_${dateTo}.csv`, buildCsv(headers, rows));
+  }
+
+  function exportPdf() {
+    const titleLine = title ? `${materialCode} • ${title}` : materialCode;
+
+    const hdr = `
+      <div class="hdr">
+        <div>
+          <h1 class="h1">${escapeHtml(`Material Analytics: ${titleLine}`)}</h1>
+          <div class="sub">
+            <span class="pill">Date range: <span class="mono">${escapeHtml(dateFrom)} → ${escapeHtml(dateTo)}</span></span>
+            <span class="pill" style="margin-left:8px;">Tab: <span class="mono">${escapeHtml(tab)}</span></span>
+            ${tab === "lots" && lotFilter.trim() ? `<span class="pill" style="margin-left:8px;">Lot filter: <span class="mono">${escapeHtml(lotFilter.trim())}</span></span>` : ""}
+          </div>
+        </div>
+        <div class="pill">Stock Control • Analytics</div>
+      </div>
+    `;
+
+    const kpis = summary
+      ? `
+      <div class="grid">
+        <div class="kpi"><div class="lab">Issued qty</div><div class="val">${escapeHtml(summary.issue_qty_total ?? "0")}</div></div>
+        <div class="kpi"><div class="lab">Receipt value</div><div class="val">${escapeHtml(moneyText(summary.receipt_value_total))}</div></div>
+        <div class="kpi"><div class="lab">Issue value</div><div class="val">${escapeHtml(moneyText(summary.issue_value_total))}</div></div>
+      </div>
+    `
+      : "";
+
+    const monthlyRows = monthly
+      .map(
+        (r) => `
+        <tr>
+          <td class="mono">${escapeHtml(r.month_bucket)}</td>
+          <td class="mono">${escapeHtml(r.issue_qty_sum)}</td>
+          <td class="mono">${escapeHtml(moneyText(r.issue_value_sum))}</td>
+          <td class="mono">${escapeHtml(r.receipt_qty_sum)}</td>
+          <td class="mono">${escapeHtml(moneyText(r.receipt_value_sum))}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const lotsRows = lotsFiltered
+      .map(
+        (r) => `
+        <tr>
+          <td class="mono">${escapeHtml(r.lot_number)}</td>
+          <td class="mono">${escapeHtml(r.status)}</td>
+          <td class="mono">${escapeHtml(r.current_qty)}</td>
+          <td class="mono">${escapeHtml(r.expiry_date || "")}</td>
+          <td class="mono">${escapeHtml(dtUi(r.first_txn_at) || "")}</td>
+          <td class="mono">${escapeHtml(dtUi(r.last_txn_at) || "")}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const traceRows = trace
+      .map(
+        (r) => `
+        <tr>
+          <td class="mono">${escapeHtml(r.product_batch_no)}</td>
+          <td class="mono">${escapeHtml(r.lot_number || "")}</td>
+          <td class="mono">${escapeHtml(r.es_product_code || "")}</td>
+          <td class="mono">${escapeHtml(r.issue_qty_sum)}</td>
+          <td class="mono">${escapeHtml(moneyText(r.issue_value_sum))}</td>
+          <td class="mono">${escapeHtml(dtUi(r.last_issue_at) || "")}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const body =
+      tab === "overview"
+        ? `
+      ${hdr}
+      ${kpis}
+      <div class="card">
+        <div class="ct">Monthly breakdown (as shown)</div>
+        <table>
+          <thead><tr><th>Month</th><th class="mono">Issue qty</th><th class="mono">Issue value</th><th class="mono">Receipt qty</th><th class="mono">Receipt value</th></tr></thead>
+          <tbody>${monthlyRows || `<tr><td colspan="5" class="muted">No rows in range.</td></tr>`}</tbody>
+        </table>
+      </div>
+    `
+        : `
+      ${hdr}
+      ${kpis}
+      <div class="card">
+        <div class="ct">Lots (as shown)</div>
+        <table>
+          <thead><tr><th>Lot</th><th>Status</th><th class="mono">Current qty</th><th class="mono">Expiry</th><th class="mono">First txn</th><th class="mono">Last txn</th></tr></thead>
+          <tbody>${lotsRows || `<tr><td colspan="6" class="muted">No lots in range (or match filter).</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="ct">Traceability (as shown)</div>
+        <table>
+          <thead><tr><th>ES batch no</th><th class="mono">Lot</th><th class="mono">Product</th><th class="mono">Issue qty</th><th class="mono">Issue cost</th><th class="mono">Last issue</th></tr></thead>
+          <tbody>${traceRows || `<tr><td colspan="6" class="muted">No traceability rows in range (or match filter).</td></tr>`}</tbody>
+        </table>
+      </div>
+    `;
+
+    openPrintWindow(`material_${materialCode}_${dateFrom}_to_${dateTo}`, body);
   }
 
   return (
@@ -185,7 +286,6 @@ export const MaterialPanel: React.FC<{
             <div className="card-title">
               Material Analytics <Chip variant="green">{materialCode}</Chip>
             </div>
-
             <div className="card-subtitle">
               {title ? (
                 <>
@@ -199,9 +299,14 @@ export const MaterialPanel: React.FC<{
 
           <div className="analytics-toolbar">
             {tab === "overview" ? (
-              <button className="btn-secondary" onClick={exportOverviewCsv} disabled={!summary}>
-                ⬇ CSV Export
-              </button>
+              <>
+                <button className="btn-secondary" onClick={exportOverviewCsv} disabled={!summary}>
+                  ⬇ CSV Export
+                </button>
+                <button className="btn-secondary" onClick={exportPdf} disabled={!summary}>
+                  🖨 PDF Report
+                </button>
+              </>
             ) : (
               <>
                 <button className="btn-secondary" onClick={exportLotsCsv}>
@@ -210,22 +315,19 @@ export const MaterialPanel: React.FC<{
                 <button className="btn-secondary" onClick={exportTraceCsv}>
                   ⬇ Export Traceability CSV
                 </button>
+                <button className="btn-secondary" onClick={exportPdf}>
+                  🖨 PDF Report
+                </button>
               </>
             )}
           </div>
         </div>
 
         <div className="analytics-tabs">
-          <button
-            className={tab === "overview" ? "analytics-tab active" : "analytics-tab"}
-            onClick={() => setTab("overview")}
-          >
+          <button className={tab === "overview" ? "analytics-tab active" : "analytics-tab"} onClick={() => setTab("overview")}>
             Overview
           </button>
-          <button
-            className={tab === "lots" ? "analytics-tab active" : "analytics-tab"}
-            onClick={() => setTab("lots")}
-          >
+          <button className={tab === "lots" ? "analytics-tab active" : "analytics-tab"} onClick={() => setTab("lots")}>
             Lots & Traceability
           </button>
         </div>
@@ -241,17 +343,13 @@ export const MaterialPanel: React.FC<{
 
               <div className="metric-card">
                 <div className="metric-label">Spend (receipts)</div>
-                <div className="metric-value">
-                  {money(summary?.receipt_value_total != null ? String(summary.receipt_value_total) : "0")}
-                </div>
+                <div className="metric-value">{money(summary?.receipt_value_total != null ? String(summary.receipt_value_total) : "0")}</div>
                 <div className="metric-sub">Total receipt value in range</div>
               </div>
 
               <div className="metric-card">
                 <div className="metric-label">Consumption cost (issues)</div>
-                <div className="metric-value">
-                  {money(summary?.issue_value_total != null ? String(summary.issue_value_total) : "0")}
-                </div>
+                <div className="metric-value">{money(summary?.issue_value_total != null ? String(summary.issue_value_total) : "0")}</div>
                 <div className="metric-sub">Total issue value in range</div>
               </div>
             </div>
@@ -344,8 +442,8 @@ export const MaterialPanel: React.FC<{
                       <td className="mono">{r.status}</td>
                       <td className="mono">{qtyFmt(r.current_qty)}</td>
                       <td className="mono">{r.expiry_date || ""}</td>
-                      <td className="mono">{r.first_txn_at || ""}</td>
-                      <td className="mono">{r.last_txn_at || ""}</td>
+                      <td className="mono">{dtUi(r.first_txn_at) || ""}</td>
+                      <td className="mono">{dtUi(r.last_txn_at) || ""}</td>
                     </tr>
                   ))}
                   {lotsFiltered.length === 0 ? (
@@ -386,7 +484,7 @@ export const MaterialPanel: React.FC<{
                       <td className="mono">{r.es_product_code || ""}</td>
                       <td className="mono">{qtyFmt(r.issue_qty_sum)}</td>
                       <td className="mono">{money(String(r.issue_value_sum))}</td>
-                      <td className="mono">{r.last_issue_at || ""}</td>
+                      <td className="mono">{dtUi(r.last_issue_at) || ""}</td>
                     </tr>
                   ))}
                   {trace.length === 0 ? (
