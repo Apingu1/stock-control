@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { formatNowChip } from "../../utils/format";
 
 type Header = {
   tag: string;
@@ -21,6 +22,13 @@ const TopBar: React.FC<Props> = ({
   onNewReceipt,
   onNewIssue,
 }) => {
+  const [now, setNow] = useState(() => formatNowChip());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(formatNowChip()), 15_000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
     <header className="top-bar">
       <div>
@@ -32,7 +40,7 @@ const TopBar: React.FC<Props> = ({
       <div className="top-bar-actions">
         <div className="chip">
           <span className="chip-dot" />
-          Stock engine healthy
+          {now}
         </div>
 
         <button

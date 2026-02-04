@@ -1453,3 +1453,150 @@ body {
   border-radius: 999px;
   padding: 6px 10px;
 }
+
+/* -----------------------------
+   Dashboard widget row (2-up)
+------------------------------ */
+.dash-widgets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+/* stack on small screens */
+@media (max-width: 1100px) {
+  .dash-widgets {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dash-widget {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.dash-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.dash-widget-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* -----------------------------
+   Dashboard alerts (tight + readable)
+------------------------------ */
+.dash-alert-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.dash-alert-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 148px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-light);
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.dash-alert-left {
+  min-width: 0; /* allow ellipsis */
+}
+
+.dash-alert-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-alert-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dash-k {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dash-v {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dash-alert-mid,
+.dash-alert-right {
+  text-align: right;
+}
+
+.dash-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.dash-badge.warn {
+  color: var(--yellow);
+}
+
+.dash-badge.danger {
+  color: var(--red);
+}
+
+/* -----------------------------
+   Latest batches widget
+------------------------------ */
+.dash-batch-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.dash-batch-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-light);
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.dash-batch-left {
+  min-width: 0;
+}
+
+.dash-batch-bn {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-batch-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dash-batch-right {
+  text-align: right;
+}

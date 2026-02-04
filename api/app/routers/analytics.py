@@ -774,6 +774,7 @@ def material_lots(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Material lots failed: {type(e).__name__}: {e}")
 
+
 @router.get("/materials/{material_code}/traceability")
 def material_traceability(
     material_code: str,
@@ -836,6 +837,7 @@ def material_traceability(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Material traceability failed: {type(e).__name__}: {e}")
+
 
 @router.get("/search")
 def analytics_search(
@@ -904,7 +906,6 @@ def analytics_search(
             )
             return jsonable_encoder(payload)
 
-
         if search_type == "product_code":
             payload = rows(
                 db,
@@ -941,5 +942,47 @@ def analytics_search(
         )
         return jsonable_encoder(payload)
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {type(e).__name__}: {e}")
+
+
+@router.get("/latest-batches")
+def latest_batches(
+    limit: int = Query(8, ge=1, le=50),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_any_permission("analytics.view", "admin.full")),
+):
+    """
+    Latest unique batches (based on ISSUE transactions).
+    Returns newest first. Each row represents one unique product_batch_no.
+    """
+    data = rows(
+        db,
+        """
+        SELECT
+          st.product_batch_no,
+          st.es_product_code,
+          MAX(st.created_at) AS last_issue_at,
+          MAX(COALESCE(st.product_manufacture_date::timestamp, st.created_at)) AS manufactured_at
+        FROM stock_transactions st
+        WHERE st.txn_type = 'ISSUE'
+          AND st.product_batch_no IS NOT NULL
+          AND st.es_product_code IS NOT NULL
+        GROUP BY st.product_batch_no, st.es_product_code
+        ORDER BY manufactured_at DESC
+        LIMIT :limit;
+        """,
+        {"limit": limit},
+    )
+
+    return jsonable_encoder(
+        {
+            "meta": {
+                "data_cut": datetime.utcnow().isoformat(),
+                "logic": "latest unique batches from ISSUE txns",
+            },
+            "rows": data,
+        }
+    )

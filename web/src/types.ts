@@ -179,3 +179,12 @@ export type ExpiryThresholdPatch = {
   threshold_days?: number;
   is_active?: boolean;
 };
+
+export type DashboardSummary = {
+  total_materials: number;
+  materials_low_expiry: number;
+  materials_low_stock: number;
+  batches_manufactured_today: number;
+  receipts_today: number;
+  total_material_value: number;
+};

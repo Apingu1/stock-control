@@ -203,7 +203,13 @@ const App: React.FC = () => {
           onNewIssue={() => setShowIssueModal(true)}
         />
 
-        {view === "dashboard" && <DashboardView materials={stock.materials} />}
+        {view === "dashboard" && (
+          <DashboardView
+            materials={stock.materials}
+            lotBalances={stock.lotBalances}
+            onGoToAlerts={() => setView("alerts")}
+          />
+        )}
 
         {view === "materials" && (
           <MaterialsLibraryView
