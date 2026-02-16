@@ -587,130 +587,160 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
 
   const totalFlagged = lowStockRows.length + lowExpiryRows.length;
 
+  // ✅ Scroll-capable shell wrapper (so alerts page isn't "stuck")
+  const Shell: React.FC<{ title?: string; children: React.ReactNode }> = ({ children }) => (
+    <section className="content" style={{ minHeight: 0 }}>
+      <section
+        className="card"
+        style={{
+          height: "100%",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflow: "auto",
+          }}
+        >
+          {children}
+        </div>
+      </section>
+    </section>
+  );
+
   if (!actionsLoaded) {
     return (
-      <div className="page">
-        <div className="page-header" style={{ gap: 10 }}>
-          <div />
-          <div className="muted" style={{ fontSize: 13 }}>
-            Loading alerts…
+      <Shell>
+        <div className="page">
+          <div className="page-header" style={{ gap: 10 }}>
+            <div />
+            <div className="muted" style={{ fontSize: 13 }}>
+              Loading alerts…
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 14 }}>
+            <div className="card-header">
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Low Stock</div>
+            </div>
+            <div style={{ padding: 16 }} className="muted">
+              Preparing view…
+            </div>
           </div>
         </div>
-        <div className="card" style={{ marginTop: 14 }}>
-          <div className="card-header">
-            <div style={{ fontSize: 16, fontWeight: 700 }}>Low Stock</div>
-          </div>
-          <div style={{ padding: 16 }} className="muted">
-            Preparing view…
-          </div>
-        </div>
-      </div>
+      </Shell>
     );
   }
 
   return (
-    <div className="page">
-      <div className="page-header" style={{ gap: 10 }}>
-        <div />
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => setShowSuppressed(true)}
-            disabled={suppressed.length === 0}
-          >
-            Manage suppressed ({suppressed.length})
-          </button>
+    <Shell>
+      <div className="page">
+        <div className="page-header" style={{ gap: 10 }}>
+          <div />
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShowSuppressed(true)}
+              disabled={suppressed.length === 0}
+            >
+              Manage suppressed ({suppressed.length})
+            </button>
 
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search material / lot..."
-            className="input"
-            style={{ width: 260, height: 36, fontSize: 13 }}
-          />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search material / lot..."
+              className="input"
+              style={{ width: 260, height: 36, fontSize: 13 }}
+            />
 
-          <select
-            className="input"
-            style={{ width: 170, height: 36, fontSize: 13 }}
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            title="Filter by status"
-          >
-            {FILTER_STATE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            <select
+              className="input"
+              style={{ width: 170, height: 36, fontSize: 13 }}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              title="Filter by status"
+            >
+              {FILTER_STATE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
 
-          <select
-            className="input"
-            style={{ width: 150, height: 36, fontSize: 13 }}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            title="Filter by category"
-          >
-            <option value="ALL">All categories</option>
-            {categoryOptions.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            <select
+              className="input"
+              style={{ width: 150, height: 36, fontSize: 13 }}
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              title="Filter by category"
+            >
+              <option value="ALL">All categories</option>
+              {categoryOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
 
-          <select
-            className="input"
-            style={{ width: 150, height: 36, fontSize: 13 }}
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            title="Filter by type"
-          >
-            <option value="ALL">All types</option>
-            {typeOptions.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+            <select
+              className="input"
+              style={{ width: 150, height: 36, fontSize: 13 }}
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              title="Filter by type"
+            >
+              <option value="ALL">All types</option>
+              {typeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
 
-          {badge(`Total: ${totalFlagged}`, totalFlagged > 0 ? "warn" : "neutral")}
+            {badge(`Total: ${totalFlagged}`, totalFlagged > 0 ? "warn" : "neutral")}
+          </div>
         </div>
+
+        <LowStockPanel
+          rows={lowStockRows}
+          sortMode={lowStockSort}
+          setSortMode={setLowStockSort}
+          renderMgmtCell={renderMgmtCell}
+        />
+
+        <LowExpiryPanel
+          rows={lowExpiryRows}
+          sortMode={lowExpirySort}
+          setSortMode={setLowExpirySort}
+          renderMgmtCell={renderMgmtCell}
+        />
+
+        <SuppressedModal
+          open={showSuppressed}
+          suppressed={suppressed}
+          onClose={() => setShowSuppressed(false)}
+          onUndo={(k: string, info: ParsedKey) =>
+            void upsertAction(
+              k,
+              { state: "NEW" },
+              {
+                alert_type: info.type,
+                material_code: info.material,
+                lot_number: info.type === "LOW_EXPIRY" ? info.lot ?? null : null,
+                last_seen_available_qty: null,
+              }
+            )
+          }
+          onDelete={(k: string) => void removeAction(k)}
+        />
       </div>
-
-      <LowStockPanel
-        rows={lowStockRows}
-        sortMode={lowStockSort}
-        setSortMode={setLowStockSort}
-        renderMgmtCell={renderMgmtCell}
-      />
-
-      <LowExpiryPanel
-        rows={lowExpiryRows}
-        sortMode={lowExpirySort}
-        setSortMode={setLowExpirySort}
-        renderMgmtCell={renderMgmtCell}
-      />
-
-      <SuppressedModal
-        open={showSuppressed}
-        suppressed={suppressed}
-        onClose={() => setShowSuppressed(false)}
-        onUndo={(k: string, info: ParsedKey) =>
-          void upsertAction(
-            k,
-            { state: "NEW" },
-            {
-              alert_type: info.type,
-              material_code: info.material,
-              lot_number: info.type === "LOW_EXPIRY" ? info.lot ?? null : null,
-              last_seen_available_qty: null,
-            }
-          )
-        }
-        onDelete={(k: string) => void removeAction(k)}
-      />
-    </div>
+    </Shell>
   );
 };
 

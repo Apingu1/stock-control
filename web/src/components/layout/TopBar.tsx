@@ -31,20 +31,24 @@ const TopBar: React.FC<Props> = ({
 
   return (
     <header className="top-bar">
-      <div>
+      <div className="top-bar-left">
         <div className="page-tag">{header.tag}</div>
         <div className="page-title">{header.title}</div>
         <div className="page-subtitle">{header.subtitle}</div>
       </div>
 
-      <div className="top-bar-actions">
-        <div className="chip">
+      {/* Centered status/time pill */}
+      <div className="top-bar-center">
+        <div className="chip chip-now" title="Live time (Europe/London)">
           <span className="chip-dot" />
           {now}
         </div>
+      </div>
 
+      {/* Primary actions */}
+      <div className="top-bar-right">
         <button
-          className="btn btn-ghost"
+          className="btn btn-accent-green"
           type="button"
           onClick={onNewMaterial}
           disabled={!isSignedIn}
@@ -54,7 +58,7 @@ const TopBar: React.FC<Props> = ({
         </button>
 
         <button
-          className="btn btn-ghost"
+          className="btn btn-accent-amber"
           type="button"
           onClick={onNewReceipt}
           disabled={!isSignedIn}

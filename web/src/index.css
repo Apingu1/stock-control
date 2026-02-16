@@ -139,13 +139,64 @@ body {
 /* Main layout */
 .main {
   padding: 24px 32px;
+  /* Fill available viewport height so pages can stretch vertically */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* App view container (the one inside <main>) */
+.main > .content {
+  flex: 1;
+  display: flex;
+  min-height: 0; /* allow children to manage overflow */
+}
+
+/* Page sections (many views use <section className="content">) */
+section.content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* Common dashboard wrapper */
+.grid-top {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.grid-top > .card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* Top bar */
 .top-bar {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 16px;
   margin-bottom: 26px;
+}
+
+.top-bar-left {
+  min-width: 0;
+}
+
+.top-bar-center {
+  display: flex;
+  justify-content: center;
+}
+
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 
@@ -166,20 +217,25 @@ body {
   margin-top: 4px;
 }
 
-.top-bar-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
+/* Live time pill */
 .chip {
   background: var(--bg-light);
-  padding: 4px 10px;
-  border-radius: 10px;
-  font-size: 12px;
-  display: flex;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chip-now {
+  /* Ensure the top-bar pill keeps its premium sizing even if other chip helpers exist */
+  background: var(--bg-light);
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transform: translateY(2px);
 }
 
 .chip-dot {
@@ -265,6 +321,14 @@ body {
   background: rgba(255, 255, 255, 0.06);
   padding: 16px;
   border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
 .metric-card.accent-1 {
@@ -276,13 +340,16 @@ body {
 }
 
 .metric-label {
-  font-size: 13px;
-  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: rgba(243, 244, 246, 0.92);
 }
 
 .metric-value {
-  font-size: 26px;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .metric-chip {
@@ -303,8 +370,8 @@ body {
 
 .mini-spark {
   margin-top: 8px;
-  font-size: 12px;
-  opacity: 0.6;
+  font-size: 13px;
+  opacity: 0.75;
 }
 
 /* Alerts */
@@ -743,6 +810,51 @@ body {
   text-underline-offset: 3px;
 }
 .link:hover{ color: #c7d2fe; }
+
+/* Premium button base (used for consistent top-bar buttons) */
+.btn{
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 650;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 120ms ease, opacity 120ms ease, background 160ms ease, border-color 160ms ease;
+}
+.btn:disabled{
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn:active{ transform: translateY(1px); }
+
+/* Premium accents for TopBar */
+.btn-accent-green{
+  background: rgba(74, 222, 128, 0.18);
+  border-color: rgba(74, 222, 128, 0.28);
+  color: var(--text-primary);
+}
+.btn-accent-green:hover{ background: rgba(74, 222, 128, 0.24); }
+
+.btn-accent-amber{
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.28);
+  color: var(--text-primary);
+}
+.btn-accent-amber:hover{ background: rgba(245, 158, 11, 0.24); }
+
+/* Neutral/ghost button used for secondary actions (Cancel, etc.) */
+.btn-ghost{
+  background: rgba(30, 41, 59, 0.45);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: var(--text-primary);
+}
+.btn-ghost:hover{ background: rgba(30, 41, 59, 0.62); }
 
 .btn-primary{
   background: rgba(99, 102, 241, 0.85);
@@ -1371,30 +1483,30 @@ body {
   .analytics-metricgrid{ grid-template-columns: 1fr; }
 }
 
-.metric-card{
+.analytics-metricgrid .metric-card{
   background: rgba(2, 6, 23, 0.28);
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 18px;
   padding: 12px 12px;
   box-shadow: 0 10px 24px rgba(0,0,0,0.18);
 }
-.metric-card:hover{
+.analytics-metricgrid .metric-card:hover{
   border-color: rgba(148, 163, 184, 0.20);
 }
 
-.metric-label{
+.analytics-metricgrid .metric-label{
   color: var(--text-secondary);
   font-size: 12px;
 }
 
-.metric-value{
+.analytics-metricgrid .metric-value{
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.02em;
   margin-top: 6px;
 }
 
-.metric-sub{
+.analytics-metricgrid .metric-sub{
   margin-top: 6px;
   color: var(--text-faint);
   font-size: 12px;
@@ -1462,6 +1574,9 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 14px;
   margin-top: 16px;
+  /* Let widgets grow to fill remaining vertical space in the card */
+  flex: 1;
+  min-height: 0;
 }
 
 /* stack on small screens */
@@ -1475,6 +1590,10 @@ body {
   background: rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-sm);
   padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .dash-widget-header {
@@ -1488,6 +1607,36 @@ body {
 .dash-widget-title {
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Scroll inside dashboard widgets when the viewport is taller/shorter */
+.dash-widget .dash-alert-list,
+.dash-widget .dash-batch-list{
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+/* Batch number as premium text link (no boxed button) */
+.dash-batch-link{
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.dash-batch-link:hover{
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dash-batch-link:focus-visible{
+  outline: 2px solid rgba(99, 102, 241, 0.45);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 
 /* -----------------------------
@@ -1592,6 +1741,28 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Clickable batch number should look like premium text (no box) */
+.dash-batch-link{
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.dash-batch-link:hover{
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  color: #c7d2fe;
+}
+.dash-batch-link:focus-visible{
+  outline: 2px solid rgba(99, 102, 241, 0.55);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
 .dash-batch-meta {
   font-size: 12px;
   color: var(--text-secondary);
@@ -1599,4 +1770,69 @@ body {
 
 .dash-batch-right {
   text-align: right;
+}
+
+/* =========================================================
+   GLOBAL LAYOUT / RATIO FIX (Append-only)
+   - Restores fluid horizontal behaviour
+   - Prevents page overshoot (browser scroll)
+   - Keeps scrolling inside the main content area
+   - Applies across ALL pages
+   ========================================================= */
+
+html, body {
+  height: 100%;
+  width: 100%;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Prevent the browser window from scrolling the whole page */
+body {
+  overflow: hidden;
+}
+
+/* Make the app shell always fit the viewport */
+.app-shell,
+.app {
+  height: 100vh;
+  min-height: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Main area must not force page height overflow */
+.main {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden; /* scroll belongs in .content */
+  display: flex;
+  flex-direction: column;
+}
+
+/* The ONLY scroll container for pages */
+.main > .content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;   /* internal scroll */
+  display: block;   /* don't force flex on every page */
+}
+
+/* If any view uses section.content as the page container, keep it from forcing body scroll */
+section.content {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Safety: prevent accidental horizontal scrolling due to long tables/inputs */
+.main > .content {
+  overflow-x: auto;
 }

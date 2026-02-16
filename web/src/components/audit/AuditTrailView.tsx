@@ -81,7 +81,7 @@ const AuditTrailView: React.FC = () => {
     return Array.from(s).sort();
   }, [events]);
 
-  // ✅ buildUrl now supports filter overrides, so Clear/Apply can force an immediate load
+  // buildUrl supports filter overrides
   const buildUrl = (override?: {
     limit?: number;
     offset?: number;
@@ -122,7 +122,6 @@ const AuditTrailView: React.FC = () => {
     return params;
   };
 
-  // Keep download logic HERE
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -134,7 +133,6 @@ const AuditTrailView: React.FC = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  // ✅ load now accepts optional filter overrides too (via buildUrl)
   const load = async (override?: {
     limit?: number;
     offset?: number;
@@ -168,12 +166,9 @@ const AuditTrailView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offset, limit]);
 
-  // ✅ Apply forces reload using current inputs (no stale-state issues)
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
     setOpenRowKey(null);
-
-    // Always start from page 1 and force reload with current filters now.
     setOffset(0);
     load({
       offset: 0,
@@ -186,7 +181,6 @@ const AuditTrailView: React.FC = () => {
     });
   };
 
-  // ✅ Clear works on single click: reload uses explicit default values
   const handleClear = () => {
     const d = new Date();
     const from = new Date();
@@ -252,8 +246,28 @@ const AuditTrailView: React.FC = () => {
   const compactLineHeight = 1.25;
 
   return (
-    <section className="card" style={{ fontSize: compactFontSize, lineHeight: compactLineHeight }}>
-      <div className="card-header" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+    <section
+      className="card"
+      style={{
+        fontSize: compactFontSize,
+        lineHeight: compactLineHeight,
+        // ✅ Critical: make this page self-scroll within your flex layout
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* Header (fixed) */}
+      <div
+        className="card-header"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flex: "0 0 auto",
+        }}
+      >
         <div>
           <div className="card-title">Audit Trail</div>
           <div className="card-subtitle">Append-only events (GMP)</div>
@@ -282,7 +296,8 @@ const AuditTrailView: React.FC = () => {
         </div>
       </div>
 
-      <form onSubmit={handleApply} style={{ marginTop: 10 }}>
+      {/* Filters (fixed) */}
+      <form onSubmit={handleApply} style={{ marginTop: 10, flex: "0 0 auto" }}>
         <div className="filters" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
           <div>
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
@@ -359,7 +374,6 @@ const AuditTrailView: React.FC = () => {
                 const next = Number(e.target.value);
                 setLimit(next);
                 setOffset(0);
-                // immediate refresh for UX consistency
                 load({ offset: 0, limit: next });
               }}
               style={{ width: 110, fontSize: compactFontSize }}
@@ -374,168 +388,181 @@ const AuditTrailView: React.FC = () => {
       </form>
 
       {error && (
-        <div className="alert alert-error" style={{ marginTop: 10 }}>
+        <div className="alert alert-error" style={{ marginTop: 10, flex: "0 0 auto" }}>
           {error}
         </div>
       )}
 
-      <div style={{ marginTop: 10, overflowX: "auto" }}>
-        <table className="table" style={{ width: "100%" }}>
-          <thead>
-            <tr>
-              <th style={{ width: 190 }}>Date/Time</th>
-              <th style={{ width: 180 }}>Event Type</th>
-              <th style={{ width: 140 }}>Actor</th>
-              <th>Target</th>
-              <th>Reason</th>
-              <th style={{ width: 280 }}>Changes</th>
-              <th style={{ width: 120 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {!loading && events.length === 0 && (
+      {/* ✅ Scroll region (table + details) */}
+      <div
+        style={{
+          marginTop: 10,
+          flex: "1 1 auto",
+          minHeight: 0,
+          overflow: "auto",
+          // helps wide tables not break layout
+          paddingBottom: 6,
+        }}
+      >
+        <div style={{ overflowX: "auto" }}>
+          <table className="table" style={{ width: "100%" }}>
+            <thead>
               <tr>
-                <td colSpan={7} className="muted" style={{ padding: "10px 12px" }}>
-                  No audit events found for the selected filters.
-                </td>
+                <th style={{ width: 190 }}>Date/Time</th>
+                <th style={{ width: 180 }}>Event Type</th>
+                <th style={{ width: 140 }}>Actor</th>
+                <th>Target</th>
+                <th>Reason</th>
+                <th style={{ width: 280 }}>Changes</th>
+                <th style={{ width: 120 }} />
               </tr>
-            )}
+            </thead>
+            <tbody>
+              {!loading && events.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ padding: "10px 12px" }}>
+                    No audit events found for the selected filters.
+                  </td>
+                </tr>
+              )}
 
-            {events.map((e, idx) => {
-              const key = `${e.event_at}-${e.event_type}-${e.actor_username ?? "na"}-${idx}`;
-              const isOpen = openRowKey === key;
+              {events.map((e, idx) => {
+                const key = `${e.event_at}-${e.event_type}-${e.actor_username ?? "na"}-${idx}`;
+                const isOpen = openRowKey === key;
 
-              const hasDetails = !!e.before_json || !!e.after_json;
-              const diffEntries = hasDetails ? diffJson(e.before_json, e.after_json, 50) : [];
-              const changeSummary = summarizeDiff(diffEntries, 2);
+                const hasDetails = !!e.before_json || !!e.after_json;
+                const diffEntries = hasDetails ? diffJson(e.before_json, e.after_json, 50) : [];
+                const changeSummary = summarizeDiff(diffEntries, 2);
 
-              return (
-                <React.Fragment key={key}>
-                  <tr style={{ verticalAlign: "top" }}>
-                    <td style={{ padding: "10px 12px" }}>{formatDateTime(e.event_at)}</td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <span className="pill">{e.event_type}</span>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>{e.actor_username ?? "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <span className="muted" style={{ fontSize: compactFontSize - 1 }}>
-                          {e.target_type ?? "—"}
-                        </span>
-                        <span className="muted" style={{ fontSize: compactFontSize - 1, wordBreak: "break-word", whiteSpace: "normal" }}>
-                          {e.target_ref ?? "—"}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td style={{ padding: "10px 12px", wordBreak: "break-word" }}>{e.reason ?? "—"}</td>
-                    <td style={{ padding: "10px 12px", wordBreak: "break-word" }}>
-                      <span className="muted" style={{ fontSize: compactFontSize - 1 }}>
-                        {changeSummary}
-                      </span>
-                    </td>
-
-                    <td style={{ textAlign: "right", padding: "10px 12px" }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setOpenRowKey(isOpen ? null : key)}
-                        disabled={!hasDetails}
-                        title={!hasDetails ? "No before/after snapshot for this event" : ""}
-                        style={{ fontSize: compactFontSize }}
-                      >
-                        {isOpen ? "Hide" : "Details"}
-                      </button>
-                    </td>
-                  </tr>
-
-                  {isOpen && (
-                    <tr>
-                      <td colSpan={7} style={{ padding: "0 12px 12px 12px" }}>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: 12,
-                            padding: 12,
-                            background: "rgba(255,255,255,0.02)",
-                            borderRadius: 12,
-                          }}
-                        >
-                          <div>
-                            <div className="label" style={{ fontSize: compactFontSize - 1 }}>
-                              Before
-                            </div>
-                            <pre className="codeblock" style={{ maxHeight: 360, overflow: "auto", fontSize: 12 }}>
-                              {safeJson(e.before_json)}
-                            </pre>
-                          </div>
-
-                          <div>
-                            <div className="label" style={{ fontSize: compactFontSize - 1 }}>
-                              After
-                            </div>
-                            <pre className="codeblock" style={{ maxHeight: 360, overflow: "auto", fontSize: 12 }}>
-                              {safeJson(e.after_json)}
-                            </pre>
-                          </div>
-
-                          <div style={{ gridColumn: "1 / -1" }}>
-                            <div className="label" style={{ fontSize: compactFontSize - 1 }}>
-                              Diff (changed keys)
-                            </div>
-                            {diffEntries.length === 0 ? (
-                              <div className="muted" style={{ fontSize: compactFontSize - 1 }}>
-                                No before/after differences detected.
-                              </div>
-                            ) : (
-                              <div style={{ overflowX: "auto" }}>
-                                <table className="table" style={{ width: "100%", fontSize: 12 }}>
-                                  <thead>
-                                    <tr>
-                                      <th style={{ width: 280 }}>Path</th>
-                                      <th style={{ width: 110 }}>Type</th>
-                                      <th>Before</th>
-                                      <th>After</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {diffEntries.map((d, i2) => {
-                                      const bg =
-                                        d.kind === "add"
-                                          ? "rgba(46, 204, 113, 0.10)"
-                                          : d.kind === "remove"
-                                          ? "rgba(231, 76, 60, 0.10)"
-                                          : "rgba(241, 196, 15, 0.10)";
-                                      return (
-                                        <tr key={`${d.path}-${i2}`} style={{ background: bg }}>
-                                          <td style={{ wordBreak: "break-word" }}>{d.path || "root"}</td>
-                                          <td>{d.kind}</td>
-                                          <td style={{ wordBreak: "break-word" }}>{formatScalar(d.before)}</td>
-                                          <td style={{ wordBreak: "break-word" }}>{formatScalar(d.after)}</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                                <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
-                                  Showing up to 50 differences.
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                return (
+                  <React.Fragment key={key}>
+                    <tr style={{ verticalAlign: "top" }}>
+                      <td style={{ padding: "10px 12px" }}>{formatDateTime(e.event_at)}</td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span className="pill">{e.event_type}</span>
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>{e.actor_username ?? "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span className="muted" style={{ fontSize: compactFontSize - 1 }}>
+                            {e.target_type ?? "—"}
+                          </span>
+                          <span className="muted" style={{ fontSize: compactFontSize - 1, wordBreak: "break-word", whiteSpace: "normal" }}>
+                            {e.target_ref ?? "—"}
+                          </span>
                         </div>
                       </td>
+
+                      <td style={{ padding: "10px 12px", wordBreak: "break-word" }}>{e.reason ?? "—"}</td>
+                      <td style={{ padding: "10px 12px", wordBreak: "break-word" }}>
+                        <span className="muted" style={{ fontSize: compactFontSize - 1 }}>
+                          {changeSummary}
+                        </span>
+                      </td>
+
+                      <td style={{ textAlign: "right", padding: "10px 12px" }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setOpenRowKey(isOpen ? null : key)}
+                          disabled={!hasDetails}
+                          title={!hasDetails ? "No before/after snapshot for this event" : ""}
+                          style={{ fontSize: compactFontSize }}
+                        >
+                          {isOpen ? "Hide" : "Details"}
+                        </button>
+                      </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: "0 12px 12px 12px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              gap: 12,
+                              padding: 12,
+                              background: "rgba(255,255,255,0.02)",
+                              borderRadius: 12,
+                            }}
+                          >
+                            <div>
+                              <div className="label" style={{ fontSize: compactFontSize - 1 }}>
+                                Before
+                              </div>
+                              <pre className="codeblock" style={{ maxHeight: 360, overflow: "auto", fontSize: 12 }}>
+                                {safeJson(e.before_json)}
+                              </pre>
+                            </div>
+
+                            <div>
+                              <div className="label" style={{ fontSize: compactFontSize - 1 }}>
+                                After
+                              </div>
+                              <pre className="codeblock" style={{ maxHeight: 360, overflow: "auto", fontSize: 12 }}>
+                                {safeJson(e.after_json)}
+                              </pre>
+                            </div>
+
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <div className="label" style={{ fontSize: compactFontSize - 1 }}>
+                                Diff (changed keys)
+                              </div>
+                              {diffEntries.length === 0 ? (
+                                <div className="muted" style={{ fontSize: compactFontSize - 1 }}>
+                                  No before/after differences detected.
+                                </div>
+                              ) : (
+                                <div style={{ overflowX: "auto" }}>
+                                  <table className="table" style={{ width: "100%", fontSize: 12 }}>
+                                    <thead>
+                                      <tr>
+                                        <th style={{ width: 280 }}>Path</th>
+                                        <th style={{ width: 110 }}>Type</th>
+                                        <th>Before</th>
+                                        <th>After</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {diffEntries.map((d, i2) => {
+                                        const bg =
+                                          d.kind === "add"
+                                            ? "rgba(46, 204, 113, 0.10)"
+                                            : d.kind === "remove"
+                                            ? "rgba(231, 76, 60, 0.10)"
+                                            : "rgba(241, 196, 15, 0.10)";
+                                        return (
+                                          <tr key={`${d.path}-${i2}`} style={{ background: bg }}>
+                                            <td style={{ wordBreak: "break-word" }}>{d.path || "root"}</td>
+                                            <td>{d.kind}</td>
+                                            <td style={{ wordBreak: "break-word" }}>{formatScalar(d.before)}</td>
+                                            <td style={{ wordBreak: "break-word" }}>{formatScalar(d.after)}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                  <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
+                                    Showing up to 50 differences.
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+      {/* Pagination (fixed) */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, flex: "0 0 auto" }}>
         <button
           className="btn btn-ghost"
           type="button"

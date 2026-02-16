@@ -18,6 +18,7 @@ type DashboardViewProps = {
   materials: Material[];
   lotBalances: LotBalance[];
   onGoToAlerts: () => void;
+  onGoToBatch: (batchNo: string) => void;
 };
 
 type DashAlertRow =
@@ -48,8 +49,9 @@ type DashAlertRow =
 type LatestBatchRow = {
   product_batch_no: string;
   es_product_code: string;
-  manufactured_at: string; // ISO string
   last_issue_at: string; // ISO string
+  // manufactured_at was previously returned; keep optional for backwards compatibility
+  manufactured_at?: string;
 };
 
 function fmtTs(iso: string) {
@@ -72,6 +74,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   materials,
   lotBalances,
   onGoToAlerts,
+  onGoToBatch,
 }) => {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryErr, setSummaryErr] = useState<string | null>(null);
@@ -345,7 +348,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="dash-widget">
               <div className="dash-widget-header">
                 <div className="dash-widget-title">New low stock &amp; expiry alerts</div>
-                <button className="btn btn-ghost" type="button" onClick={onGoToAlerts}>
+                <button className="link" type="button" onClick={onGoToAlerts}>
                   See all alerts →
                 </button>
               </div>
@@ -431,12 +434,18 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                   {latestBatches.map((r) => (
                     <li key={`${r.product_batch_no}-${r.es_product_code}`} className="dash-batch-item">
                       <div className="dash-batch-left">
-                        <div className="dash-batch-bn">{r.product_batch_no}</div>
+                        <button
+                          type="button"
+                          className="dash-batch-bn dash-batch-link"
+                          onClick={() => onGoToBatch(r.product_batch_no)}
+                        >
+                          {r.product_batch_no}
+                        </button>
                         <div className="dash-batch-meta">{r.es_product_code}</div>
                       </div>
                       <div className="dash-batch-right">
-                        <div className="dash-k">Manufactured</div>
-                        <div className="dash-v">{fmtTs(r.manufactured_at)}</div>
+                        <div className="dash-k">Last issue</div>
+                        <div className="dash-v">{fmtTs(r.last_issue_at)}</div>
                       </div>
                     </li>
                   ))}

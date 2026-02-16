@@ -342,9 +342,18 @@ export default function AdminUsersView() {
   const actionBtnOnClick = isSelectedRoleInactive ? activateSelectedRole : retireSelectedRole;
 
   return (
-    <section className="content">
-      <section className="card">
-        <div className="card-header">
+    <section className="content" style={{ minHeight: 0 }}>
+      <section
+        className="card"
+        style={{
+          // ✅ critical: allow this page to fill and scroll internally (like AuditTrailView fix)
+          height: "100%",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div className="card-header" style={{ flex: "0 0 auto" }}>
           <div>
             <div className="card-title">Admin — Users & Roles</div>
             <div className="card-subtitle">Manage users, roles, and permissions (server enforced).</div>
@@ -363,7 +372,15 @@ export default function AdminUsersView() {
           </div>
         </div>
 
-        <div className="card-body">
+        {/* ✅ Scroll container for the whole page body (users list + permissions matrix) */}
+        <div
+          className="card-body"
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflow: "auto",
+          }}
+        >
           {err && <div className="error-row">{err}</div>}
 
           {tab === "users" && (
@@ -438,7 +455,7 @@ export default function AdminUsersView() {
               {loading ? (
                 <div className="info-row">Loading users…</div>
               ) : (
-                <div className="table-wrapper" style={{ maxHeight: 520, overflow: "auto" }}>
+                <div className="table-wrapper" style={{ overflow: "auto" }}>
                   <table>
                     <thead>
                       <tr>

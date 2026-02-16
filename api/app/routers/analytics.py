@@ -956,7 +956,12 @@ def latest_batches(
 ):
     """
     Latest unique batches (based on ISSUE transactions).
-    Returns newest first. Each row represents one unique product_batch_no.
+
+    IMPORTANT:
+      - The dashboard must display a *real* time (not 00:00).
+      - Therefore we do NOT use product_manufacture_date (DATE-only) for ordering/display.
+      - We use last_issue_at = MAX(stock_transactions.created_at) for ISSUE rows,
+        grouped by (product_batch_no, es_product_code).
     """
     data = rows(
         db,
@@ -964,14 +969,13 @@ def latest_batches(
         SELECT
           st.product_batch_no,
           st.es_product_code,
-          MAX(st.created_at) AS last_issue_at,
-          MAX(COALESCE(st.product_manufacture_date::timestamp, st.created_at)) AS manufactured_at
+          MAX(st.created_at) AS last_issue_at
         FROM stock_transactions st
         WHERE st.txn_type = 'ISSUE'
           AND st.product_batch_no IS NOT NULL
           AND st.es_product_code IS NOT NULL
         GROUP BY st.product_batch_no, st.es_product_code
-        ORDER BY manufactured_at DESC
+        ORDER BY last_issue_at DESC
         LIMIT :limit;
         """,
         {"limit": limit},
@@ -981,8 +985,9 @@ def latest_batches(
         {
             "meta": {
                 "data_cut": datetime.utcnow().isoformat(),
-                "logic": "latest unique batches from ISSUE txns",
+                "logic": "latest unique batches from ISSUE txns (ordered by last_issue_at)",
             },
             "rows": data,
         }
     )
+

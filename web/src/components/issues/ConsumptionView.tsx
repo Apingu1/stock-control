@@ -276,8 +276,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
           <div>
             <div className="card-title">Issue History</div>
             <div className="card-subtitle">
-              Filter by date, consumption type or manufacturer, or search by
-              material, lot, ES product code or ES batch.
+              Input consumption history
             </div>
           </div>
           <div className="card-actions card-actions-wrap">

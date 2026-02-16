@@ -62,6 +62,9 @@ const App: React.FC = () => {
 
   const [view, setView] = useState<ViewMode>("dashboard");
 
+  // Deep-link support: Dashboard → Analytics batch page
+  const [analyticsInitialBatchNo, setAnalyticsInitialBatchNo] = useState<string | null>(null);
+
   const { alertsCounts } = useAlertsBadge(stock.materials, stock.lotBalances);
 
   // --- Auth bootstrap -------------------------------------------------------
@@ -208,6 +211,10 @@ const App: React.FC = () => {
             materials={stock.materials}
             lotBalances={stock.lotBalances}
             onGoToAlerts={() => setView("alerts")}
+            onGoToBatch={(bn) => {
+              setAnalyticsInitialBatchNo(bn);
+              setView("analytics");
+            }}
           />
         )}
 
@@ -260,7 +267,12 @@ const App: React.FC = () => {
           />
         )}
 
-        {view === "analytics" && <AnalyticsView />}
+        {view === "analytics" && (
+          <AnalyticsView
+            initialBatchNo={analyticsInitialBatchNo ?? undefined}
+            onClearInitialBatch={() => setAnalyticsInitialBatchNo(null)}
+          />
+        )}
 
         {view === "audit" && canViewAudit && <AuditTrailView />}
 

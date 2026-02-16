@@ -50,8 +50,17 @@ export type MaterialTraceRow = {
   last_issue_at: string | null;
 };
 
-export const AnalyticsView: React.FC = () => {
+type AnalyticsViewProps = {
+  initialBatchNo?: string;
+  onClearInitialBatch: () => void;
+};
+
+export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
+  initialBatchNo,
+  onClearInitialBatch,
+}) => {
   const [page, setPage] = useState<Page>({ kind: "dashboard" });
+
 
   // Global date range (applies to dashboard/product/material; batch unchanged)
   const [dateFrom, setDateFrom] = useState<string>(firstDayOfMonth());
@@ -70,6 +79,20 @@ export const AnalyticsView: React.FC = () => {
 
   // Phase 3B
   const [materialLotFilter, setMaterialLotFilter] = useState<string>("");
+  // Deep-link support: if App requests a batch to open, navigate to batch page and load it.
+  useEffect(() => {
+    const bn = (initialBatchNo ?? "").trim();
+    if (!bn) return;
+
+    // Keep behaviour consistent with SearchModal → batch click.
+    setMaterialLotFilter("");
+    setPage({ kind: "batch", batchNo: bn });
+
+    // Clear so it doesn't re-trigger on re-render.
+    onClearInitialBatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialBatchNo]);
+
   const [materialLots, setMaterialLots] = useState<MaterialLotRow[]>([]);
   const [materialTrace, setMaterialTrace] = useState<MaterialTraceRow[]>([]);
 

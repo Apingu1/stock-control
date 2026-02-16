@@ -236,7 +236,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           <div>
             <div className="card-title">Goods Receipts</div>
             <div className="card-subtitle">
-              Log and review incoming goods. The Goods Receipt Date is the actual receipt date from the GRN, not just the record creation time.
+              Log and review incoming goods.
             </div>
           </div>
 
