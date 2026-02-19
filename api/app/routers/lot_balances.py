@@ -17,6 +17,7 @@ from ..models import (
     Material,
     User,
     ExpiryThresholdSetting,
+    QuarantineEvent,  # ✅ used for structured logging of quarantine activity
 )
 from ..security import require_permission  # ✅ Phase B: permission guard (server enforced)
 
@@ -49,6 +50,7 @@ STATUS_ALIASES = {
 QTY_Q = Decimal("0.000001")          # 6dp
 UNIT_PRICE_Q = Decimal("0.000001")   # 6dp (safe default; matches typical unit price precision)
 MONEY_Q = Decimal("0.01")            # 2dp (currency)
+
 
 def _to_decimal(value: Any) -> Optional[Decimal]:
     if value is None:
@@ -196,6 +198,22 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
                     )
                 )
 
+                # ✅ NEW: structured quarantine log row (auto-quarantine merge)
+                db.add(
+                    QuarantineEvent(
+                        event_type="STATUS_CHANGE",
+                        material_lot_id=lot.id,
+                        dest_material_lot_id=dest_lot.id,
+                        qty=bal,
+                        uom_code=uom_code,
+                        from_status="AVAILABLE",
+                        to_status="QUARANTINE",
+                        reason=reason_with_qty,
+                        created_by=AUTO_QUARANTINE_CHANGED_BY,
+                        source="RECORDED",
+                    )
+                )
+
                 db.commit()
             else:
                 db.add(
@@ -207,6 +225,23 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
                         changed_by=AUTO_QUARANTINE_CHANGED_BY,
                     )
                 )
+
+                # ✅ NEW: structured quarantine log row (auto-quarantine whole-lot)
+                db.add(
+                    QuarantineEvent(
+                        event_type="STATUS_CHANGE",
+                        material_lot_id=lot.id,
+                        dest_material_lot_id=None,
+                        qty=bal,
+                        uom_code=uom_code,
+                        from_status="AVAILABLE",
+                        to_status="QUARANTINE",
+                        reason=reason_with_qty,
+                        created_by=AUTO_QUARANTINE_CHANGED_BY,
+                        source="RECORDED",
+                    )
+                )
+
                 lot.status = "QUARANTINE"
                 db.commit()
 
@@ -447,6 +482,23 @@ def change_lot_status(
                 )
             )
 
+            # ✅ NEW: structured quarantine log only when QUARANTINE is involved
+            if old_status == "QUARANTINE" or new_status == "QUARANTINE":
+                db.add(
+                    QuarantineEvent(
+                        event_type="STATUS_CHANGE",
+                        material_lot_id=lot.id,
+                        dest_material_lot_id=dest_lot.id,
+                        qty=move_qty,
+                        uom_code=uom_code,
+                        from_status=old_status,
+                        to_status=new_status,
+                        reason=base_reason,
+                        created_by=changed_by,
+                        source="RECORDED",
+                    )
+                )
+
             # ✅ CRITICAL:
             # Do NOT set lot.status=new_status when dest exists (unique constraint).
             # We rely on STATUS_MOVE txns to drain source to 0.
@@ -464,6 +516,24 @@ def change_lot_status(
                         changed_by=changed_by,
                     )
                 )
+
+                # ✅ NEW: structured quarantine log only when QUARANTINE is involved
+                if old_status == "QUARANTINE" or new_status == "QUARANTINE":
+                    db.add(
+                        QuarantineEvent(
+                            event_type="STATUS_CHANGE",
+                            material_lot_id=lot.id,
+                            dest_material_lot_id=None,
+                            qty=move_qty,
+                            uom_code=uom_code,
+                            from_status=old_status,
+                            to_status=new_status,
+                            reason=base_reason,
+                            created_by=changed_by,
+                            source="RECORDED",
+                        )
+                    )
+
                 lot.status = new_status
                 db.commit()
             else:
@@ -507,6 +577,23 @@ def change_lot_status(
                         changed_by=changed_by,
                     )
                 )
+
+                # ✅ NEW: structured quarantine log only when QUARANTINE is involved
+                if old_status == "QUARANTINE" or new_status == "QUARANTINE":
+                    db.add(
+                        QuarantineEvent(
+                            event_type="STATUS_CHANGE",
+                            material_lot_id=lot.id,
+                            dest_material_lot_id=new_lot.id,
+                            qty=move_qty,
+                            uom_code=uom_code,
+                            from_status=old_status,
+                            to_status=new_status,
+                            reason=base_reason,
+                            created_by=changed_by,
+                            source="RECORDED",
+                        )
+                    )
 
                 db.commit()
 

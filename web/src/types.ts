@@ -8,6 +8,7 @@ export type ViewMode =
   | "lots"
   | "alerts" // ✅ Phase D4: Low Stock & Expiry page
   | "analytics"
+  | "quarantine"
   | "admin"
   | "admin-settings"
   | "audit";
@@ -187,4 +188,33 @@ export type DashboardSummary = {
   batches_manufactured_today: number;
   receipts_today: number;
   total_material_value: number;
+};
+
+export type QuarantinePolicy = {
+  allow_issue_from_quarantine: boolean;
+  updated_at?: string | null;
+  updated_by?: string | null;
+};
+
+export type QuarantineLogRow = {
+  id: string;
+  event_at: string;
+  event_type: string;
+
+  material_code: string;
+  material_name?: string | null;
+  lot_number: string;
+
+  qty: number;
+  uom_code?: string | null;
+
+  from_status?: string | null;
+  to_status?: string | null;
+
+  reason?: string | null;
+  created_by?: string | null;
+
+  source_material_lot_id?: number | null;
+  dest_material_lot_id?: number | null;
+  source?: string | null;
 };

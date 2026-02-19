@@ -8,7 +8,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Material, MaterialLot, StockTransaction, User, StockTransactionEdit
+from ..models import (
+    Material,
+    MaterialLot,
+    StockTransaction,
+    User,
+    StockTransactionEdit,
+    QuarantineEvent,  # ✅ Phase Q1: ledger rows for DESTRUCTION
+)
 from ..schemas import IssueCreate, IssueOut, IssueUpdate
 from ..security import require_permission
 
@@ -209,6 +216,26 @@ def create_issue(
     )
 
     db.add(txn)
+
+    # --- Phase Q1: Quarantine ledger (destruction issues) -----------------
+    # We DO NOT change stock logic. This ONLY records a ledger row when the
+    # consumption_type is DESTRUCTION so the quarantine log can show it as RECORDED.
+    if (payload.consumption_type or "USAGE") == "DESTRUCTION":
+        db.add(
+            QuarantineEvent(
+                event_type="DESTRUCTION",
+                material_lot_id=lot.id,
+                dest_material_lot_id=None,
+                qty=payload_qty,
+                uom_code=payload.uom_code,
+                from_status=lot.status,
+                to_status=None,
+                reason=(payload.comment or "DESTRUCTION issue"),
+                created_by=created_by,
+                source="RECORDED",
+            )
+        )
+
     db.commit()
     db.refresh(txn)
     db.refresh(lot)

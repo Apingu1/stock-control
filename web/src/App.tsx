@@ -20,6 +20,8 @@ import AnalyticsView from "./components/analytics/AnalyticsView";
 import AuditTrailView from "./components/audit/AuditTrailView";
 import LowStockExpiryView from "./components/alerts/LowStockExpiryView";
 
+import QuarantineView from "./components/quarantine/QuarantineView";
+
 import NewReceiptModal from "./components/modals/NewReceiptModal";
 import IssueModal from "./components/modals/IssueModal";
 import MaterialModal from "./components/modals/MaterialModal";
@@ -156,6 +158,8 @@ const App: React.FC = () => {
         return { tag: "Workspace", title: "Consumption", subtitle: signed };
       case "lots":
         return { tag: "Workspace", title: "Live Lots", subtitle: signed };
+      case "quarantine":
+        return { tag: "Risk & Quality", title: "Quarantine", subtitle: signed };
       case "alerts":
         return { tag: "Risk & Quality", title: "Low Stock & Expiry", subtitle: signed };
       case "analytics":
@@ -255,6 +259,10 @@ const App: React.FC = () => {
 
         {view === "alerts" && (
           <LowStockExpiryView materials={stock.materials} lotBalances={stock.lotBalances} />
+        )}
+
+        {view === "quarantine" && (
+          <QuarantineView isAdmin={isAdmin} hasPerm={hasPerm} />
         )}
 
         {view === "lots" && (

@@ -399,6 +399,8 @@ class MyPermissionsOut(ApiBaseModel):
 # --- Audit feed (unified view) ----------------------------------------------
 
 class AuditEventOut(ApiBaseModel):
+    # NOTE: audit router returns these keys from SQL:
+    # event_type, event_at, actor_username, target_type, target_ref, reason, before_json, after_json
     event_type: str
     event_at: datetime
     actor_username: Optional[str] = None
@@ -458,3 +460,55 @@ class AlertActionOut(AlertActionBase):
     class Config:
         from_attributes = True
         json_encoders = {Decimal: str}
+
+
+# ---------------------------------------------------------------------------
+# QUARANTINE LEDGER (V29+)
+# Additive only: does not change core stock logic, just enables log/policy I/O.
+# ---------------------------------------------------------------------------
+
+class QuarantinePolicyOut(ApiBaseModel):
+    allow_issue_from_quarantine: bool
+    updated_at: datetime
+    updated_by: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        json_encoders = {Decimal: str}
+
+
+class QuarantinePolicyUpdate(ApiBaseModel):
+    allow_issue_from_quarantine: bool
+
+
+class QuarantineLogRow(ApiBaseModel):
+    id: str
+    event_at: datetime
+    event_type: str  # STATUS_CHANGE / DESTRUCTION
+
+    material_code: str
+    material_name: Optional[str] = None
+    lot_number: str
+
+    qty: Dec6
+    uom_code: str
+
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+
+    reason: Optional[str] = None
+    created_by: str
+
+    # For traceability across splits/merges
+    source_material_lot_id: Optional[int] = None
+    dest_material_lot_id: Optional[int] = None
+
+    source: str = "RECORDED"
+
+    class Config:
+        from_attributes = True
+        json_encoders = {Decimal: str}
+
+
+class QuarantineLogOut(ApiBaseModel):
+    rows: List[QuarantineLogRow]

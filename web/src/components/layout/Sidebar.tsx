@@ -150,11 +150,16 @@ const Sidebar: React.FC<Props> = ({
         {/* ✅ Removed placeholder Expiry Watchlist */}
 
         <li className="nav-item">
-          <a href="#" className="nav-link">
+          <button
+            type="button"
+            className={"nav-link as-button " + (view === "quarantine" ? "active" : "")}
+            onClick={() => setView("quarantine")}
+            disabled={!me}
+            title={!me ? "Please sign in" : ""}
+          >
             <span className="icon">📦</span>
             Quarantine
-            <span className="badge">4</span>
-          </a>
+          </button>
         </li>
 
         <li className="nav-item">

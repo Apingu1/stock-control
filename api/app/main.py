@@ -27,6 +27,7 @@ from .routers import analytics  # noqa: E402
 from .routers import auth, admin  # noqa: E402
 from .routers import audit
 from .routers import alerts
+from .routers import quarantine  # ✅ ADD
 
 app.include_router(materials.router)
 app.include_router(receipts.router)
@@ -42,6 +43,7 @@ app.include_router(admin.router)
 app.include_router(audit.router)
 
 app.include_router(alerts.router)
+app.include_router(quarantine.router)  # ✅ ADD
 
 @app.get("/health")
 def health():

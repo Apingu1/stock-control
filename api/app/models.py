@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, Any, Dict, List
 import json
 
 from sqlalchemy import (
@@ -578,3 +578,49 @@ class AlertAction(Base):
         onupdate=func.now(),
     )
     updated_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+# --- Phase Q1: Quarantine policy + quarantine event log ----------------------
+
+class QuarantinePolicySetting(Base):
+    __tablename__ = "quarantine_policy_settings"
+
+    # singleton row (id=1)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    allow_issue_from_quarantine: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+
+class QuarantineEvent(Base):
+    __tablename__ = "quarantine_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # STATUS_CHANGE | DESTRUCTION
+    event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    material_lot_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("material_lots.id"), nullable=False
+    )
+    dest_material_lot_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("material_lots.id"), nullable=True
+    )
+
+    qty: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    uom_code: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+
+    from_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # RECORDED (written by endpoints) | DERIVED (reserved for future backfills)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="RECORDED")
