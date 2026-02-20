@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import re
+import csv
+import io
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -21,6 +24,7 @@ from ..models import (
 )
 from ..schemas import QuarantineLogRow, QuarantinePolicyOut, QuarantinePolicyUpdate
 from ..security import require_admin_access, require_permission
+from ..utils.quarantine_pdf import build_quarantine_log_pdf
 
 router = APIRouter(prefix="/quarantine", tags=["quarantine"])
 
@@ -252,3 +256,108 @@ def quarantine_log(
     # sort merged list (recorded + derived)
     out.sort(key=lambda r: r.event_at, reverse=True)
     return out[:limit]
+
+
+# ---------------------------------------------------------------------------
+# Exports (CSV + PDF) - additive
+# ---------------------------------------------------------------------------
+
+def _csv_cell(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, datetime):
+        return v.isoformat()
+    return str(v)
+
+
+@router.get("/log.csv")
+def quarantine_log_csv(
+    limit: int = Query(5000, ge=50, le=20000),
+    event_type: Optional[str] = Query(None, description="STATUS_CHANGE | DESTRUCTION"),
+    q: Optional[str] = Query(None, description="Search filter (material/lot/user/reason)"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("lots.status_change")),
+):
+    # IMPORTANT: reuse existing logic exactly, so export matches UI
+    rows = quarantine_log(limit=limit, event_type=event_type, q=q, db=db, _=user)
+
+    def iter_csv():
+        buf = io.StringIO()
+        w = csv.writer(buf)
+
+        w.writerow(
+            [
+                "event_at",
+                "event_type",
+                "material_code",
+                "material_name",
+                "lot_number",
+                "qty",
+                "uom_code",
+                "from_status",
+                "to_status",
+                "reason",
+                "created_by",
+                "source_material_lot_id",
+                "dest_material_lot_id",
+            ]
+        )
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate(0)
+
+        for r in rows:
+            w.writerow(
+                [
+                    _csv_cell(r.event_at),
+                    _csv_cell(r.event_type),
+                    _csv_cell(r.material_code),
+                    _csv_cell(r.material_name),
+                    _csv_cell(r.lot_number),
+                    _csv_cell(r.qty),
+                    _csv_cell(r.uom_code),
+                    _csv_cell(r.from_status),
+                    _csv_cell(r.to_status),
+                    _csv_cell(r.reason),
+                    _csv_cell(r.created_by),
+                    _csv_cell(r.source_material_lot_id),
+                    _csv_cell(r.dest_material_lot_id),
+                ]
+            )
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
+
+    headers = {"Content-Disposition": "attachment; filename=quarantine_log.csv"}
+    return StreamingResponse(iter_csv(), media_type="text/csv; charset=utf-8", headers=headers)
+
+
+@router.get("/log.pdf")
+def quarantine_log_pdf(
+    limit: int = Query(2000, ge=50, le=5000),
+    event_type: Optional[str] = Query(None, description="STATUS_CHANGE | DESTRUCTION"),
+    q: Optional[str] = Query(None, description="Search filter (material/lot/user/reason)"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("lots.status_change")),
+):
+    # IMPORTANT: reuse existing logic exactly, so export matches UI
+    rows = quarantine_log(limit=limit, event_type=event_type, q=q, db=db, _=user)
+
+    filters_lines: List[str] = []
+    if event_type:
+        filters_lines.append(f"Event type: {event_type}")
+    if q:
+        filters_lines.append(f"Search: {q}")
+    filters_lines.append(f"Limit: {limit}")
+
+    pdf_bytes = build_quarantine_log_pdf(
+        system_name="Stock Control System",
+        exported_by=user.username,
+        exported_by_role=getattr(user, "role", "—") or "—",
+        exported_at_utc=datetime.utcnow().isoformat() + "Z",
+        filters_lines=filters_lines,
+        rows=rows,
+    )
+
+    headers = {"Content-Disposition": "attachment; filename=quarantine_log.pdf"}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

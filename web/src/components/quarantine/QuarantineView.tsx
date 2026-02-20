@@ -64,6 +64,18 @@ function parseQty(v: number | string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// ADDITIVE: download helper for CSV/PDF
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default function QuarantineView(props: { isAdmin: boolean; hasPerm: (k: string) => boolean }) {
   const { isAdmin, hasPerm } = props;
 
@@ -372,22 +384,31 @@ function LogTab(props: { canView: boolean }) {
 
   const [rows, setRows] = useState<QuarantineLogRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // ADDITIVE: export UI state
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<"ALL" | "STATUS_CHANGE" | "DESTRUCTION">("ALL");
   const [limit, setLimit] = useState(400);
 
+  function buildParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    if (typeFilter !== "ALL") params.set("event_type", typeFilter);
+    if (q.trim()) params.set("q", q.trim());
+    return params;
+  }
+
   async function load() {
     if (!canView) return;
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      params.set("limit", String(limit));
-      if (typeFilter !== "ALL") params.set("event_type", typeFilter);
-      if (q.trim()) params.set("q", q.trim());
-
+      const params = buildParams();
       const res = await apiFetch(`/quarantine/log?${params.toString()}`);
       const data = (await res.json()) as QuarantineLogRow[];
       setRows(Array.isArray(data) ? data : []);
@@ -395,6 +416,42 @@ function LogTab(props: { canView: boolean }) {
       setError(e?.message || "Failed to load quarantine log");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // ADDITIVE: export CSV
+  async function exportCsv() {
+    setExportingCsv(true);
+    setError(null);
+    try {
+      const params = buildParams();
+      const res = await apiFetch(`/quarantine/log.csv?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, `quarantine_log_${stamp}.csv`);
+    } catch (e: any) {
+      setError(e?.message || "Failed to export CSV");
+    } finally {
+      setExportingCsv(false);
+    }
+  }
+
+  // ADDITIVE: export PDF
+  async function exportPdf() {
+    setExportingPdf(true);
+    setError(null);
+    try {
+      const params = buildParams();
+      const res = await apiFetch(`/quarantine/log.pdf?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, `quarantine_log_${stamp}.pdf`);
+    } catch (e: any) {
+      setError(e?.message || "Failed to export PDF");
+    } finally {
+      setExportingPdf(false);
     }
   }
 
@@ -453,9 +510,32 @@ function LogTab(props: { canView: boolean }) {
           {loading ? "Loading…" : "Refresh"}
         </button>
 
-        <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
-          Showing {filtered.length} events
-        </span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Showing {filtered.length} events
+          </span>
+
+          {/* ADDITIVE: export buttons */}
+          <button
+            className="btn btn-ghost"
+            type="button"
+            onClick={() => void exportCsv()}
+            disabled={loading || exportingCsv}
+            title="Export filtered log as CSV"
+          >
+            {exportingCsv ? "Exporting…" : "Export CSV"}
+          </button>
+
+          <button
+            className="btn btn-ghost"
+            type="button"
+            onClick={() => void exportPdf()}
+            disabled={loading || exportingPdf}
+            title="Export filtered log as printable PDF"
+          >
+            {exportingPdf ? "Exporting…" : "Export PDF"}
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-row">{error}</div>}
@@ -510,7 +590,6 @@ function LogTab(props: { canView: boolean }) {
                   <td style={{ fontSize: 12 }}>{fromTo}</td>
                   <td style={{ fontSize: 12 }}>{r.reason || "—"}</td>
                   <td style={{ fontSize: 12 }}>{r.created_by || "—"}</td>
-                  {/* Src cell removed */}
                 </tr>
               );
             })}
