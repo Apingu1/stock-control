@@ -32,6 +32,10 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:-change_me}
+      BACKUP_DIR: ${BACKUP_DIR:-/backups}
+    volumes:
+      # ADDITIVE: host backups folder -> container backups folder
+      - ./../backups:/backups
     ports:
       - "8000:8000"
     healthcheck:

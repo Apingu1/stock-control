@@ -8,13 +8,18 @@ docker compose -f infra/docker-compose.yml down -v
 chmod +x scripts/rebuild_db.sh
 
 
-3) RUN FRONT END
+3) API docker logs command
+
+docker logs --tail 200 infra-api-1
+
+
+
+4) RUN FRONT END
 
 cd /workspaces/stock-control/web
 
 # start dev server and bind to all interfaces (better for Codespaces)
 npm run dev -- --host 0.0.0.0 --port 5173
-
 
 cd /workspaces/stock-control/web
 npm run dev

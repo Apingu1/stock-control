@@ -178,3 +178,20 @@ export async function pruneAlertActions(active_keys: string[]) {
   });
   return (await res.json()) as { ok: boolean; deleted: number };
 }
+
+// --- Admin DB Tools ----------------------------------------------------------
+
+export async function fetchDbSystemInfo() {
+  const res = await apiFetch("/admin/db-tools/system-info");
+  return await res.json();
+}
+
+export async function listDbBackups() {
+  const res = await apiFetch("/admin/db-tools/backups");
+  return await res.json();
+}
+
+export async function createDbBackupNow() {
+  const res = await apiFetch("/admin/db-tools/backup", { method: "POST" });
+  return await res.json();
+}

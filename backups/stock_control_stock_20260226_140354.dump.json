@@ -1,0 +1,18 @@
+{
+  "filename": "stock_control_stock_20260226_140354.dump",
+  "created_at_utc": "2026-02-26T14:03:54+00:00",
+  "created_by": "admin",
+  "db": {
+    "host": "db",
+    "port": "5432",
+    "name": "stock",
+    "user": "stock"
+  },
+  "app_version": "\u2014",
+  "schema_version": "\u2014",
+  "backup_dir_container": "/backups",
+  "backup_dir_label": "./backups (repo folder)",
+  "result": "SUCCESS",
+  "size_bytes": 78869,
+  "completed_at_utc": "2026-02-26T14:03:54+00:00"
+}

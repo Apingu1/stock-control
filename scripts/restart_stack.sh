@@ -2,41 +2,59 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_FILE="$ROOT_DIR/infra/docker-compose.yml"
+ENV_FILE="$ROOT_DIR/.env"
+
+# Always call compose the same way so env vars are always loaded
+compose() {
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+}
 
 echo "🔄 Restarting stack (NO volume deletion)…"
 
 # Stop containers but keep all data and volumes intact
-docker compose -f "$ROOT_DIR/infra/docker-compose.yml" down
+compose down
 
 echo "🛠️  Rebuilding API image (no cache)…"
-docker compose -f "$ROOT_DIR/infra/docker-compose.yml" build --no-cache api
+compose build --no-cache api
 
 echo "🚀 Starting stack…"
-docker compose --env-file "$ROOT_DIR/.env" \
-  -f "$ROOT_DIR/infra/docker-compose.yml" up -d --force-recreate
+compose up -d --force-recreate
 
 echo "⏳ Waiting for containers to be healthy…"
-for i in {1..40}; do
-  STATE_API=$(docker ps --filter "name=infra-api-1" --format "{{.Status}}" || true)
-  STATE_DB=$(docker ps --filter "name=infra-db-1"  --format "{{.Status}}" || true)
+for i in {1..60}; do
+  # Use compose ps (so we don't hardcode container names)
+  API_HEALTH="$(compose ps api --format '{{.Health}}' 2>/dev/null || true)"
+  DB_HEALTH="$(compose ps db  --format '{{.Health}}' 2>/dev/null || true)"
 
-  if [[ "$STATE_API" == *"(healthy)"* && "$STATE_DB" == *"(healthy)"* ]]; then
+  if [[ "$API_HEALTH" == "healthy" && "$DB_HEALTH" == "healthy" ]]; then
     echo "✅ Containers healthy."
     break
   fi
 
-  if [[ $i -eq 40 ]]; then
+  if [[ $i -eq 60 ]]; then
     echo "❌ Timed out waiting for healthy containers."
-    docker compose -f "$ROOT_DIR/infra/docker-compose.yml" ps
+    compose ps
     exit 1
   fi
+
   sleep 1
 done
 
 echo "🩺 Health checks:"
-curl -sS http://localhost:8000/health || true
+
+# Backend direct (container port)
+curl -fsS http://localhost:8000/health || true
 echo
-curl -sS http://localhost:8080/health || true
-echo
+
+# Nginx proxied route — retry because nginx can reset briefly during restart
+for i in {1..10}; do
+  if curl -fsS http://localhost:8080/api/health >/dev/null 2>&1; then
+    curl -fsS http://localhost:8080/api/health || true
+    echo
+    break
+  fi
+  sleep 1
+done
 
 echo "✨ Done."

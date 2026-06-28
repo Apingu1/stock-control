@@ -29,28 +29,26 @@ CREATE TABLE IF NOT EXISTS permissions (
 
 -- Base permissions you listed
 INSERT INTO permissions (key, description) VALUES
-  ('materials.view',  'View materials'),
-  ('materials.create','Create materials'),
-  ('materials.edit',  'Edit materials'),
-  ('materials.delete','Delete materials'),
+  ('materials.view',        'View materials'),
+  ('materials.create',      'Create materials'),
+  ('materials.edit',        'Edit materials'),
+  ('materials.delete',      'Delete materials'),
 
-  ('receipts.view',   'View goods receipts'),
-  ('receipts.create', 'Create goods receipts'),
-  ('receipts.edit',   'Edit goods receipts'),
-  ('receipts.delete', 'Delete goods receipts'),
+  ('receipts.view',         'View goods receipts'),
+  ('receipts.create',       'Create goods receipts'),
+  ('receipts.edit',         'Edit goods receipts'),
+  ('receipts.delete',       'Delete goods receipts'),
 
-  ('issues.view',     'View consumption (issues)'),
-  ('issues.create',   'Create consumption (issues)'),
-  ('issues.edit',     'Edit consumption (issues)'),
-  ('issues.delete',   'Delete consumption (issues)'),
+  ('issues.view',           'View consumption (issues)'),
+  ('issues.create',         'Create consumption (issues)'),
+  ('issues.edit',           'Edit consumption (issues)'),
+  ('issues.delete',         'Delete consumption (issues)'),
 
-  ('lots.view',       'View live lots'),
-  ('lots.status_change','Change lot status'),
+  ('lots.view',             'View live lots'),
+  ('lots.status_change',    'Change lot status'),
 
-  ('admin.full',      'Full access to Users & Roles admin')
-
-  ('analytics.view','View analytics dashboards and drilldowns'),
-
+  ('admin.full',            'Full access to Users & Roles admin'),
+  ('analytics.view',        'View analytics dashboards and drilldowns')
 ON CONFLICT (key) DO NOTHING;
 
 -- 3) Role ↔ Permission mapping
@@ -123,8 +121,6 @@ BEGIN
     FROM pg_constraint
     WHERE conname = 'fk_users_role_roles'
   ) THEN
-    -- Ensure the column type is compatible (TEXT recommended)
-    -- If your users.role is already TEXT/VARCHAR, this is fine.
     ALTER TABLE users
       ADD CONSTRAINT fk_users_role_roles
       FOREIGN KEY (role) REFERENCES roles(name);
