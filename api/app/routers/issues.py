@@ -114,8 +114,7 @@ def _enforce_quarantine_issue_policy(
         status_code=400,
         detail=(
             "Issuing from QUARANTINE lots is blocked by quarantine policy. "
-            f"Material {material.material_code}, lot {lot.lot_number} is {blocked_status}. "
-            "Change the lot status or ask an admin to set the policy to warn-only before posting an issue."
+            f"Material {material.material_code}, lot {lot.lot_number} is {blocked_status}."
         ),
     )
 
