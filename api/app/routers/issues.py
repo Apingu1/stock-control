@@ -15,6 +15,7 @@ from ..models import (
     User,
     StockTransactionEdit,
     QuarantineEvent,  # ✅ Phase Q1: ledger rows for DESTRUCTION
+    QuarantinePolicySetting,
 )
 from ..schemas import IssueCreate, IssueOut, IssueUpdate
 from ..security import require_permission
@@ -65,6 +66,58 @@ def _q_money(value: Decimal | None) -> Decimal | None:
     if value is None:
         return None
     return value.quantize(MONEY_Q, rounding=ROUND_HALF_UP)
+
+
+def _is_quarantine_status(status: str | None) -> bool:
+    return (status or "").strip().upper() == "QUARANTINE"
+
+
+def _allow_issue_from_quarantine(db: Session) -> bool:
+    """
+    Read the singleton quarantine policy.
+
+    Existing installations seed id=1 in db/init/121_quarantine_events_and_policy.sql.
+    If the row is missing for any legacy/dev dataset, preserve historical behaviour
+    by treating the policy as warn-only until an admin explicitly saves it.
+    """
+    row = db.query(QuarantinePolicySetting).filter(QuarantinePolicySetting.id == 1).one_or_none()
+    if row is None:
+        return True
+    return bool(row.allow_issue_from_quarantine)
+
+
+def _enforce_quarantine_issue_policy(
+    db: Session,
+    lot: MaterialLot,
+    material: Material,
+    *,
+    status_at_txn: str | None = None,
+) -> None:
+    """
+    Server-side control for the Quarantine policy toggle.
+
+    UI warnings are advisory only; this backend check is the authoritative GMP
+    control that prevents ISSUE/consumption posting from QUARANTINE stock when
+    the admin policy is set to Blocked.
+    """
+    current_status_is_quarantine = _is_quarantine_status(lot.status)
+    txn_status_is_quarantine = _is_quarantine_status(status_at_txn)
+
+    if not current_status_is_quarantine and not txn_status_is_quarantine:
+        return
+
+    if _allow_issue_from_quarantine(db):
+        return
+
+    blocked_status = "QUARANTINE" if current_status_is_quarantine else "QUARANTINE at transaction time"
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Issuing from QUARANTINE lots is blocked by quarantine policy. "
+            f"Material {material.material_code}, lot {lot.lot_number} is {blocked_status}. "
+            "Change the lot status or ask an admin to set the policy to warn-only before posting an issue."
+        ),
+    )
 
 
 def _lot_weighted_unit_price(db: Session, lot_id: int) -> Decimal | None:
@@ -169,6 +222,10 @@ def create_issue(
                     "Please select a specific segment (material_lot_id)."
                 ),
             )
+
+    # Authoritative quarantine control. The UI warning/checkbox must not be the
+    # only protection, because requests can still be posted directly to /issues/.
+    _enforce_quarantine_issue_policy(db, lot, material)
 
     # Current balance as Decimal
     current_balance = (
@@ -357,6 +414,12 @@ def update_issue(
     # remove old issue (adds stock back), then apply new qty
     old_qty = _to_decimal(txn.qty) or Decimal("0")
     old_qty = _q_qty(old_qty) or Decimal("0")
+
+    # If the edit increases the issued quantity, that increase is effectively a
+    # further issue from the same lot, so enforce quarantine policy before the
+    # stock balance check. Reductions/corrections remain possible for audit fixes.
+    if new_qty > old_qty:
+        _enforce_quarantine_issue_policy(db, lot, material, status_at_txn=txn.material_status_at_txn)
 
     balance_without_old = current_balance_dec + old_qty
     if new_qty > balance_without_old:
