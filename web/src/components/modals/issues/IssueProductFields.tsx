@@ -21,6 +21,13 @@ type Props = {
   productManufactureDate: string;
   setProductManufactureDate: (v: string) => void;
 
+  packSizeValue: string;
+  setPackSizeValue: (v: string) => void;
+  packSizeUom: string;
+  setPackSizeUom: (v: string) => void;
+  packQuantity: string;
+  setPackQuantity: (v: string) => void;
+
   consumptionType: ConsumptionTypeCode;
 
   comment: string;
@@ -45,6 +52,12 @@ const IssueProductFields: React.FC<Props> = ({
   setProductBatchNo,
   productManufactureDate,
   setProductManufactureDate,
+  packSizeValue,
+  setPackSizeValue,
+  packSizeUom,
+  setPackSizeUom,
+  packQuantity,
+  setPackQuantity,
   consumptionType,
   comment,
   setComment,
@@ -78,7 +91,9 @@ const IssueProductFields: React.FC<Props> = ({
       {showBatchFields && (
         <>
           <div className="form-group">
-            <label className="label">ES product code</label>
+            <label className="label">
+              ES product code {isBatchRequired ? "(required)" : "(optional)"}
+            </label>
             <input
               className="input"
               value={esProductCode}
@@ -100,12 +115,52 @@ const IssueProductFields: React.FC<Props> = ({
           </div>
 
           <div className="form-group">
-            <label className="label">Product manufacture date</label>
+            <label className="label">
+              Product manufacture date {isBatchRequired ? "(required)" : "(optional)"}
+            </label>
             <input
               className="input"
               type="date"
               value={productManufactureDate}
               onChange={(e) => setProductManufactureDate(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">
+              Pack size {isBatchRequired ? "(required)" : "(optional)"}
+            </label>
+            <input
+              className="input"
+              inputMode="decimal"
+              value={packSizeValue}
+              onChange={(e) => setPackSizeValue(e.target.value)}
+              placeholder="e.g. 100"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">
+              Pack size unit {isBatchRequired ? "(required)" : "(optional)"}
+            </label>
+            <input
+              className="input"
+              value={packSizeUom}
+              onChange={(e) => setPackSizeUom(e.target.value)}
+              placeholder="e.g. mL, tablets, capsules"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">
+              Pack quantity {isBatchRequired ? "(required)" : "(optional)"}
+            </label>
+            <input
+              className="input"
+              inputMode="numeric"
+              value={packQuantity}
+              onChange={(e) => setPackQuantity(e.target.value)}
+              placeholder="e.g. 50"
             />
           </div>
         </>

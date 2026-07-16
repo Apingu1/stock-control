@@ -2,6 +2,7 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import List, Optional, Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -17,7 +18,7 @@ from ..models import (
     QuarantineEvent,  # ✅ Phase Q1: ledger rows for DESTRUCTION
     QuarantinePolicySetting,
 )
-from ..schemas import IssueCreate, IssueOut, IssueUpdate
+from ..schemas import IssueBatchCreate, IssueBatchOut, IssueCreate, IssueOut, IssueUpdate
 from ..security import require_permission
 
 router = APIRouter(prefix="/issues", tags=["issues"])
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/issues", tags=["issues"])
 QTY_Q = Decimal("0.000001")   # 6dp
 UNIT_Q = Decimal("0.0001")    # 4dp (keep existing UI logic)
 MONEY_Q = Decimal("0.01")     # 2dp
+VALID_CONSUMPTION_TYPES = {"USAGE", "WASTAGE", "DESTRUCTION", "R_AND_D"}
 
 
 def _to_decimal(value: Any) -> Optional[Decimal]:
@@ -70,6 +72,10 @@ def _q_money(value: Decimal | None) -> Decimal | None:
 
 def _is_quarantine_status(status: str | None) -> bool:
     return (status or "").strip().upper() == "QUARANTINE"
+
+
+def _is_rejected_status(status: str | None) -> bool:
+    return (status or "").strip().upper() == "REJECTED"
 
 
 def _allow_issue_from_quarantine(db: Session) -> bool:
@@ -116,6 +122,130 @@ def _enforce_quarantine_issue_policy(
             "Issuing from QUARANTINE lots is blocked by quarantine policy. "
             f"Material {material.material_code}, lot {lot.lot_number} is {blocked_status}."
         ),
+    )
+
+
+def _enforce_issue_status_policy(
+    db: Session,
+    lot: MaterialLot,
+    material: Material,
+    *,
+    status_at_txn: str | None = None,
+) -> None:
+    """Block rejected stock and apply the configured quarantine policy."""
+    if _is_rejected_status(lot.status) or _is_rejected_status(status_at_txn):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Issuing from REJECTED lots is not permitted. "
+                f"Material {material.material_code}, lot {lot.lot_number} is REJECTED."
+            ),
+        )
+
+    _enforce_quarantine_issue_policy(
+        db,
+        lot,
+        material,
+        status_at_txn=status_at_txn,
+    )
+
+
+def _clean_text(value: str | None) -> str | None:
+    cleaned = (value or "").strip()
+    return cleaned or None
+
+
+def _validate_consumption_header(
+    *,
+    consumption_type: str | None,
+    es_product_code: str | None,
+    product_batch_no: str | None,
+    product_manufacture_date: Any,
+    pack_size_value: Any,
+    pack_size_uom: str | None,
+    pack_quantity: int | None,
+    comment: str | None,
+) -> str:
+    """Validate fields shared by every row in one consumption submission."""
+    normalised_type = (consumption_type or "USAGE").strip().upper()
+    if normalised_type not in VALID_CONSUMPTION_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid consumption type")
+
+    pack_size = _to_decimal(pack_size_value)
+    if pack_size is not None and pack_size <= 0:
+        raise HTTPException(status_code=400, detail="Pack size must be greater than zero")
+    if pack_quantity is not None and pack_quantity <= 0:
+        raise HTTPException(status_code=400, detail="Pack quantity must be greater than zero")
+
+    if normalised_type == "USAGE":
+        missing: list[str] = []
+        if not _clean_text(es_product_code):
+            missing.append("ES product code")
+        if not _clean_text(product_batch_no):
+            missing.append("ES batch number")
+        if not product_manufacture_date:
+            missing.append("product manufacture date")
+        if pack_size is None:
+            missing.append("pack size")
+        if not _clean_text(pack_size_uom):
+            missing.append("pack size unit")
+        if pack_quantity is None:
+            missing.append("pack quantity")
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Usage requires: {', '.join(missing)}",
+            )
+
+    if normalised_type == "DESTRUCTION" and not _clean_text(comment):
+        raise HTTPException(
+            status_code=400,
+            detail="A comment explaining the destruction of stock is required",
+        )
+
+    # If optional R&D output data is started, require a complete size value/unit
+    # pair so reports never contain an ambiguous number.
+    if (pack_size is None) != (not bool(_clean_text(pack_size_uom))):
+        raise HTTPException(
+            status_code=400,
+            detail="Pack size value and pack size unit must be entered together",
+        )
+
+    return normalised_type
+
+
+def _issue_out(
+    txn: StockTransaction,
+    lot: MaterialLot,
+    material: Material,
+    *,
+    created_by_fallback: str = "—",
+) -> IssueOut:
+    return IssueOut(
+        id=txn.id,
+        material_code=material.material_code,
+        material_name=material.name,
+        lot_number=lot.lot_number,
+        expiry_date=lot.expiry_date,
+        qty=txn.qty,
+        uom_code=txn.uom_code,
+        unit_price=txn.unit_price,
+        total_value=txn.total_value,
+        es_product_code=txn.es_product_code,
+        product_batch_no=txn.product_batch_no,
+        manufacturer=lot.manufacturer or material.manufacturer,
+        supplier=lot.supplier or material.supplier,
+        product_manufacture_date=txn.product_manufacture_date,
+        consumption_type=txn.consumption_type or "USAGE",
+        target_ref=txn.target_ref,
+        created_at=txn.created_at,
+        created_by=txn.created_by or created_by_fallback,
+        comment=txn.comment,
+        material_status_at_txn=txn.material_status_at_txn,
+        consumption_group_id=txn.consumption_group_id,
+        pack_size_value=txn.pack_size_value,
+        pack_size_uom=txn.pack_size_uom,
+        pack_quantity=txn.pack_quantity,
     )
 
 
@@ -186,6 +316,7 @@ def create_issue(
                 MaterialLot.id == payload.material_lot_id,
                 MaterialLot.material_id == material.id,
             )
+            .with_for_update()
             .one_or_none()
         )
         if lot is None:
@@ -198,6 +329,7 @@ def create_issue(
                 MaterialLot.lot_number == payload.lot_number,
             )
             .order_by(MaterialLot.id.asc())
+            .with_for_update()
             .all()
         )
 
@@ -224,7 +356,7 @@ def create_issue(
 
     # Authoritative quarantine control. The UI warning/checkbox must not be the
     # only protection, because requests can still be posted directly to /issues/.
-    _enforce_quarantine_issue_policy(db, lot, material)
+    _enforce_issue_status_policy(db, lot, material)
 
     # Current balance as Decimal
     current_balance = (
@@ -297,30 +429,171 @@ def create_issue(
     db.refresh(lot)
     db.refresh(material)
 
-    manufacturer = lot.manufacturer or material.manufacturer
-    supplier = lot.supplier or material.supplier
+    return _issue_out(txn, lot, material, created_by_fallback=created_by)
 
-    return IssueOut(
-        id=txn.id,
-        material_code=material.material_code,
-        material_name=material.name,
-        lot_number=lot.lot_number,
-        expiry_date=lot.expiry_date,
-        qty=txn.qty,
-        uom_code=txn.uom_code,
-        unit_price=txn.unit_price,
-        total_value=txn.total_value,
-        es_product_code=txn.es_product_code,
-        product_batch_no=txn.product_batch_no,
-        manufacturer=manufacturer,
-        supplier=supplier,
-        product_manufacture_date=txn.product_manufacture_date,
-        consumption_type=txn.consumption_type or "USAGE",
-        target_ref=txn.target_ref,
-        created_at=txn.created_at,
-        created_by=txn.created_by or created_by,
-        comment=txn.comment,
-        material_status_at_txn=txn.material_status_at_txn,
+
+@router.post("/batch", response_model=IssueBatchOut, status_code=201)
+def create_issue_batch(
+    payload: IssueBatchCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("issues.create")),
+) -> IssueBatchOut:
+    """
+    Post all materials from one consumption modal atomically.
+
+    Every item is still stored as an individual ISSUE row. A shared UUID links
+    the rows for audit and batch-output corrections. Any validation failure
+    rolls back the complete submission.
+    """
+    consumption_type = _validate_consumption_header(
+        consumption_type=payload.consumption_type,
+        es_product_code=payload.es_product_code,
+        product_batch_no=payload.product_batch_no,
+        product_manufacture_date=payload.product_manufacture_date,
+        pack_size_value=payload.pack_size_value,
+        pack_size_uom=payload.pack_size_uom,
+        pack_quantity=payload.pack_quantity,
+        comment=payload.comment,
+    )
+
+    lot_ids = [item.material_lot_id for item in payload.items]
+    if len(lot_ids) != len(set(lot_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail="The same lot segment cannot be added more than once in one consumption",
+        )
+
+    consumption_group_id = str(uuid4())
+    created_at = datetime.utcnow()
+    created_transactions: list[tuple[StockTransaction, MaterialLot, Material]] = []
+
+    try:
+        # Sort by lot id before taking row locks. Consistent lock ordering avoids
+        # deadlocks when two operators submit overlapping multi-material batches.
+        indexed_items = sorted(
+            enumerate(payload.items, start=1),
+            key=lambda indexed: indexed[1].material_lot_id,
+        )
+
+        for line_number, item in indexed_items:
+            material = (
+                db.query(Material)
+                .filter(Material.material_code == item.material_code)
+                .one_or_none()
+            )
+            if material is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Material line {line_number}: material not found",
+                )
+
+            lot = (
+                db.query(MaterialLot)
+                .filter(
+                    MaterialLot.id == item.material_lot_id,
+                    MaterialLot.material_id == material.id,
+                )
+                .with_for_update()
+                .one_or_none()
+            )
+            if lot is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Material line {line_number}: lot segment not found",
+                )
+            if lot.lot_number != item.lot_number:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Material line {line_number}: lot number does not match the selected segment",
+                )
+
+            try:
+                _enforce_issue_status_policy(db, lot, material)
+            except HTTPException as exc:
+                raise HTTPException(
+                    status_code=exc.status_code,
+                    detail=f"Material line {line_number}: {exc.detail}",
+                ) from exc
+
+            issue_qty = _q_qty(_to_decimal(item.qty))
+            if issue_qty is None or issue_qty <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Material line {line_number}: quantity must be greater than zero",
+                )
+
+            current_balance = (
+                db.query(func.coalesce(func.sum(StockTransaction.qty * StockTransaction.direction), 0))
+                .filter(StockTransaction.material_lot_id == lot.id)
+                .scalar()
+            )
+            available_qty = _q_qty(_to_decimal(current_balance) or Decimal("0")) or Decimal("0")
+            if available_qty < issue_qty:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Material line {line_number}: insufficient stock in lot {lot.lot_number} "
+                        f"(available {available_qty}, requested {issue_qty})"
+                    ),
+                )
+
+            lot_unit_price = _lot_weighted_unit_price(db, lot.id)
+            total_value = _q_money(issue_qty * lot_unit_price) if lot_unit_price is not None else None
+
+            txn = StockTransaction(
+                material_lot_id=lot.id,
+                txn_type="ISSUE",
+                consumption_type=consumption_type,
+                qty=issue_qty,
+                uom_code=material.base_uom_code,
+                direction=-1,
+                unit_price=lot_unit_price,
+                total_value=total_value,
+                target_ref=payload.target_ref,
+                es_product_code=_clean_text(payload.es_product_code),
+                product_batch_no=_clean_text(payload.product_batch_no),
+                product_manufacture_date=payload.product_manufacture_date,
+                consumption_group_id=consumption_group_id,
+                pack_size_value=_q_qty(_to_decimal(payload.pack_size_value)),
+                pack_size_uom=_clean_text(payload.pack_size_uom),
+                pack_quantity=payload.pack_quantity,
+                comment=_clean_text(payload.comment),
+                material_status_at_txn=lot.status,
+                created_at=created_at,
+                created_by=user.username,
+            )
+            db.add(txn)
+            created_transactions.append((txn, lot, material))
+
+            if consumption_type == "DESTRUCTION":
+                db.add(
+                    QuarantineEvent(
+                        event_type="DESTRUCTION",
+                        material_lot_id=lot.id,
+                        dest_material_lot_id=None,
+                        qty=issue_qty,
+                        uom_code=material.base_uom_code,
+                        from_status=lot.status,
+                        to_status=None,
+                        reason=_clean_text(payload.comment) or "DESTRUCTION issue",
+                        created_by=user.username,
+                        source="RECORDED",
+                    )
+                )
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    results: list[IssueOut] = []
+    for txn, lot, material in created_transactions:
+        db.refresh(txn)
+        results.append(_issue_out(txn, lot, material, created_by_fallback=user.username))
+
+    return IssueBatchOut(
+        consumption_group_id=consumption_group_id,
+        issues=results,
     )
 
 
@@ -343,33 +616,7 @@ def list_issues(
     results: List[IssueOut] = []
 
     for txn, lot, material in rows:
-        manufacturer = lot.manufacturer or material.manufacturer
-        supplier = lot.supplier or material.supplier
-
-        results.append(
-            IssueOut(
-                id=txn.id,
-                material_code=material.material_code,
-                material_name=material.name,
-                lot_number=lot.lot_number,
-                expiry_date=lot.expiry_date,
-                qty=txn.qty,
-                uom_code=txn.uom_code,
-                unit_price=txn.unit_price,
-                total_value=txn.total_value,
-                es_product_code=txn.es_product_code,
-                product_batch_no=txn.product_batch_no,
-                manufacturer=manufacturer,
-                supplier=supplier,
-                product_manufacture_date=txn.product_manufacture_date,
-                consumption_type=txn.consumption_type or "USAGE",
-                target_ref=txn.target_ref,
-                created_at=txn.created_at,
-                created_by=txn.created_by or "—",
-                comment=txn.comment,
-                material_status_at_txn=txn.material_status_at_txn,
-            )
-        )
+        results.append(_issue_out(txn, lot, material))
 
     return results
 
@@ -385,14 +632,48 @@ def update_issue(
     if not reason:
         raise HTTPException(status_code=400, detail="edit_reason is required")
 
-    txn: StockTransaction | None = db.query(StockTransaction).filter(StockTransaction.id == issue_id).one_or_none()
+    txn: StockTransaction | None = (
+        db.query(StockTransaction)
+        .filter(StockTransaction.id == issue_id)
+        .one_or_none()
+    )
     if txn is None or txn.txn_type != "ISSUE":
         raise HTTPException(status_code=404, detail="Issue not found")
 
-    lot = db.query(MaterialLot).filter(MaterialLot.id == txn.material_lot_id).one()
+    grouped_transactions: list[StockTransaction]
+    if txn.consumption_group_id:
+        grouped_transactions = (
+            db.query(StockTransaction)
+            .filter(
+                StockTransaction.consumption_group_id == txn.consumption_group_id,
+                StockTransaction.txn_type == "ISSUE",
+            )
+            .order_by(StockTransaction.id.asc())
+            .with_for_update()
+            .all()
+        )
+        txn = next(grouped_txn for grouped_txn in grouped_transactions if grouped_txn.id == issue_id)
+    else:
+        txn = (
+            db.query(StockTransaction)
+            .filter(StockTransaction.id == issue_id)
+            .with_for_update()
+            .one()
+        )
+        grouped_transactions = [txn]
+
+    lot = (
+        db.query(MaterialLot)
+        .filter(MaterialLot.id == txn.material_lot_id)
+        .with_for_update()
+        .one()
+    )
     material = db.query(Material).filter(Material.id == lot.material_id).one()
 
-    before_json = StockTransactionEdit.snapshot_txn(txn)
+    before_snapshots = {
+        grouped_txn.id: StockTransactionEdit.snapshot_txn(grouped_txn)
+        for grouped_txn in grouped_transactions
+    }
 
     # New qty from payload
     new_qty = _to_decimal(getattr(payload, "qty", None))
@@ -418,7 +699,7 @@ def update_issue(
     # further issue from the same lot, so enforce quarantine policy before the
     # stock balance check. Reductions/corrections remain possible for audit fixes.
     if new_qty > old_qty:
-        _enforce_quarantine_issue_policy(db, lot, material, status_at_txn=txn.material_status_at_txn)
+        _enforce_issue_status_policy(db, lot, material, status_at_txn=txn.material_status_at_txn)
 
     balance_without_old = current_balance_dec + old_qty
     if new_qty > balance_without_old:
@@ -430,16 +711,46 @@ def update_issue(
             ),
         )
 
-    txn.qty = new_qty
-    txn.consumption_type = payload.consumption_type or "USAGE"
-    txn.target_ref = payload.target_ref
-    txn.product_batch_no = payload.product_batch_no
-    txn.product_manufacture_date = payload.product_manufacture_date
-    txn.comment = payload.comment
+    requested_type = (payload.consumption_type or "USAGE").strip().upper()
+    if requested_type not in VALID_CONSUMPTION_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid consumption type")
 
-    # ✅ FIX: allow editing ES product code (still audit-trailed)
-    if hasattr(payload, "es_product_code"):
-        txn.es_product_code = payload.es_product_code.strip() if payload.es_product_code else None
+    if txn.consumption_group_id and requested_type != (txn.consumption_type or "USAGE"):
+        raise HTTPException(
+            status_code=400,
+            detail="Consumption type is locked for grouped submissions",
+        )
+
+    if txn.consumption_group_id:
+        _validate_consumption_header(
+            consumption_type=requested_type,
+            es_product_code=payload.es_product_code,
+            product_batch_no=payload.product_batch_no,
+            product_manufacture_date=payload.product_manufacture_date,
+            pack_size_value=payload.pack_size_value,
+            pack_size_uom=payload.pack_size_uom,
+            pack_quantity=payload.pack_quantity,
+            comment=payload.comment,
+        )
+
+    txn.qty = new_qty
+    if payload.uom_code:
+        txn.uom_code = payload.uom_code
+
+    # For grouped submissions, batch/output corrections apply to every material
+    # row under one audit reason. Legacy single issues retain their current
+    # individual edit behaviour.
+    shared_targets = grouped_transactions if txn.consumption_group_id else [txn]
+    for shared_txn in shared_targets:
+        shared_txn.consumption_type = requested_type
+        shared_txn.target_ref = payload.target_ref
+        shared_txn.es_product_code = _clean_text(payload.es_product_code)
+        shared_txn.product_batch_no = _clean_text(payload.product_batch_no)
+        shared_txn.product_manufacture_date = payload.product_manufacture_date
+        shared_txn.comment = _clean_text(payload.comment)
+        shared_txn.pack_size_value = _q_qty(_to_decimal(payload.pack_size_value))
+        shared_txn.pack_size_uom = _clean_text(payload.pack_size_uom)
+        shared_txn.pack_quantity = payload.pack_quantity
 
     # Keep txn.material_status_at_txn unchanged (historical snapshot)
 
@@ -454,40 +765,21 @@ def update_issue(
     txn.unit_price = unit_price
     txn.total_value = _q_money(txn.qty * unit_price) if unit_price is not None else None
 
-    after_json = StockTransactionEdit.snapshot_txn(txn)
-
-    audit = StockTransactionEdit(
-        stock_transaction_id=txn.id,
-        edited_by=user.username,
-        edit_reason=reason,
-        before_json=before_json,
-        after_json=after_json,
-    )
-    db.add(audit)
+    for grouped_txn in grouped_transactions:
+        after_json = StockTransactionEdit.snapshot_txn(grouped_txn)
+        before_json = before_snapshots[grouped_txn.id]
+        if after_json == before_json:
+            continue
+        db.add(
+            StockTransactionEdit(
+                stock_transaction_id=grouped_txn.id,
+                edited_by=user.username,
+                edit_reason=reason,
+                before_json=before_json,
+                after_json=after_json,
+            )
+        )
     db.commit()
 
-    manufacturer = lot.manufacturer or material.manufacturer
-    supplier = lot.supplier or material.supplier
-
-    return IssueOut(
-        id=txn.id,
-        material_code=material.material_code,
-        material_name=material.name,
-        lot_number=lot.lot_number,
-        expiry_date=lot.expiry_date,
-        qty=txn.qty,
-        uom_code=txn.uom_code,
-        unit_price=txn.unit_price,
-        total_value=txn.total_value,
-        es_product_code=txn.es_product_code,
-        product_batch_no=txn.product_batch_no,
-        manufacturer=manufacturer,
-        supplier=supplier,
-        product_manufacture_date=txn.product_manufacture_date,
-        consumption_type=txn.consumption_type or "USAGE",
-        target_ref=txn.target_ref,
-        created_at=txn.created_at,
-        created_by=txn.created_by or "—",
-        comment=txn.comment,
-        material_status_at_txn=txn.material_status_at_txn,
-    )
+    db.refresh(txn)
+    return _issue_out(txn, lot, material)

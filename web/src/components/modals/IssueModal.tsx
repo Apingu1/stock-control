@@ -5,6 +5,7 @@ import { apiFetch } from "../../utils/api";
 import { useIssueForm } from "./issues/useIssueForm";
 import IssueTraceabilityFields from "./issues/IssueTraceabilityFields";
 import IssueProductFields from "./issues/IssueProductFields";
+import BatchIssueCreateModal from "./BatchIssueCreateModal";
 
 export default function IssueModal({
   open,
@@ -42,6 +43,18 @@ export default function IssueModal({
 
   if (!open) return null;
 
+  if (!form.isEdit) {
+    return (
+      <BatchIssueCreateModal
+        open={open}
+        onClose={onClose}
+        onIssuePosted={onIssuePosted}
+        lotBalances={lotBalances}
+        createdBy={createdBy}
+      />
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -61,6 +74,22 @@ export default function IssueModal({
     if (form.isBatchRequired && !form.productBatchNo.trim()) {
       setSubmitError("Please enter the ES batch number for Usage.");
       return;
+    }
+
+    if (initial?.consumption_group_id && form.isBatchRequired) {
+      if (!form.esProductCode.trim() || !form.productManufactureDate) {
+        setSubmitError("ES product code and manufacture date are required for grouped Usage.");
+        return;
+      }
+      if (
+        !(Number(form.packSizeValue) > 0) ||
+        !form.packSizeUom.trim() ||
+        !Number.isInteger(Number(form.packQuantity)) ||
+        Number(form.packQuantity) <= 0
+      ) {
+        setSubmitError("Valid pack size, unit and whole-number pack quantity are required.");
+        return;
+      }
     }
 
     if (form.consumptionType === "DESTRUCTION" && !form.comment.trim()) {
@@ -97,6 +126,12 @@ export default function IssueModal({
             form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
           product_manufacture_date:
             form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
+          pack_size_value:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.packSizeValue) || null : null,
+          pack_size_uom:
+            form.isBatchRequired || form.isBatchOptional ? form.packSizeUom.trim() || null : null,
+          pack_quantity:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.packQuantity) || null : null,
 
           consumption_type: form.consumptionType,
           created_by: createdBy,
@@ -121,6 +156,12 @@ export default function IssueModal({
             form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
           product_manufacture_date:
             form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
+          pack_size_value:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.packSizeValue) || null : null,
+          pack_size_uom:
+            form.isBatchRequired || form.isBatchOptional ? form.packSizeUom.trim() || null : null,
+          pack_quantity:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.packQuantity) || null : null,
 
           consumption_type: form.consumptionType,
           comment: form.comment || null,
@@ -157,9 +198,9 @@ export default function IssueModal({
           <div>
             <div className="modal-title">{form.isEdit ? "Edit Consumption" : "New Consumption"}</div>
             <div className="modal-subtitle">
-              {form.isEdit
-                ? "Edits are audit-trailed. Provide a reason for change."
-                : "Issue material from a specific lot with GMP-style traceability."}
+              {initial?.consumption_group_id
+                ? "Quantity applies to this material; batch-detail corrections apply to every linked material."
+                : "Edits are audit-trailed. Provide a reason for change."}
             </div>
           </div>
 
@@ -181,6 +222,7 @@ export default function IssueModal({
               isEdit={form.isEdit}
               consumptionType={form.consumptionType}
               setConsumptionType={form.setConsumptionType}
+              lockConsumptionType={Boolean(initial?.consumption_group_id)}
               canEditTraceabilityFields={form.canEditTraceabilityFields}
               materialSearch={form.materialSearch}
               setMaterialSearch={form.setMaterialSearch}
@@ -212,6 +254,12 @@ export default function IssueModal({
               setProductBatchNo={form.setProductBatchNo}
               productManufactureDate={form.productManufactureDate}
               setProductManufactureDate={form.setProductManufactureDate}
+              packSizeValue={form.packSizeValue}
+              setPackSizeValue={form.setPackSizeValue}
+              packSizeUom={form.packSizeUom}
+              setPackSizeUom={form.setPackSizeUom}
+              packQuantity={form.packQuantity}
+              setPackQuantity={form.setPackQuantity}
               consumptionType={form.consumptionType}
               comment={form.comment}
               setComment={form.setComment}

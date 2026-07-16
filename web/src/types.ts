@@ -93,6 +93,12 @@ export type Issue = {
   product_batch_no: string | null;
   product_manufacture_date: string | null;
 
+  // Shared fields for multi-material consumption submissions.
+  consumption_group_id?: string | null;
+  pack_size_value?: number | string | null;
+  pack_size_uom?: string | null;
+  pack_quantity?: number | null;
+
   manufacturer: string | null;
   supplier?: string | null;
 

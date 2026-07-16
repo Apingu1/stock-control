@@ -70,6 +70,23 @@ const formatUnitMoney = (v: unknown): string => {
   return `£${n.toFixed(4)}`;
 };
 
+const formatBatchOutput = (issue: Issue): string => {
+  const packSize = asNumber(issue.pack_size_value);
+  const packQty = asNumber(issue.pack_quantity);
+  const uom = issue.pack_size_uom?.trim();
+  if (packSize === null && packQty === null && !uom) return "—";
+
+  const sizeText =
+    packSize === null
+      ? "—"
+      : packSize.toLocaleString("en-GB", { maximumFractionDigits: 6 });
+  const qtyText =
+    packQty === null
+      ? "—"
+      : packQty.toLocaleString("en-GB", { maximumFractionDigits: 0 });
+  return `${qtyText} packs × ${sizeText}${uom ? ` ${uom}` : ""}`;
+};
+
 const exportToCsv = (
   filename: string,
   rows: (string | number | null | undefined)[][]
@@ -178,6 +195,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.manufacturer ?? "",
         i.es_product_code ?? "",
         i.product_batch_no ?? "",
+        i.consumption_group_id ?? "",
+        i.pack_size_value ?? "",
+        i.pack_size_uom ?? "",
+        i.pack_quantity ?? "",
         i.comment ?? "",
         i.consumption_type ?? "",
         i.material_status_at_txn ?? "",
@@ -221,6 +242,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Type",
       "ES Product Code",
       "ES Batch / Ref",
+      "Pack Size",
+      "Pack Size UOM",
+      "Pack Quantity",
+      "Consumption Group ID",
       "Material Code",
       "Material Name",
       "Lot No.",
@@ -248,6 +273,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         renderConsumptionType(i.consumption_type),
         esProduct,
         esRef,
+        isBatchRelevant ? i.pack_size_value ?? "—" : "N/A",
+        isBatchRelevant ? i.pack_size_uom ?? "—" : "N/A",
+        isBatchRelevant ? i.pack_quantity ?? "—" : "N/A",
+        i.consumption_group_id ?? "—",
         i.material_code,
         i.material_name,
         i.lot_number,
@@ -362,6 +391,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th>Type</th>
                   <th>ES Product</th>
                   <th>ES Batch / Ref</th>
+                  <th>Batch Output</th>
                   <th>Material Code</th>
                   <th>Material Name</th>
                   <th>Lot No.</th>
@@ -383,7 +413,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
               <tbody>
                 {filteredIssues.length === 0 && (
                   <tr>
-                    <td colSpan={showActions ? 17 : 16} className="empty-row">
+                    <td colSpan={showActions ? 18 : 17} className="empty-row">
                       No issues match your filters.
                     </td>
                   </tr>
@@ -403,6 +433,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td>{renderConsumptionType(i.consumption_type)}</td>
                       <td>{esProduct}</td>
                       <td>{esRef}</td>
+                      <td>{isBatchRelevant ? formatBatchOutput(i) : "N/A"}</td>
                       <td>{i.material_code}</td>
                       <td>{i.material_name}</td>
                       <td>{i.lot_number}</td>

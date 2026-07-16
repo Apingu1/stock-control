@@ -23,7 +23,7 @@ from ..models import (
     User,
 )
 from ..schemas import QuarantineLogRow, QuarantinePolicyOut, QuarantinePolicyUpdate
-from ..security import require_admin_access, require_permission
+from ..security import require_admin_access, require_any_permission, require_permission
 from ..utils.quarantine_pdf import build_quarantine_log_pdf
 
 router = APIRouter(prefix="/quarantine", tags=["quarantine"])
@@ -36,11 +36,11 @@ router = APIRouter(prefix="/quarantine", tags=["quarantine"])
 @router.get("/policy", response_model=QuarantinePolicyOut)
 def get_policy(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin_access),
+    user: User = Depends(require_any_permission("issues.create", "admin.full")),
 ) -> QuarantinePolicyOut:
     row = db.query(QuarantinePolicySetting).filter(QuarantinePolicySetting.id == 1).one_or_none()
     if row is None:
-        row = QuarantinePolicySetting(id=1, allow_issue_from_quarantine=True, updated_by=admin.username)
+        row = QuarantinePolicySetting(id=1, allow_issue_from_quarantine=True, updated_by=user.username)
         db.add(row)
         db.commit()
         db.refresh(row)

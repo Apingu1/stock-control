@@ -338,6 +338,14 @@ class StockTransaction(Base):
     product_batch_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     product_manufacture_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
+    # One operator submission can create several ISSUE rows. The shared group
+    # identifier keeps those rows traceable while preserving the existing flat
+    # stock transaction model used by balances and analytics.
+    consumption_group_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    pack_size_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
+    pack_size_uom: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    pack_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     comment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     material_status_at_txn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -404,6 +412,7 @@ class StockTransactionEdit(Base):
             "unit_price": str(txn.unit_price) if txn.unit_price is not None else None,
             "total_value": str(txn.total_value) if txn.total_value is not None else None,
             "target_ref": txn.target_ref,
+            "es_product_code": txn.es_product_code,
             "product_batch_no": txn.product_batch_no,
             "product_manufacture_date": (
                 txn.product_manufacture_date.isoformat()
@@ -414,6 +423,12 @@ class StockTransactionEdit(Base):
             "created_at": txn.created_at.isoformat() if txn.created_at else None,
             "created_by": txn.created_by,
             "material_status_at_txn": txn.material_status_at_txn,
+            "consumption_group_id": txn.consumption_group_id,
+            "pack_size_value": (
+                str(txn.pack_size_value) if txn.pack_size_value is not None else None
+            ),
+            "pack_size_uom": txn.pack_size_uom,
+            "pack_quantity": txn.pack_quantity,
         }
         return json.dumps(payload, sort_keys=True)
 
