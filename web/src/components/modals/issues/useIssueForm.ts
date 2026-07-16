@@ -25,6 +25,9 @@ export function useIssueForm(args: {
 
   const [productBatchNo, setProductBatchNo] = useState("");
   const [productManufactureDate, setProductManufactureDate] = useState("");
+  const [packSizeValue, setPackSizeValue] = useState("");
+  const [packSizeUom, setPackSizeUom] = useState("");
+  const [packQuantity, setPackQuantity] = useState("");
   const [comment, setComment] = useState("");
   const [manufacturer, setManufacturer] = useState("");
 
@@ -56,6 +59,17 @@ export function useIssueForm(args: {
       setProductManufactureDate(
         initial.product_manufacture_date ? String(initial.product_manufacture_date).slice(0, 10) : ""
       );
+      setPackSizeValue(
+        initial.pack_size_value === null || initial.pack_size_value === undefined
+          ? ""
+          : String(initial.pack_size_value)
+      );
+      setPackSizeUom(initial.pack_size_uom || "");
+      setPackQuantity(
+        initial.pack_quantity === null || initial.pack_quantity === undefined
+          ? ""
+          : String(initial.pack_quantity)
+      );
       setComment(initial.comment || "");
       setManufacturer(initial.manufacturer || "");
       setEditReason("");
@@ -71,6 +85,9 @@ export function useIssueForm(args: {
     setEsProductCode("");
     setProductBatchNo("");
     setProductManufactureDate("");
+    setPackSizeValue("");
+    setPackSizeUom("");
+    setPackQuantity("");
     setComment("");
     setManufacturer("");
     setEditReason("");
@@ -142,6 +159,12 @@ export function useIssueForm(args: {
     setProductBatchNo,
     productManufactureDate,
     setProductManufactureDate,
+    packSizeValue,
+    setPackSizeValue,
+    packSizeUom,
+    setPackSizeUom,
+    packQuantity,
+    setPackQuantity,
     comment,
     setComment,
     manufacturer,

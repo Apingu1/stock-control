@@ -222,7 +222,7 @@ class IssueCreate(ApiBaseModel):
     uom_code: str
     es_product_code: Optional[str] = None  # ES Product Code (e.g., DULO2)
     product_batch_no: Optional[str] = None
-    product_manufacture_date: Optional[datetime] = None
+    product_manufacture_date: Optional[date] = None
     consumption_type: str = "USAGE"
     target_ref: Optional[str] = None
 
@@ -230,6 +230,31 @@ class IssueCreate(ApiBaseModel):
     created_by: Optional[str] = None
 
     comment: Optional[str] = None
+
+
+class IssueBatchItem(ApiBaseModel):
+    """One material line within an atomic consumption submission."""
+
+    material_code: str
+    lot_number: str
+    material_lot_id: int
+    qty: Dec6
+    uom_code: str
+
+
+class IssueBatchCreate(ApiBaseModel):
+    """Shared batch details plus all material issues posted together."""
+
+    consumption_type: str = "USAGE"
+    es_product_code: Optional[str] = None
+    product_batch_no: Optional[str] = None
+    product_manufacture_date: Optional[date] = None
+    pack_size_value: Optional[Dec6] = Field(None, gt=0)
+    pack_size_uom: Optional[str] = None
+    pack_quantity: Optional[int] = Field(None, gt=0)
+    target_ref: Optional[str] = None
+    comment: Optional[str] = None
+    items: List[IssueBatchItem] = Field(..., min_length=1)
 
 
 # ✅ NEW: used for edits (PUT /issues/{id})
@@ -242,7 +267,10 @@ class IssueUpdate(ApiBaseModel):
     uom_code: Optional[str] = None  # optional; most sites keep UOM fixed on edit, but safe.
     es_product_code: Optional[str] = None
     product_batch_no: Optional[str] = None
-    product_manufacture_date: Optional[datetime] = None
+    product_manufacture_date: Optional[date] = None
+    pack_size_value: Optional[Dec6] = Field(None, gt=0)
+    pack_size_uom: Optional[str] = None
+    pack_quantity: Optional[int] = Field(None, gt=0)
     consumption_type: str = "USAGE"
     target_ref: Optional[str] = None
     comment: Optional[str] = None
@@ -276,9 +304,20 @@ class IssueOut(ApiBaseModel):
     # ✅ NEW: snapshot column so UI can show "Status at time of usage"
     material_status_at_txn: Optional[str] = None
 
+    # Shared submission/output fields. Null for historical transactions.
+    consumption_group_id: Optional[str] = None
+    pack_size_value: Optional[Dec6] = None
+    pack_size_uom: Optional[str] = None
+    pack_quantity: Optional[int] = None
+
     class Config:
         from_attributes = True
         json_encoders = {Decimal: str}
+
+
+class IssueBatchOut(ApiBaseModel):
+    consumption_group_id: str
+    issues: List[IssueOut]
 
 
 # --- Lot balances (view) -----------------------------------------------------

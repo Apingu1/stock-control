@@ -9,6 +9,7 @@ type Props = {
 
   consumptionType: ConsumptionTypeCode;
   setConsumptionType: (v: ConsumptionTypeCode) => void;
+  lockConsumptionType?: boolean;
 
   canEditTraceabilityFields: boolean;
 
@@ -31,6 +32,7 @@ const IssueTraceabilityFields: React.FC<Props> = ({
   isEdit,
   consumptionType,
   setConsumptionType,
+  lockConsumptionType = false,
   canEditTraceabilityFields,
   materialSearch,
   setMaterialSearch,
@@ -51,6 +53,7 @@ const IssueTraceabilityFields: React.FC<Props> = ({
           className="input"
           value={consumptionType}
           onChange={(e) => setConsumptionType(e.target.value as ConsumptionTypeCode)}
+          disabled={lockConsumptionType}
         >
           {CONSUMPTION_TYPES.map((opt) => (
             <option key={opt.code} value={opt.code}>
