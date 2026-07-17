@@ -82,12 +82,12 @@ export default function IssueModal({
         return;
       }
       if (
-        !(Number(form.packSizeValue) > 0) ||
-        !form.packSizeUom.trim() ||
-        !Number.isInteger(Number(form.packQuantity)) ||
-        Number(form.packQuantity) <= 0
+        !(Number(form.totalBatchSize) > 0) ||
+        !form.batchSizeUom.trim() ||
+        !Number.isInteger(Number(form.numberOfUnits)) ||
+        Number(form.numberOfUnits) <= 0
       ) {
-        setSubmitError("Valid pack size, unit and whole-number pack quantity are required.");
+        setSubmitError("Valid total batch size, unit and whole number of units are required.");
         return;
       }
     }
@@ -126,12 +126,12 @@ export default function IssueModal({
             form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
           product_manufacture_date:
             form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
-          pack_size_value:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.packSizeValue) || null : null,
-          pack_size_uom:
-            form.isBatchRequired || form.isBatchOptional ? form.packSizeUom.trim() || null : null,
-          pack_quantity:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.packQuantity) || null : null,
+          total_batch_size:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.totalBatchSize) || null : null,
+          batch_size_uom:
+            form.isBatchRequired || form.isBatchOptional ? form.batchSizeUom.trim() || null : null,
+          number_of_units:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.numberOfUnits) || null : null,
 
           consumption_type: form.consumptionType,
           created_by: createdBy,
@@ -156,12 +156,12 @@ export default function IssueModal({
             form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
           product_manufacture_date:
             form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
-          pack_size_value:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.packSizeValue) || null : null,
-          pack_size_uom:
-            form.isBatchRequired || form.isBatchOptional ? form.packSizeUom.trim() || null : null,
-          pack_quantity:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.packQuantity) || null : null,
+          total_batch_size:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.totalBatchSize) || null : null,
+          batch_size_uom:
+            form.isBatchRequired || form.isBatchOptional ? form.batchSizeUom.trim() || null : null,
+          number_of_units:
+            form.isBatchRequired || form.isBatchOptional ? Number(form.numberOfUnits) || null : null,
 
           consumption_type: form.consumptionType,
           comment: form.comment || null,
@@ -254,12 +254,12 @@ export default function IssueModal({
               setProductBatchNo={form.setProductBatchNo}
               productManufactureDate={form.productManufactureDate}
               setProductManufactureDate={form.setProductManufactureDate}
-              packSizeValue={form.packSizeValue}
-              setPackSizeValue={form.setPackSizeValue}
-              packSizeUom={form.packSizeUom}
-              setPackSizeUom={form.setPackSizeUom}
-              packQuantity={form.packQuantity}
-              setPackQuantity={form.setPackQuantity}
+              totalBatchSize={form.totalBatchSize}
+              setTotalBatchSize={form.setTotalBatchSize}
+              batchSizeUom={form.batchSizeUom}
+              setBatchSizeUom={form.setBatchSizeUom}
+              numberOfUnits={form.numberOfUnits}
+              setNumberOfUnits={form.setNumberOfUnits}
               consumptionType={form.consumptionType}
               comment={form.comment}
               setComment={form.setComment}

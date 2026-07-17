@@ -63,6 +63,9 @@ export type ProductSummary = {
 export type ProductBatchRow = {
   es_product_code: string;
   product_batch_no: string;
+  total_batch_size: string | null;
+  batch_size_uom: string | null;
+  number_of_units: number | null;
   batch_total_cost: string;
   issue_txn_count: number;
   first_issue_at: string;

@@ -345,7 +345,10 @@ def product_batches(
                   batch_total_cost,
                   issue_txn_count,
                   first_issue_at,
-                  last_issue_at
+                  last_issue_at,
+                  total_batch_size,
+                  batch_size_uom,
+                  number_of_units
                 FROM analytics_product_batches_cost
                 WHERE es_product_code = :product_code
                 ORDER BY last_issue_at DESC
@@ -383,7 +386,10 @@ def product_batches(
               COALESCE(SUM(st.total_value),0)::numeric AS batch_total_cost,
               COUNT(*)::int AS issue_txn_count,
               MIN(st.created_at) AS first_issue_at,
-              MAX(st.created_at) AS last_issue_at
+              MAX(st.created_at) AS last_issue_at,
+              MAX(st.total_batch_size) AS total_batch_size,
+              MAX(st.batch_size_uom) AS batch_size_uom,
+              MAX(st.number_of_units) AS number_of_units
             FROM stock_transactions st
             WHERE {where_sql}
             GROUP BY st.es_product_code, st.product_batch_no
@@ -990,4 +996,3 @@ def latest_batches(
             "rows": data,
         }
     )
-

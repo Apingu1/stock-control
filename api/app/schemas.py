@@ -249,9 +249,9 @@ class IssueBatchCreate(ApiBaseModel):
     es_product_code: Optional[str] = None
     product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[date] = None
-    pack_size_value: Optional[Dec6] = Field(None, gt=0)
-    pack_size_uom: Optional[str] = None
-    pack_quantity: Optional[int] = Field(None, gt=0)
+    total_batch_size: Optional[Dec6] = Field(None, gt=0)
+    batch_size_uom: Optional[str] = None
+    number_of_units: Optional[int] = Field(None, gt=0)
     target_ref: Optional[str] = None
     comment: Optional[str] = None
     items: List[IssueBatchItem] = Field(..., min_length=1)
@@ -268,9 +268,9 @@ class IssueUpdate(ApiBaseModel):
     es_product_code: Optional[str] = None
     product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[date] = None
-    pack_size_value: Optional[Dec6] = Field(None, gt=0)
-    pack_size_uom: Optional[str] = None
-    pack_quantity: Optional[int] = Field(None, gt=0)
+    total_batch_size: Optional[Dec6] = Field(None, gt=0)
+    batch_size_uom: Optional[str] = None
+    number_of_units: Optional[int] = Field(None, gt=0)
     consumption_type: str = "USAGE"
     target_ref: Optional[str] = None
     comment: Optional[str] = None
@@ -306,9 +306,9 @@ class IssueOut(ApiBaseModel):
 
     # Shared submission/output fields. Null for historical transactions.
     consumption_group_id: Optional[str] = None
-    pack_size_value: Optional[Dec6] = None
-    pack_size_uom: Optional[str] = None
-    pack_quantity: Optional[int] = None
+    total_batch_size: Optional[Dec6] = None
+    batch_size_uom: Optional[str] = None
+    number_of_units: Optional[int] = None
 
     class Config:
         from_attributes = True

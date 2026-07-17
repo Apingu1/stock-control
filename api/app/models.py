@@ -342,9 +342,9 @@ class StockTransaction(Base):
     # identifier keeps those rows traceable while preserving the existing flat
     # stock transaction model used by balances and analytics.
     consumption_group_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
-    pack_size_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
-    pack_size_uom: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    pack_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_batch_size: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
+    batch_size_uom: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    number_of_units: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     comment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
@@ -424,11 +424,11 @@ class StockTransactionEdit(Base):
             "created_by": txn.created_by,
             "material_status_at_txn": txn.material_status_at_txn,
             "consumption_group_id": txn.consumption_group_id,
-            "pack_size_value": (
-                str(txn.pack_size_value) if txn.pack_size_value is not None else None
+            "total_batch_size": (
+                str(txn.total_batch_size) if txn.total_batch_size is not None else None
             ),
-            "pack_size_uom": txn.pack_size_uom,
-            "pack_quantity": txn.pack_quantity,
+            "batch_size_uom": txn.batch_size_uom,
+            "number_of_units": txn.number_of_units,
         }
         return json.dumps(payload, sort_keys=True)
 

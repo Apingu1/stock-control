@@ -95,9 +95,9 @@ export type Issue = {
 
   // Shared fields for multi-material consumption submissions.
   consumption_group_id?: string | null;
-  pack_size_value?: number | string | null;
-  pack_size_uom?: string | null;
-  pack_quantity?: number | null;
+  total_batch_size?: number | string | null;
+  batch_size_uom?: string | null;
+  number_of_units?: number | null;
 
   manufacturer: string | null;
   supplier?: string | null;

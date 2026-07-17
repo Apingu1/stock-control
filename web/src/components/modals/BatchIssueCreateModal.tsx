@@ -62,9 +62,9 @@ export default function BatchIssueCreateModal({
   const [esProductCode, setEsProductCode] = useState("");
   const [productBatchNo, setProductBatchNo] = useState("");
   const [productManufactureDate, setProductManufactureDate] = useState("");
-  const [packSizeValue, setPackSizeValue] = useState("");
-  const [packSizeUom, setPackSizeUom] = useState("");
-  const [packQuantity, setPackQuantity] = useState("");
+  const [totalBatchSize, setTotalBatchSize] = useState("");
+  const [batchSizeUom, setBatchSizeUom] = useState("");
+  const [numberOfUnits, setNumberOfUnits] = useState("");
   const [comment, setComment] = useState("");
   const [lines, setLines] = useState<MaterialLine[]>([newLine()]);
   const [allowQuarantine, setAllowQuarantine] = useState<boolean | null>(null);
@@ -90,9 +90,9 @@ export default function BatchIssueCreateModal({
     setEsProductCode("");
     setProductBatchNo("");
     setProductManufactureDate("");
-    setPackSizeValue("");
-    setPackSizeUom("");
-    setPackQuantity("");
+    setTotalBatchSize("");
+    setBatchSizeUom("");
+    setNumberOfUnits("");
     setComment("");
     setLines([newLine()]);
     setSubmitError(null);
@@ -197,12 +197,12 @@ export default function BatchIssueCreateModal({
         setSubmitError("Please enter the product manufacture date for Usage.");
         return false;
       }
-      if (!(Number(packSizeValue) > 0) || !packSizeUom.trim()) {
-        setSubmitError("Please enter a valid pack size and pack size unit for Usage.");
+      if (!(Number(totalBatchSize) > 0) || !batchSizeUom.trim()) {
+        setSubmitError("Please enter a valid total batch size and batch size unit for Usage.");
         return false;
       }
-      if (!Number.isInteger(Number(packQuantity)) || Number(packQuantity) <= 0) {
-        setSubmitError("Please enter a whole-number pack quantity greater than zero.");
+      if (!Number.isInteger(Number(numberOfUnits)) || Number(numberOfUnits) <= 0) {
+        setSubmitError("Please enter a whole number of units greater than zero.");
         return false;
       }
     }
@@ -253,9 +253,9 @@ export default function BatchIssueCreateModal({
         es_product_code: batchRelevant ? esProductCode.trim() || null : null,
         product_batch_no: batchRelevant ? productBatchNo.trim() || null : null,
         product_manufacture_date: batchRelevant ? productManufactureDate || null : null,
-        pack_size_value: batchRelevant && packSizeValue ? Number(packSizeValue) : null,
-        pack_size_uom: batchRelevant ? packSizeUom.trim() || null : null,
-        pack_quantity: batchRelevant && packQuantity ? Number(packQuantity) : null,
+        total_batch_size: batchRelevant && totalBatchSize ? Number(totalBatchSize) : null,
+        batch_size_uom: batchRelevant ? batchSizeUom.trim() || null : null,
+        number_of_units: batchRelevant && numberOfUnits ? Number(numberOfUnits) : null,
         comment: comment.trim() || null,
         target_ref: null,
         items: lines.map((line) => ({
@@ -359,28 +359,28 @@ export default function BatchIssueCreateModal({
                   </div>
                   <div className="form-group">
                     <label className="label">
-                      Pack size {usageRequired ? "(required)" : "(optional)"}
+                      Total batch size {usageRequired ? "(required)" : "(optional)"}
                     </label>
                     <input
                       className="input"
                       inputMode="decimal"
-                      value={packSizeValue}
-                      onChange={(event) => setPackSizeValue(event.target.value)}
-                      placeholder="e.g. 100"
+                      value={totalBatchSize}
+                      onChange={(event) => setTotalBatchSize(event.target.value)}
+                      placeholder="e.g. 2750"
                     />
                   </div>
                   <div className="form-group">
                     <label className="label">
-                      Pack size unit {usageRequired ? "(required)" : "(optional)"}
+                      Batch size unit {usageRequired ? "(required)" : "(optional)"}
                     </label>
                     <input
                       className="input"
-                      list="pack-size-uom-options"
-                      value={packSizeUom}
-                      onChange={(event) => setPackSizeUom(event.target.value)}
+                      list="batch-size-uom-options"
+                      value={batchSizeUom}
+                      onChange={(event) => setBatchSizeUom(event.target.value)}
                       placeholder="e.g. mL, tablets, capsules"
                     />
-                    <datalist id="pack-size-uom-options">
+                    <datalist id="batch-size-uom-options">
                       <option value="mL" />
                       <option value="L" />
                       <option value="g" />
@@ -392,14 +392,14 @@ export default function BatchIssueCreateModal({
                   </div>
                   <div className="form-group">
                     <label className="label">
-                      Pack quantity {usageRequired ? "(required)" : "(optional)"}
+                      Number of units {usageRequired ? "(required)" : "(optional)"}
                     </label>
                     <input
                       className="input"
                       inputMode="numeric"
-                      value={packQuantity}
-                      onChange={(event) => setPackQuantity(event.target.value)}
-                      placeholder="e.g. 50"
+                      value={numberOfUnits}
+                      onChange={(event) => setNumberOfUnits(event.target.value)}
+                      placeholder="e.g. 35"
                     />
                   </div>
                 </>
