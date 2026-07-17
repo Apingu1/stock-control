@@ -71,20 +71,21 @@ const formatUnitMoney = (v: unknown): string => {
 };
 
 const formatBatchOutput = (issue: Issue): string => {
-  const packSize = asNumber(issue.pack_size_value);
-  const packQty = asNumber(issue.pack_quantity);
-  const uom = issue.pack_size_uom?.trim();
-  if (packSize === null && packQty === null && !uom) return "—";
+  const batchSize = asNumber(issue.total_batch_size);
+  const units = asNumber(issue.number_of_units);
+  const uom = issue.batch_size_uom?.trim();
+  if (batchSize === null && units === null && !uom) return "—";
 
-  const sizeText =
-    packSize === null
-      ? "—"
-      : packSize.toLocaleString("en-GB", { maximumFractionDigits: 6 });
-  const qtyText =
-    packQty === null
-      ? "—"
-      : packQty.toLocaleString("en-GB", { maximumFractionDigits: 0 });
-  return `${qtyText} packs × ${sizeText}${uom ? ` ${uom}` : ""}`;
+  const parts: string[] = [];
+  if (batchSize !== null) {
+    const sizeText = batchSize.toLocaleString("en-GB", { maximumFractionDigits: 6 });
+    parts.push(`${sizeText}${uom ? ` ${uom}` : ""}`);
+  }
+  if (units !== null) {
+    const unitsText = units.toLocaleString("en-GB", { maximumFractionDigits: 0 });
+    parts.push(`${unitsText} ${units === 1 ? "unit" : "units"}`);
+  }
+  return parts.join(" • ") || "—";
 };
 
 const exportToCsv = (
@@ -196,9 +197,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.es_product_code ?? "",
         i.product_batch_no ?? "",
         i.consumption_group_id ?? "",
-        i.pack_size_value ?? "",
-        i.pack_size_uom ?? "",
-        i.pack_quantity ?? "",
+        i.total_batch_size ?? "",
+        i.batch_size_uom ?? "",
+        i.number_of_units ?? "",
         i.comment ?? "",
         i.consumption_type ?? "",
         i.material_status_at_txn ?? "",
@@ -242,9 +243,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Type",
       "ES Product Code",
       "ES Batch / Ref",
-      "Pack Size",
-      "Pack Size UOM",
-      "Pack Quantity",
+      "Total Batch Size",
+      "Batch Size UOM",
+      "Number of Units",
       "Consumption Group ID",
       "Material Code",
       "Material Name",
@@ -273,9 +274,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         renderConsumptionType(i.consumption_type),
         esProduct,
         esRef,
-        isBatchRelevant ? i.pack_size_value ?? "—" : "N/A",
-        isBatchRelevant ? i.pack_size_uom ?? "—" : "N/A",
-        isBatchRelevant ? i.pack_quantity ?? "—" : "N/A",
+        isBatchRelevant ? i.total_batch_size ?? "—" : "N/A",
+        isBatchRelevant ? i.batch_size_uom ?? "—" : "N/A",
+        isBatchRelevant ? i.number_of_units ?? "—" : "N/A",
         i.consumption_group_id ?? "—",
         i.material_code,
         i.material_name,

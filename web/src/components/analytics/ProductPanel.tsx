@@ -4,6 +4,28 @@ import { Chip, dtFmt, money } from "./analyticsShared";
 import type { ProductBatchRow, ProductSummary } from "./analyticsShared";
 import { escapeHtml, moneyText, openPrintWindow } from "./reportPrint";
 
+const formatBatchOutput = (batch: ProductBatchRow): string => {
+  const size = batch.total_batch_size === null ? null : Number(batch.total_batch_size);
+  const units = batch.number_of_units === null ? null : Number(batch.number_of_units);
+  const uom = batch.batch_size_uom?.trim();
+  if ((size === null || !Number.isFinite(size)) && (units === null || !Number.isFinite(units))) {
+    return "—";
+  }
+
+  const parts: string[] = [];
+  if (size !== null && Number.isFinite(size)) {
+    parts.push(
+      `${size.toLocaleString("en-GB", { maximumFractionDigits: 6 })}${uom ? ` ${uom}` : ""}`
+    );
+  }
+  if (units !== null && Number.isFinite(units)) {
+    parts.push(
+      `${units.toLocaleString("en-GB", { maximumFractionDigits: 0 })} ${units === 1 ? "unit" : "units"}`
+    );
+  }
+  return parts.join(" • ") || "—";
+};
+
 export const ProductPanel: React.FC<{
   productCode: string;
   dateFrom: string;
@@ -23,12 +45,15 @@ export const ProductPanel: React.FC<{
       "total_cost",
       "avg_cost_per_batch",
       "batch_no",
+      "total_batch_size",
+      "batch_size_uom",
+      "number_of_units",
       "batch_total_cost",
       "first_issue_at",
       "last_issue_at",
     ];
 
-    const out: any[][] = [];
+    const out: unknown[][] = [];
     out.push([
       dateFrom,
       dateTo,
@@ -36,6 +61,9 @@ export const ProductPanel: React.FC<{
       summary.unique_batches,
       summary.total_cost,
       summary.avg_cost_per_batch,
+      "",
+      "",
+      "",
       "",
       "",
       "",
@@ -51,6 +79,9 @@ export const ProductPanel: React.FC<{
         summary.total_cost,
         summary.avg_cost_per_batch,
         b.product_batch_no,
+        b.total_batch_size,
+        b.batch_size_uom,
+        b.number_of_units,
         b.batch_total_cost,
         b.first_issue_at,
         b.last_issue_at,
@@ -85,6 +116,7 @@ export const ProductPanel: React.FC<{
         (b) => `
         <tr>
           <td class="mono">${escapeHtml(b.product_batch_no)}</td>
+          <td class="mono">${escapeHtml(formatBatchOutput(b))}</td>
           <td class="mono">${escapeHtml(moneyText(b.batch_total_cost))}</td>
           <td class="mono">${escapeHtml(b.first_issue_at ? dtFmt(b.first_issue_at) : "")}</td>
           <td class="mono">${escapeHtml(b.last_issue_at ? dtFmt(b.last_issue_at) : "")}</td>
@@ -98,8 +130,8 @@ export const ProductPanel: React.FC<{
       <div class="card">
         <div class="ct">Batches (as shown)</div>
         <table>
-          <thead><tr><th>ES batch no</th><th class="mono">Total cost</th><th class="mono">First issue</th><th class="mono">Last issue</th></tr></thead>
-          <tbody>${tableRows || `<tr><td colspan="4" class="muted">No batches in range.</td></tr>`}</tbody>
+          <thead><tr><th>ES batch no</th><th class="mono">Batch output</th><th class="mono">Total cost</th><th class="mono">First issue</th><th class="mono">Last issue</th></tr></thead>
+          <tbody>${tableRows || `<tr><td colspan="5" class="muted">No batches in range.</td></tr>`}</tbody>
         </table>
       </div>
     `;
@@ -160,6 +192,7 @@ export const ProductPanel: React.FC<{
             <thead>
               <tr>
                 <th>ES batch no</th>
+                <th>Batch output</th>
                 <th>Total cost</th>
                 <th>First issue</th>
                 <th>Last issue</th>
@@ -173,6 +206,7 @@ export const ProductPanel: React.FC<{
                       {b.product_batch_no}
                     </button>
                   </td>
+                  <td className="mono">{formatBatchOutput(b)}</td>
                   <td className="mono">{money(b.batch_total_cost)}</td>
                   <td className="mono">{dtFmt(b.first_issue_at)}</td>
                   <td className="mono">{dtFmt(b.last_issue_at)}</td>
@@ -180,7 +214,7 @@ export const ProductPanel: React.FC<{
               ))}
               {batches.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="muted">
+                  <td colSpan={5} className="muted">
                     No batches found for this product in the selected date range.
                   </td>
                 </tr>

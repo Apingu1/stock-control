@@ -25,9 +25,9 @@ export function useIssueForm(args: {
 
   const [productBatchNo, setProductBatchNo] = useState("");
   const [productManufactureDate, setProductManufactureDate] = useState("");
-  const [packSizeValue, setPackSizeValue] = useState("");
-  const [packSizeUom, setPackSizeUom] = useState("");
-  const [packQuantity, setPackQuantity] = useState("");
+  const [totalBatchSize, setTotalBatchSize] = useState("");
+  const [batchSizeUom, setBatchSizeUom] = useState("");
+  const [numberOfUnits, setNumberOfUnits] = useState("");
   const [comment, setComment] = useState("");
   const [manufacturer, setManufacturer] = useState("");
 
@@ -59,16 +59,16 @@ export function useIssueForm(args: {
       setProductManufactureDate(
         initial.product_manufacture_date ? String(initial.product_manufacture_date).slice(0, 10) : ""
       );
-      setPackSizeValue(
-        initial.pack_size_value === null || initial.pack_size_value === undefined
+      setTotalBatchSize(
+        initial.total_batch_size === null || initial.total_batch_size === undefined
           ? ""
-          : String(initial.pack_size_value)
+          : String(initial.total_batch_size)
       );
-      setPackSizeUom(initial.pack_size_uom || "");
-      setPackQuantity(
-        initial.pack_quantity === null || initial.pack_quantity === undefined
+      setBatchSizeUom(initial.batch_size_uom || "");
+      setNumberOfUnits(
+        initial.number_of_units === null || initial.number_of_units === undefined
           ? ""
-          : String(initial.pack_quantity)
+          : String(initial.number_of_units)
       );
       setComment(initial.comment || "");
       setManufacturer(initial.manufacturer || "");
@@ -85,9 +85,9 @@ export function useIssueForm(args: {
     setEsProductCode("");
     setProductBatchNo("");
     setProductManufactureDate("");
-    setPackSizeValue("");
-    setPackSizeUom("");
-    setPackQuantity("");
+    setTotalBatchSize("");
+    setBatchSizeUom("");
+    setNumberOfUnits("");
     setComment("");
     setManufacturer("");
     setEditReason("");
@@ -159,12 +159,12 @@ export function useIssueForm(args: {
     setProductBatchNo,
     productManufactureDate,
     setProductManufactureDate,
-    packSizeValue,
-    setPackSizeValue,
-    packSizeUom,
-    setPackSizeUom,
-    packQuantity,
-    setPackQuantity,
+    totalBatchSize,
+    setTotalBatchSize,
+    batchSizeUom,
+    setBatchSizeUom,
+    numberOfUnits,
+    setNumberOfUnits,
     comment,
     setComment,
     manufacturer,

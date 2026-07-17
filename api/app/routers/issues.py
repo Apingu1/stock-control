@@ -161,9 +161,9 @@ def _validate_consumption_header(
     es_product_code: str | None,
     product_batch_no: str | None,
     product_manufacture_date: Any,
-    pack_size_value: Any,
-    pack_size_uom: str | None,
-    pack_quantity: int | None,
+    total_batch_size: Any,
+    batch_size_uom: str | None,
+    number_of_units: int | None,
     comment: str | None,
 ) -> str:
     """Validate fields shared by every row in one consumption submission."""
@@ -171,11 +171,11 @@ def _validate_consumption_header(
     if normalised_type not in VALID_CONSUMPTION_TYPES:
         raise HTTPException(status_code=400, detail="Invalid consumption type")
 
-    pack_size = _to_decimal(pack_size_value)
-    if pack_size is not None and pack_size <= 0:
-        raise HTTPException(status_code=400, detail="Pack size must be greater than zero")
-    if pack_quantity is not None and pack_quantity <= 0:
-        raise HTTPException(status_code=400, detail="Pack quantity must be greater than zero")
+    batch_size = _to_decimal(total_batch_size)
+    if batch_size is not None and batch_size <= 0:
+        raise HTTPException(status_code=400, detail="Total batch size must be greater than zero")
+    if number_of_units is not None and number_of_units <= 0:
+        raise HTTPException(status_code=400, detail="Number of units must be greater than zero")
 
     if normalised_type == "USAGE":
         missing: list[str] = []
@@ -185,12 +185,12 @@ def _validate_consumption_header(
             missing.append("ES batch number")
         if not product_manufacture_date:
             missing.append("product manufacture date")
-        if pack_size is None:
-            missing.append("pack size")
-        if not _clean_text(pack_size_uom):
-            missing.append("pack size unit")
-        if pack_quantity is None:
-            missing.append("pack quantity")
+        if batch_size is None:
+            missing.append("total batch size")
+        if not _clean_text(batch_size_uom):
+            missing.append("batch size unit")
+        if number_of_units is None:
+            missing.append("number of units")
         if missing:
             raise HTTPException(
                 status_code=400,
@@ -205,10 +205,10 @@ def _validate_consumption_header(
 
     # If optional R&D output data is started, require a complete size value/unit
     # pair so reports never contain an ambiguous number.
-    if (pack_size is None) != (not bool(_clean_text(pack_size_uom))):
+    if (batch_size is None) != (not bool(_clean_text(batch_size_uom))):
         raise HTTPException(
             status_code=400,
-            detail="Pack size value and pack size unit must be entered together",
+            detail="Total batch size and batch size unit must be entered together",
         )
 
     return normalised_type
@@ -243,9 +243,9 @@ def _issue_out(
         comment=txn.comment,
         material_status_at_txn=txn.material_status_at_txn,
         consumption_group_id=txn.consumption_group_id,
-        pack_size_value=txn.pack_size_value,
-        pack_size_uom=txn.pack_size_uom,
-        pack_quantity=txn.pack_quantity,
+        total_batch_size=txn.total_batch_size,
+        batch_size_uom=txn.batch_size_uom,
+        number_of_units=txn.number_of_units,
     )
 
 
@@ -450,9 +450,9 @@ def create_issue_batch(
         es_product_code=payload.es_product_code,
         product_batch_no=payload.product_batch_no,
         product_manufacture_date=payload.product_manufacture_date,
-        pack_size_value=payload.pack_size_value,
-        pack_size_uom=payload.pack_size_uom,
-        pack_quantity=payload.pack_quantity,
+        total_batch_size=payload.total_batch_size,
+        batch_size_uom=payload.batch_size_uom,
+        number_of_units=payload.number_of_units,
         comment=payload.comment,
     )
 
@@ -554,9 +554,9 @@ def create_issue_batch(
                 product_batch_no=_clean_text(payload.product_batch_no),
                 product_manufacture_date=payload.product_manufacture_date,
                 consumption_group_id=consumption_group_id,
-                pack_size_value=_q_qty(_to_decimal(payload.pack_size_value)),
-                pack_size_uom=_clean_text(payload.pack_size_uom),
-                pack_quantity=payload.pack_quantity,
+                total_batch_size=_q_qty(_to_decimal(payload.total_batch_size)),
+                batch_size_uom=_clean_text(payload.batch_size_uom),
+                number_of_units=payload.number_of_units,
                 comment=_clean_text(payload.comment),
                 material_status_at_txn=lot.status,
                 created_at=created_at,
@@ -727,9 +727,9 @@ def update_issue(
             es_product_code=payload.es_product_code,
             product_batch_no=payload.product_batch_no,
             product_manufacture_date=payload.product_manufacture_date,
-            pack_size_value=payload.pack_size_value,
-            pack_size_uom=payload.pack_size_uom,
-            pack_quantity=payload.pack_quantity,
+            total_batch_size=payload.total_batch_size,
+            batch_size_uom=payload.batch_size_uom,
+            number_of_units=payload.number_of_units,
             comment=payload.comment,
         )
 
@@ -748,9 +748,9 @@ def update_issue(
         shared_txn.product_batch_no = _clean_text(payload.product_batch_no)
         shared_txn.product_manufacture_date = payload.product_manufacture_date
         shared_txn.comment = _clean_text(payload.comment)
-        shared_txn.pack_size_value = _q_qty(_to_decimal(payload.pack_size_value))
-        shared_txn.pack_size_uom = _clean_text(payload.pack_size_uom)
-        shared_txn.pack_quantity = payload.pack_quantity
+        shared_txn.total_batch_size = _q_qty(_to_decimal(payload.total_batch_size))
+        shared_txn.batch_size_uom = _clean_text(payload.batch_size_uom)
+        shared_txn.number_of_units = payload.number_of_units
 
     # Keep txn.material_status_at_txn unchanged (historical snapshot)
 
