@@ -155,7 +155,7 @@ export const MaterialPanel: React.FC<{
   }
 
   function exportTraceCsv() {
-    const headers = ["material_code", "date_from", "date_to", "product_batch_no", "es_product_code", "lot_number", "issue_qty_sum", "issue_value_sum", "last_issue_at"];
+    const headers = ["material_code", "date_from", "date_to", "product_batch_no", "es_product_code", "batch_disposition", "disposition_reason", "lot_number", "issue_qty_sum", "issue_value_sum", "last_issue_at"];
 
     const rows: any[][] = trace.map((r) => [
       materialCode,
@@ -163,6 +163,8 @@ export const MaterialPanel: React.FC<{
       dateTo,
       r.product_batch_no,
       r.es_product_code || "",
+      r.batch_disposition || "COMPLIANT",
+      r.disposition_reason || "",
       r.lot_number || "",
       r.issue_qty_sum,
       r.issue_value_sum,
@@ -233,6 +235,7 @@ export const MaterialPanel: React.FC<{
         (r) => `
         <tr>
           <td class="mono">${escapeHtml(r.product_batch_no)}</td>
+          <td class="mono">${escapeHtml(r.batch_disposition || "COMPLIANT")}</td>
           <td class="mono">${escapeHtml(r.lot_number || "")}</td>
           <td class="mono">${escapeHtml(r.es_product_code || "")}</td>
           <td class="mono">${escapeHtml(r.issue_qty_sum)}</td>
@@ -269,8 +272,8 @@ export const MaterialPanel: React.FC<{
       <div class="card">
         <div class="ct">Traceability (as shown)</div>
         <table>
-          <thead><tr><th>ES batch no</th><th class="mono">Lot</th><th class="mono">Product</th><th class="mono">Issue qty</th><th class="mono">Issue cost</th><th class="mono">Last issue</th></tr></thead>
-          <tbody>${traceRows || `<tr><td colspan="6" class="muted">No traceability rows in range (or match filter).</td></tr>`}</tbody>
+          <thead><tr><th>ES batch no</th><th>Disposition</th><th class="mono">Lot</th><th class="mono">Product</th><th class="mono">Issue qty</th><th class="mono">Issue cost</th><th class="mono">Last issue</th></tr></thead>
+          <tbody>${traceRows || `<tr><td colspan="7" class="muted">No traceability rows in range (or match filter).</td></tr>`}</tbody>
         </table>
       </div>
     `;
@@ -469,6 +472,7 @@ export const MaterialPanel: React.FC<{
                 <thead>
                   <tr>
                     <th>ES batch no</th>
+                    <th>Disposition</th>
                     <th>Lot</th>
                     <th>Product code</th>
                     <th>Issue qty</th>
@@ -478,8 +482,9 @@ export const MaterialPanel: React.FC<{
                 </thead>
                 <tbody>
                   {trace.map((r, idx) => (
-                    <tr key={`${r.product_batch_no}-${r.lot_number || ""}-${idx}`}>
+                    <tr key={`${r.product_batch_no}-${r.lot_number || ""}-${idx}`} className={r.batch_disposition === "REJECTED" ? "batch-row-rejected" : ""}>
                       <td className="mono">{r.product_batch_no}</td>
+                      <td title={r.disposition_reason || ""}><span className={`disposition-badge disposition-${(r.batch_disposition || "COMPLIANT").toLowerCase()}`}>{r.batch_disposition || "COMPLIANT"}</span></td>
                       <td className="mono">{r.lot_number || ""}</td>
                       <td className="mono">{r.es_product_code || ""}</td>
                       <td className="mono">{qtyFmt(r.issue_qty_sum)}</td>
@@ -489,7 +494,7 @@ export const MaterialPanel: React.FC<{
                   ))}
                   {trace.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <td colSpan={7} className="muted">
                         No traceability rows in this date range (or match your filter).
                       </td>
                     </tr>

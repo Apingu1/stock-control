@@ -13,6 +13,7 @@ import TopBar from "./components/layout/TopBar";
 
 import DashboardView from "./components/dashboard/DashboardView";
 import MaterialsLibraryView from "./components/materials/MaterialsLibraryView";
+import ProductListView from "./components/products/ProductListView";
 import GoodsReceiptsView from "./components/receipts/GoodsReceiptsView";
 import ConsumptionView from "./components/issues/ConsumptionView";
 import LiveLotsView from "./components/lots/LiveLotsView";
@@ -42,6 +43,12 @@ const App: React.FC = () => {
   const canChangeStatus = hasPerm("lots.status_change");
   const canEditReceipts = hasPerm("receipts.edit");
   const canEditIssues = hasPerm("issues.edit");
+  const canViewProducts = hasPerm("products.view");
+  const canCreateProducts = hasPerm("products.create");
+  const canEditProducts = hasPerm("products.edit");
+  const canChangeProductStatus = hasPerm("products.status_change");
+  const canApproveRejectedBatch = hasPerm("issues.approve_rejected_batch");
+  const canRecordCancelledBmr = hasPerm("issues.record_cancelled_bmr");
 
   const canSuperEditMaterials = hasPerm("materials.super_edit_locked_fields");
   const canSuperEditReceipts = hasPerm("receipts.super_edit_locked_fields");
@@ -88,7 +95,7 @@ const App: React.FC = () => {
         auth.setAuthChecked(true);
         auth.setShowLogin(false);
         await stock.loadAll();
-      } catch (e) {
+      } catch {
         clearToken();
         auth.setMe(null);
         perms.setMyPermissions([]);
@@ -116,6 +123,7 @@ const App: React.FC = () => {
     setView("dashboard");
     stock.setLotBalances([]);
     stock.setMaterials([]);
+    stock.setProducts([]);
     stock.setReceipts([]);
     stock.setIssues([]);
     setEditingReceipt(null);
@@ -126,7 +134,7 @@ const App: React.FC = () => {
   const handleMaterialSaved = async () => {
     setShowNewMaterialModal(false);
     setEditingMaterial(null);
-    await Promise.all([stock.loadMaterials(), stock.loadExpiryThresholds()]);
+    await Promise.all([stock.loadMaterials(), stock.loadProducts(), stock.loadExpiryThresholds()]);
   };
 
   const handleReceiptPosted = async () => {
@@ -152,6 +160,8 @@ const App: React.FC = () => {
         return { tag: "Workspace", title: "Dashboard", subtitle: signed };
       case "materials":
         return { tag: "Workspace", title: "Materials Library", subtitle: signed };
+      case "products":
+        return { tag: "Workspace", title: "Product List", subtitle: signed };
       case "receipts":
         return { tag: "Workspace", title: "Goods Receipts", subtitle: signed };
       case "consumption":
@@ -197,6 +207,7 @@ const App: React.FC = () => {
         setView={setView}
         isAdmin={isAdmin}
         canViewAudit={canViewAudit}
+        canViewProducts={canViewProducts}
         alertsCounts={alertsCounts}
         onLogout={logout}
       />
@@ -226,6 +237,19 @@ const App: React.FC = () => {
           <MaterialsLibraryView
             materials={stock.materials}
             onEditMaterial={(m) => setEditingMaterial(m)}
+          />
+        )}
+
+        {view === "products" && canViewProducts && (
+          <ProductListView
+            products={stock.products}
+            materials={stock.materials}
+            loading={stock.loadingProducts}
+            error={stock.productsError}
+            canCreate={canCreateProducts}
+            canEdit={canEditProducts}
+            canChangeStatus={canChangeProductStatus}
+            reload={stock.loadProducts}
           />
         )}
 
@@ -310,11 +334,14 @@ const App: React.FC = () => {
         }}
         materials={stock.materials}
         lotBalances={stock.lotBalances}
+        products={stock.products}
         onIssuePosted={handleIssuePosted}
         createdBy={auth.me?.username || ""}
         mode={editingIssue ? "edit" : "create"}
         initial={editingIssue || undefined}
         canSuperEditLockedFields={canSuperEditIssues}
+        canApproveRejectedBatch={canApproveRejectedBatch}
+        canRecordCancelledBmr={canRecordCancelledBmr}
       />
 
       <MaterialModal

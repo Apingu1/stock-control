@@ -1,6 +1,6 @@
 # app/schemas.py
 from datetime import datetime, date
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, condecimal
@@ -132,11 +132,64 @@ class MaterialUpdate(ApiBaseModel):
 
 class MaterialOut(MaterialBase):
     id: int
+    is_cancelled_bmr_marker: bool = False
     created_at: datetime
     updated_at: datetime
     created_by: Optional[str] = None
 
     approved_manufacturers: List[ApprovedManufacturerOut] = []
+
+    class Config:
+        from_attributes = True
+        json_encoders = {Decimal: str}
+
+
+# --- Product List ------------------------------------------------------------
+
+class ProductMaterialOut(ApiBaseModel):
+    id: int
+    material_code: str
+    material_name: str
+    base_uom_code: str
+    status: str
+
+
+class ProductBase(ApiBaseModel):
+    product_code: str = Field(..., min_length=1, max_length=50)
+    product_name: str = Field(..., min_length=1, max_length=255)
+    reference: str = Field(..., max_length=255)
+    version_number: str = Field(..., max_length=100)
+    shelf_life_days: int = Field(..., gt=0)
+    licence_status: Literal["LICENSED", "UNLICENSED"]
+    line_type: Literal["STOCK_LINE", "BESPOKE"]
+    storage_condition: Literal["FRIDGELINE", "AMBIENT"]
+    controlled_drug_status: Literal["CONTROLLED_DRUG", "N_A"]
+    export_status: Literal["EXPORT_LINE", "N_A"]
+
+
+class ProductCreate(ProductBase):
+    material_ids: List[int] = Field(..., min_length=1)
+    audit_reason: str = Field(..., min_length=1, max_length=500)
+
+
+class ProductUpdate(ProductBase):
+    material_ids: List[int] = Field(..., min_length=1)
+    edit_reason: str = Field(..., min_length=1, max_length=500)
+
+
+class ProductStatusUpdate(ApiBaseModel):
+    status: Literal["ACTIVE", "INACTIVE"]
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class ProductOut(ProductBase):
+    id: int
+    status: Literal["ACTIVE", "INACTIVE"]
+    created_at: datetime
+    created_by: str
+    updated_at: datetime
+    updated_by: str
+    materials: List[ProductMaterialOut] = []
 
     class Config:
         from_attributes = True
@@ -254,7 +307,18 @@ class IssueBatchCreate(ApiBaseModel):
     number_of_units: Optional[int] = Field(None, gt=0)
     target_ref: Optional[str] = None
     comment: Optional[str] = None
+    approve_as_rejected_batch: bool = False
+    rejection_reason: Optional[str] = Field(None, max_length=470)
     items: List[IssueBatchItem] = Field(..., min_length=1)
+
+
+class CancelledBatchCreate(ApiBaseModel):
+    es_product_code: str = Field(..., min_length=1, max_length=50)
+    product_batch_no: str = Field(..., min_length=1, max_length=50)
+    target_ref: Optional[str] = Field(None, max_length=255)
+    cancellation_reason: str = Field(..., min_length=1, max_length=470)
+    approve_inactive_product: bool = False
+    inactive_product_reason: Optional[str] = Field(None, max_length=470)
 
 
 # ✅ NEW: used for edits (PUT /issues/{id})
@@ -309,6 +373,16 @@ class IssueOut(ApiBaseModel):
     total_batch_size: Optional[Dec6] = None
     batch_size_uom: Optional[str] = None
     number_of_units: Optional[int] = None
+    product_name_snapshot: Optional[str] = None
+    product_reference_snapshot: Optional[str] = None
+    product_version_snapshot: Optional[str] = None
+    batch_disposition: str = "COMPLIANT"
+    disposition_reason: Optional[str] = None
+    compliance_triggers: List[str] = []
+    missing_material_codes: List[str] = []
+    unexpected_material_codes: List[str] = []
+    approved_by: Optional[str] = None
+    is_non_stock_record: bool = False
 
     class Config:
         from_attributes = True
@@ -428,6 +502,7 @@ class RolePermissionSet(ApiBaseModel):
     """
     role: Optional[str] = None
     permissions: List[RolePermissionOut]
+    edit_reason: str = Field(..., min_length=1, max_length=500)
 
 
 class MyPermissionsOut(ApiBaseModel):

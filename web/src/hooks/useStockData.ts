@@ -4,6 +4,7 @@ import type {
   Issue,
   LotBalance,
   Material,
+  Product,
   Receipt,
 } from "../types";
 import { apiFetch } from "../utils/api";
@@ -14,6 +15,7 @@ import { apiFetch } from "../utils/api";
 export function useStockData() {
   const [lotBalances, setLotBalances] = useState<LotBalance[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [expiryThresholds, setExpiryThresholds] = useState<ExpiryThresholdRow[]>([]);
@@ -27,6 +29,8 @@ export function useStockData() {
 
   const [loadingIssues, setLoadingIssues] = useState(true);
   const [issuesError, setIssuesError] = useState<string | null>(null);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
 
   const loadLotBalances = useCallback(async () => {
     try {
@@ -50,6 +54,22 @@ export function useStockData() {
       setMaterials(data);
     } catch (e) {
       console.error(e);
+    }
+  }, []);
+
+  const loadProducts = useCallback(async () => {
+    try {
+      setLoadingProducts(true);
+      setProductsError(null);
+      const res = await apiFetch("/products/");
+      const data = (await res.json()) as Product[];
+      setProducts(data);
+    } catch (e: unknown) {
+      console.error(e);
+      setProducts([]);
+      setProductsError(e instanceof Error ? e.message : "Failed to load Product List");
+    } finally {
+      setLoadingProducts(false);
     }
   }, []);
 
@@ -98,11 +118,12 @@ export function useStockData() {
     await Promise.all([
       loadLotBalances(),
       loadMaterials(),
+      loadProducts(),
       loadExpiryThresholds(),
       loadReceipts(),
       loadIssues(),
     ]);
-  }, [loadExpiryThresholds, loadIssues, loadLotBalances, loadMaterials, loadReceipts]);
+  }, [loadExpiryThresholds, loadIssues, loadLotBalances, loadMaterials, loadProducts, loadReceipts]);
 
   return {
     // data
@@ -110,6 +131,8 @@ export function useStockData() {
     setLotBalances,
     materials,
     setMaterials,
+    products,
+    setProducts,
     receipts,
     setReceipts,
     issues,
@@ -124,10 +147,13 @@ export function useStockData() {
     receiptsError,
     loadingIssues,
     issuesError,
+    loadingProducts,
+    productsError,
 
     // loaders
     loadLotBalances,
     loadMaterials,
+    loadProducts,
     loadExpiryThresholds,
     loadReceipts,
     loadIssues,

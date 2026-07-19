@@ -24,7 +24,7 @@ class StockSummary(BaseModel):
 @router.get("/stock", response_model=StockSummary)
 def get_stock_summary(db: Session = Depends(get_db)) -> StockSummary:
     total_materials = db.execute(
-        text("SELECT COUNT(*) FROM materials WHERE status = 'ACTIVE'")
+        text("SELECT COUNT(*) FROM materials WHERE status = 'ACTIVE' AND is_cancelled_bmr_marker = FALSE")
     ).scalar_one()
 
     total_lots = db.execute(text("SELECT COUNT(*) FROM material_lots")).scalar_one()
@@ -84,12 +84,14 @@ class DashboardSummary(BaseModel):
     batches_manufactured_today: int
     receipts_today: int
     total_material_value: float
+    rejected_batches_today: int
+    cancelled_batches_today: int
 
 
 @router.get("/dashboard", response_model=DashboardSummary)
 def get_dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummary:
     total_materials = db.execute(
-        text("SELECT COUNT(*) FROM materials WHERE status = 'ACTIVE'")
+        text("SELECT COUNT(*) FROM materials WHERE status = 'ACTIVE' AND is_cancelled_bmr_marker = FALSE")
     ).scalar_one()
 
     # Materials in LOW STOCK (unique material_code)
@@ -136,14 +138,20 @@ def get_dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummary:
     batches_manufactured_today = db.execute(
         text(
             """
-            SELECT COUNT(DISTINCT st.product_batch_no)
-            FROM stock_transactions st
-            WHERE st.direction = -1
-              AND st.txn_type = 'ISSUE'
-              AND st.product_batch_no IS NOT NULL
-              AND COALESCE(st.product_manufacture_date, (st.created_at::date)) = CURRENT_DATE
+            SELECT COUNT(*)
+            FROM consumption_batches cb
+            WHERE cb.disposition = 'COMPLIANT'
+              AND cb.product_batch_no IS NOT NULL
+              AND COALESCE(cb.product_manufacture_date, cb.created_at::date) = CURRENT_DATE
             """
         )
+    ).scalar_one()
+
+    rejected_batches_today = db.execute(
+        text("SELECT COUNT(*) FROM consumption_batches WHERE disposition='REJECTED' AND created_at::date=CURRENT_DATE")
+    ).scalar_one()
+    cancelled_batches_today = db.execute(
+        text("SELECT COUNT(*) FROM consumption_batches WHERE disposition='CANCELLED' AND created_at::date=CURRENT_DATE")
     ).scalar_one()
 
     # Receipts today
@@ -177,4 +185,6 @@ def get_dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummary:
         batches_manufactured_today=int(batches_manufactured_today or 0),
         receipts_today=int(receipts_today or 0),
         total_material_value=float(total_material_value or 0.0),
+        rejected_batches_today=int(rejected_batches_today or 0),
+        cancelled_batches_today=int(cancelled_batches_today or 0),
     )

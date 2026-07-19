@@ -3,6 +3,7 @@
 export type ViewMode =
   | "dashboard"
   | "materials"
+  | "products"
   | "receipts"
   | "consumption"
   | "lots"
@@ -42,6 +43,35 @@ export type Material = {
   low_stock_threshold_qty?: number | null;
   expiry_alert_days?: number | null;
   auto_quarantine_override_days?: number | null;
+  is_cancelled_bmr_marker?: boolean;
+};
+
+export type ProductMaterial = {
+  id: number;
+  material_code: string;
+  material_name: string;
+  base_uom_code: string;
+  status: string;
+};
+
+export type Product = {
+  id: number;
+  product_code: string;
+  product_name: string;
+  reference: string;
+  version_number: string;
+  shelf_life_days: number;
+  licence_status: "LICENSED" | "UNLICENSED";
+  line_type: "STOCK_LINE" | "BESPOKE";
+  storage_condition: "FRIDGELINE" | "AMBIENT";
+  controlled_drug_status: "CONTROLLED_DRUG" | "N_A";
+  export_status: "EXPORT_LINE" | "N_A";
+  status: "ACTIVE" | "INACTIVE";
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+  updated_by: string;
+  materials: ProductMaterial[];
 };
 
 export type Receipt = {
@@ -111,6 +141,16 @@ export type Issue = {
   // ✅ ADDITIVE (D2 costing): populated by backend on ISSUE transactions
   unit_price?: number | null;
   total_value?: number | null;
+  product_name_snapshot?: string | null;
+  product_reference_snapshot?: string | null;
+  product_version_snapshot?: string | null;
+  batch_disposition?: "COMPLIANT" | "REJECTED" | "CANCELLED" | string;
+  disposition_reason?: string | null;
+  compliance_triggers?: string[];
+  missing_material_codes?: string[];
+  unexpected_material_codes?: string[];
+  approved_by?: string | null;
+  is_non_stock_record?: boolean;
 };
 
 export type LotBalance = {
@@ -194,6 +234,8 @@ export type DashboardSummary = {
   batches_manufactured_today: number;
   receipts_today: number;
   total_material_value: number;
+  rejected_batches_today?: number;
+  cancelled_batches_today?: number;
 };
 
 export type QuarantinePolicy = {

@@ -48,6 +48,8 @@ export type MaterialTraceRow = {
   issue_qty_sum: string;
   issue_value_sum: string;
   last_issue_at: string | null;
+  batch_disposition?: string;
+  disposition_reason?: string | null;
 };
 
 type AnalyticsViewProps = {

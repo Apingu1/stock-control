@@ -16,6 +16,7 @@ const SYSTEM_ROLES = new Set<string>(["ADMIN", "SENIOR", "OPERATOR"]);
 
 function groupForPermissionKey(key: string): string {
   if (key.startsWith("materials.")) return "Materials";
+  if (key.startsWith("products.")) return "Product List";
   if (key.startsWith("receipts.")) return "Goods Receipts";
   if (key.startsWith("issues.")) return "Consumption";
   if (key.startsWith("lots.")) return "Live Lots";
@@ -103,6 +104,10 @@ export default function AdminUsersView() {
         { key: "materials.create" },
         { key: "materials.edit" },
         { key: "materials.super_edit_locked_fields" },
+        { key: "products.view" },
+        { key: "products.create" },
+        { key: "products.edit" },
+        { key: "products.status_change" },
         { key: "receipts.view" },
         { key: "receipts.create" },
         { key: "receipts.edit" },
@@ -111,6 +116,8 @@ export default function AdminUsersView() {
         { key: "issues.create" },
         { key: "issues.edit" },
         { key: "issues.super_edit_locked_fields" },
+        { key: "issues.approve_rejected_batch" },
+        { key: "issues.record_cancelled_bmr" },
         { key: "lots.view" },
         { key: "lots.status_change" },
       ]);
@@ -282,6 +289,11 @@ export default function AdminUsersView() {
   };
 
   const savePermissions = async () => {
+    const editReason = window.prompt(`Reason for changing the ${selectedRole} permission matrix:`);
+    if (!editReason?.trim()) {
+      setErr("A permission-change reason is required for the audit trail.");
+      return;
+    }
     setSavingPerms(true);
     setErr(null);
 
@@ -291,6 +303,7 @@ export default function AdminUsersView() {
         permission_key: p.key,
         granted: !!rolePerms[p.key],
       })),
+      edit_reason: editReason.trim(),
     };
 
     try {
