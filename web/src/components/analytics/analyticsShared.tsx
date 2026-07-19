@@ -9,12 +9,14 @@ export type MonthlyRow = {
   receipt_txn_count: number;
   issue_txn_count: number;
   unique_batches_issued: number;
+  rejected_batches?: number;
+  cancelled_batches?: number;
 };
 
 export type DashboardLegacyResp = {
   meta: { data_cut: string | null; timezone_month_bucket: string; logic_version: string };
   monthly: MonthlyRow[];
-  top_products: { es_product_code: string; unique_batch_count: number; last_issue_at: string | null }[];
+  top_products: { es_product_code: string; unique_batch_count: number; compliant_batch_count: number; rejected_batch_count: number; cancelled_batch_count: number; last_issue_at: string | null }[];
 };
 
 export type DashboardRangeResp = {
@@ -26,10 +28,15 @@ export type DashboardRangeResp = {
     receipt_txn_count: number;
     issue_txn_count: number;
     unique_batches_issued: number;
+    rejected_batches: number;
+    cancelled_batches: number;
   };
   by_product: {
     es_product_code: string;
     unique_batches: number;
+    total_recorded_batches: number;
+    rejected_batches: number;
+    cancelled_batches: number;
     total_cost: string;
     avg_cost_per_batch: string;
     issue_txn_count: number;
@@ -41,6 +48,7 @@ export type DashboardRangeResp = {
     material_name: string | null;
     uom_code: string | null;
     unique_batches: number;
+    rejected_batches: number;
     total_cost: string;
     avg_cost_per_batch: string;
     issue_qty_total: string;
@@ -56,6 +64,9 @@ export type DashboardResp = DashboardLegacyResp | DashboardRangeResp;
 export type ProductSummary = {
   es_product_code: string;
   unique_batches: number;
+  total_recorded_batches: number;
+  rejected_batches: number;
+  cancelled_batches: number;
   total_cost: string;
   avg_cost_per_batch: string;
 };
@@ -70,6 +81,17 @@ export type ProductBatchRow = {
   issue_txn_count: number;
   first_issue_at: string;
   last_issue_at: string;
+  product_name: string | null;
+  product_reference: string | null;
+  product_version: string | null;
+  batch_disposition: "COMPLIANT" | "REJECTED" | "CANCELLED" | string;
+  disposition_reason: string | null;
+  compliance_triggers: string[];
+  missing_material_codes: string[];
+  unexpected_material_codes: string[];
+  created_by: string | null;
+  approved_by: string | null;
+  consumption_group_id: string | null;
 };
 
 export type BatchAnalyticsResp = {
@@ -80,6 +102,20 @@ export type BatchAnalyticsResp = {
     issue_txn_count: number;
     first_issue_at: string;
     last_issue_at: string;
+    total_batch_size: string | null;
+    batch_size_uom: string | null;
+    number_of_units: number | null;
+    product_name: string | null;
+    product_reference: string | null;
+    product_version: string | null;
+    batch_disposition: "COMPLIANT" | "REJECTED" | "CANCELLED" | string;
+    disposition_reason: string | null;
+    compliance_triggers: string[];
+    missing_material_codes: string[];
+    unexpected_material_codes: string[];
+    created_by: string | null;
+    approved_by: string | null;
+    consumption_group_id: string | null;
   };
   materials: {
     stock_txn_id: number;
@@ -226,4 +262,6 @@ export type MaterialTraceRow = {
 
   // optional if you include it in the payload (you do)
   lot_number?: string | null;
+  batch_disposition?: string;
+  disposition_reason?: string | null;
 };

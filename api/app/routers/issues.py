@@ -1,25 +1,36 @@
 # api/app/routers/issues.py
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import List, Optional, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import (
+    BatchAuditEvent,
+    ConsumptionBatch,
     Material,
     MaterialLot,
+    Product,
+    ProductMaterial,
     StockTransaction,
     User,
     StockTransactionEdit,
     QuarantineEvent,  # ✅ Phase Q1: ledger rows for DESTRUCTION
     QuarantinePolicySetting,
 )
-from ..schemas import IssueBatchCreate, IssueBatchOut, IssueCreate, IssueOut, IssueUpdate
-from ..security import require_permission
+from ..schemas import (
+    CancelledBatchCreate,
+    IssueBatchCreate,
+    IssueBatchOut,
+    IssueCreate,
+    IssueOut,
+    IssueUpdate,
+)
+from ..security import require_permission, user_has_permission
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
@@ -35,6 +46,11 @@ QTY_Q = Decimal("0.000001")   # 6dp
 UNIT_Q = Decimal("0.0001")    # 4dp (keep existing UI logic)
 MONEY_Q = Decimal("0.01")     # 2dp
 VALID_CONSUMPTION_TYPES = {"USAGE", "WASTAGE", "DESTRUCTION", "R_AND_D"}
+
+
+def _utc_now() -> datetime:
+    """Return an aware UTC timestamp for TIMESTAMPTZ columns."""
+    return datetime.now(timezone.utc)
 
 
 def _to_decimal(value: Any) -> Optional[Decimal]:
@@ -155,6 +171,82 @@ def _clean_text(value: str | None) -> str | None:
     return cleaned or None
 
 
+def _product_by_code(db: Session, product_code: str | None) -> Product | None:
+    code = (_clean_text(product_code) or "").upper()
+    if not code:
+        return None
+    return db.query(Product).filter(Product.product_code == code).one_or_none()
+
+
+def _lock_batch_number(db: Session, batch_no: str | None) -> None:
+    """Serialise duplicate checks for the same batch number in this transaction."""
+    if batch_no:
+        db.execute(select(func.pg_advisory_xact_lock(func.hashtext(batch_no))))
+
+
+def _expected_material_codes(db: Session, product: Product) -> set[str]:
+    rows = (
+        db.query(Material.material_code)
+        .join(ProductMaterial, ProductMaterial.material_id == Material.id)
+        .filter(
+            ProductMaterial.product_id == product.id,
+            ProductMaterial.is_active.is_(True),
+        )
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
+def _batch_snapshot(batch: ConsumptionBatch) -> dict:
+    return {
+        "consumption_group_id": batch.consumption_group_id,
+        "consumption_type": batch.consumption_type,
+        "product_id": batch.product_id,
+        "product_code": batch.product_code_snapshot,
+        "product_name": batch.product_name_snapshot,
+        "product_reference": batch.product_reference_snapshot,
+        "product_version": batch.product_version_snapshot,
+        "product_batch_no": batch.product_batch_no,
+        "product_manufacture_date": (
+            batch.product_manufacture_date.isoformat() if batch.product_manufacture_date else None
+        ),
+        "total_batch_size": str(batch.total_batch_size) if batch.total_batch_size is not None else None,
+        "batch_size_uom": batch.batch_size_uom,
+        "number_of_units": batch.number_of_units,
+        "target_ref": batch.target_ref,
+        "disposition": batch.disposition,
+        "disposition_reason": batch.disposition_reason,
+        "compliance_triggers": batch.compliance_triggers or [],
+        "missing_material_codes": batch.missing_material_codes or [],
+        "unexpected_material_codes": batch.unexpected_material_codes or [],
+        "approved_by": batch.approved_by,
+        "comment": batch.comment,
+    }
+
+
+def _fixed_prefixed_comment(prefix: str, reason: str | None, label: str) -> tuple[str, str]:
+    cleaned = _clean_text(reason)
+    if not cleaned:
+        raise HTTPException(status_code=400, detail=f"{label} is required")
+    return cleaned, f"{prefix} {cleaned}"
+
+
+def _batch_issue_fields(batch: ConsumptionBatch | None) -> dict:
+    if batch is None:
+        return {}
+    return {
+        "product_name_snapshot": batch.product_name_snapshot,
+        "product_reference_snapshot": batch.product_reference_snapshot,
+        "product_version_snapshot": batch.product_version_snapshot,
+        "batch_disposition": batch.disposition,
+        "disposition_reason": batch.disposition_reason,
+        "compliance_triggers": batch.compliance_triggers or [],
+        "missing_material_codes": batch.missing_material_codes or [],
+        "unexpected_material_codes": batch.unexpected_material_codes or [],
+        "approved_by": batch.approved_by,
+    }
+
+
 def _validate_consumption_header(
     *,
     consumption_type: str | None,
@@ -220,6 +312,7 @@ def _issue_out(
     material: Material,
     *,
     created_by_fallback: str = "—",
+    batch: ConsumptionBatch | None = None,
 ) -> IssueOut:
     return IssueOut(
         id=txn.id,
@@ -246,6 +339,38 @@ def _issue_out(
         total_batch_size=txn.total_batch_size,
         batch_size_uom=txn.batch_size_uom,
         number_of_units=txn.number_of_units,
+        **_batch_issue_fields(batch),
+    )
+
+
+def _cancelled_issue_out(batch: ConsumptionBatch) -> IssueOut:
+    return IssueOut(
+        id=-batch.id,
+        material_code="Cancelled BMR",
+        material_name="Cancelled BMR",
+        lot_number="—",
+        expiry_date=None,
+        qty=Decimal("0"),
+        uom_code="N/A",
+        unit_price=None,
+        total_value=None,
+        es_product_code=batch.product_code_snapshot,
+        product_batch_no=batch.product_batch_no,
+        manufacturer=None,
+        supplier=None,
+        product_manufacture_date=batch.product_manufacture_date,
+        consumption_type="CANCELLED_BMR",
+        target_ref=batch.target_ref,
+        created_at=batch.created_at,
+        created_by=batch.created_by,
+        comment=batch.comment,
+        material_status_at_txn=None,
+        consumption_group_id=batch.consumption_group_id,
+        total_batch_size=None,
+        batch_size_uom=None,
+        number_of_units=None,
+        is_non_stock_record=True,
+        **_batch_issue_fields(batch),
     )
 
 
@@ -294,10 +419,24 @@ def create_issue(
     user: User = Depends(require_permission("issues.create")),
 ) -> IssueOut:
     created_by = user.username
+    requested_type = (payload.consumption_type or "USAGE").strip().upper()
+    if requested_type == "USAGE" or _clean_text(payload.es_product_code):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Usage and any product-linked consumption must be submitted as one complete "
+                "batch via /issues/batch so Product List material controls can be enforced"
+            ),
+        )
 
     material = db.query(Material).filter(Material.material_code == payload.material_code).one_or_none()
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
+    if material.is_cancelled_bmr_marker:
+        raise HTTPException(
+            status_code=400,
+            detail="Cancelled BMR is a zero-stock batch marker; use /issues/batch/cancelled",
+        )
 
     # qty from payload (supports current float schemas OR future Decimal schemas)
     payload_qty = _to_decimal(getattr(payload, "qty", None))
@@ -380,11 +519,11 @@ def create_issue(
     lot_unit_price = _lot_weighted_unit_price(db, lot.id)  # 4dp
     issue_total_value = _q_money(payload_qty * lot_unit_price) if lot_unit_price is not None else None
 
-    now = datetime.utcnow()
+    now = _utc_now()
     txn = StockTransaction(
         material_lot_id=lot.id,
         txn_type="ISSUE",
-        consumption_type=payload.consumption_type or "USAGE",
+        consumption_type=requested_type,
         qty=payload_qty,  # Decimal
         uom_code=payload.uom_code,
         direction=-1,
@@ -408,7 +547,7 @@ def create_issue(
     # --- Phase Q1: Quarantine ledger (destruction issues) -----------------
     # We DO NOT change stock logic. This ONLY records a ledger row when the
     # consumption_type is DESTRUCTION so the quarantine log can show it as RECORDED.
-    if (payload.consumption_type or "USAGE") == "DESTRUCTION":
+    if requested_type == "DESTRUCTION":
         db.add(
             QuarantineEvent(
                 event_type="DESTRUCTION",
@@ -456,6 +595,65 @@ def create_issue_batch(
         comment=payload.comment,
     )
 
+    product = _product_by_code(db, payload.es_product_code)
+    if _clean_text(payload.es_product_code) and product is None:
+        raise HTTPException(status_code=400, detail="Selected product is not in the Product List")
+    if consumption_type == "USAGE" and product is None:
+        raise HTTPException(status_code=400, detail="A Product List item is required for usage")
+
+    batch_no = _clean_text(payload.product_batch_no)
+    _lock_batch_number(db, batch_no)
+    if batch_no and (
+        db.query(ConsumptionBatch.id).filter(ConsumptionBatch.product_batch_no == batch_no).first()
+        or db.query(StockTransaction.id).filter(StockTransaction.product_batch_no == batch_no).first()
+    ):
+        raise HTTPException(status_code=409, detail="This batch number has already been recorded")
+
+    expected_codes = _expected_material_codes(db, product) if product else set()
+    actual_codes = {item.material_code for item in payload.items}
+    missing_codes = sorted(expected_codes - actual_codes) if product else []
+    unexpected_codes = sorted(actual_codes - expected_codes) if product else []
+    compliance_triggers: list[str] = []
+    if product and product.status != "ACTIVE":
+        compliance_triggers.append("PRODUCT_INACTIVE")
+    if missing_codes:
+        compliance_triggers.append("MISSING_MATERIALS")
+    if unexpected_codes:
+        compliance_triggers.append("UNEXPECTED_MATERIALS")
+
+    if compliance_triggers and not payload.approve_as_rejected_batch:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Batch does not comply with the selected Product List item",
+                "requires_rejected_batch_approval": True,
+                "triggers": compliance_triggers,
+                "missing_material_codes": missing_codes,
+                "unexpected_material_codes": unexpected_codes,
+            },
+        )
+    if payload.approve_as_rejected_batch and not compliance_triggers:
+        raise HTTPException(
+            status_code=400,
+            detail="Rejected-batch approval is only available when a compliance problem exists",
+        )
+
+    disposition = "COMPLIANT"
+    disposition_reason: str | None = None
+    approved_by: str | None = None
+    batch_comment = _clean_text(payload.comment)
+    if compliance_triggers:
+        if not user_has_permission(db, user, "issues.approve_rejected_batch"):
+            raise HTTPException(
+                status_code=403,
+                detail="Missing permission to approve this consumption as a rejected batch",
+            )
+        disposition_reason, batch_comment = _fixed_prefixed_comment(
+            "Rejected batch:", payload.rejection_reason, "Rejected batch reason"
+        )
+        disposition = "REJECTED"
+        approved_by = user.username
+
     lot_ids = [item.material_lot_id for item in payload.items]
     if len(lot_ids) != len(set(lot_ids)):
         raise HTTPException(
@@ -464,10 +662,39 @@ def create_issue_batch(
         )
 
     consumption_group_id = str(uuid4())
-    created_at = datetime.utcnow()
+    created_at = _utc_now()
     created_transactions: list[tuple[StockTransaction, MaterialLot, Material]] = []
 
+    batch = ConsumptionBatch(
+        consumption_group_id=consumption_group_id,
+        consumption_type=consumption_type,
+        product_id=product.id if product else None,
+        product_code_snapshot=product.product_code if product else _clean_text(payload.es_product_code),
+        product_name_snapshot=product.product_name if product else None,
+        product_reference_snapshot=product.reference if product else None,
+        product_version_snapshot=product.version_number if product else None,
+        product_batch_no=_clean_text(payload.product_batch_no),
+        product_manufacture_date=payload.product_manufacture_date,
+        total_batch_size=_q_qty(_to_decimal(payload.total_batch_size)),
+        batch_size_uom=_clean_text(payload.batch_size_uom),
+        number_of_units=payload.number_of_units,
+        target_ref=_clean_text(payload.target_ref),
+        disposition=disposition,
+        disposition_reason=disposition_reason,
+        compliance_triggers=compliance_triggers,
+        missing_material_codes=missing_codes,
+        unexpected_material_codes=unexpected_codes,
+        approved_by=approved_by,
+        approved_at=created_at if approved_by else None,
+        comment=batch_comment,
+        created_at=created_at,
+        created_by=user.username,
+        updated_at=created_at,
+        updated_by=user.username,
+    )
+
     try:
+        db.add(batch)
         # Sort by lot id before taking row locks. Consistent lock ordering avoids
         # deadlocks when two operators submit overlapping multi-material batches.
         indexed_items = sorted(
@@ -485,6 +712,14 @@ def create_issue_batch(
                 raise HTTPException(
                     status_code=404,
                     detail=f"Material line {line_number}: material not found",
+                )
+            if material.is_cancelled_bmr_marker:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Material line {line_number}: Cancelled BMR cannot be posted as stock; "
+                        "use the Cancelled BMR action"
+                    ),
                 )
 
             lot = (
@@ -550,14 +785,14 @@ def create_issue_batch(
                 unit_price=lot_unit_price,
                 total_value=total_value,
                 target_ref=payload.target_ref,
-                es_product_code=_clean_text(payload.es_product_code),
+                es_product_code=product.product_code if product else _clean_text(payload.es_product_code),
                 product_batch_no=_clean_text(payload.product_batch_no),
                 product_manufacture_date=payload.product_manufacture_date,
                 consumption_group_id=consumption_group_id,
                 total_batch_size=_q_qty(_to_decimal(payload.total_batch_size)),
                 batch_size_uom=_clean_text(payload.batch_size_uom),
                 number_of_units=payload.number_of_units,
-                comment=_clean_text(payload.comment),
+                comment=batch_comment,
                 material_status_at_txn=lot.status,
                 created_at=created_at,
                 created_by=user.username,
@@ -581,6 +816,19 @@ def create_issue_batch(
                     )
                 )
 
+        db.flush()
+        db.add(
+            BatchAuditEvent(
+                event_type="BATCH_REJECTED" if disposition == "REJECTED" else "BATCH_CREATED",
+                consumption_group_id=consumption_group_id,
+                product_code=batch.product_code_snapshot,
+                product_batch_no=batch.product_batch_no,
+                actor_username=user.username,
+                reason=disposition_reason or "Consumption batch created",
+                before_json=None,
+                after_json=_batch_snapshot(batch),
+            )
+        )
         db.commit()
     except Exception:
         db.rollback()
@@ -589,11 +837,162 @@ def create_issue_batch(
     results: list[IssueOut] = []
     for txn, lot, material in created_transactions:
         db.refresh(txn)
-        results.append(_issue_out(txn, lot, material, created_by_fallback=user.username))
+        results.append(
+            _issue_out(
+                txn,
+                lot,
+                material,
+                created_by_fallback=user.username,
+                batch=batch,
+            )
+        )
 
     return IssueBatchOut(
         consumption_group_id=consumption_group_id,
         issues=results,
+    )
+
+
+@router.post("/batch/cancelled", response_model=IssueBatchOut, status_code=201)
+def create_cancelled_batch(
+    payload: CancelledBatchCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("issues.record_cancelled_bmr")),
+) -> IssueBatchOut:
+    """Record an allocated-but-abandoned batch number without a stock movement."""
+    product = _product_by_code(db, payload.es_product_code)
+    if product is None:
+        raise HTTPException(status_code=400, detail="Selected product is not in the Product List")
+
+    batch_no = _clean_text(payload.product_batch_no)
+    if not batch_no:
+        raise HTTPException(status_code=400, detail="Batch number is required")
+
+    _lock_batch_number(db, batch_no)
+
+    existing_header = (
+        db.query(ConsumptionBatch)
+        .filter(ConsumptionBatch.product_batch_no == batch_no)
+        .first()
+    )
+    existing_txn = (
+        db.query(StockTransaction.id)
+        .filter(StockTransaction.product_batch_no == batch_no)
+        .first()
+    )
+    if existing_header or existing_txn:
+        raise HTTPException(status_code=409, detail="This batch number has already been recorded")
+
+    marker = (
+        db.query(Material)
+        .filter(
+            Material.material_code == "Cancelled BMR",
+            Material.name == "Cancelled BMR",
+            Material.is_cancelled_bmr_marker.is_(True),
+        )
+        .one_or_none()
+    )
+    if marker is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The exact Materials Library marker 'Cancelled BMR' is not configured. "
+                "Create or correct that marker before recording a cancellation."
+            ),
+        )
+
+    cancellation_reason, comment = _fixed_prefixed_comment(
+        "Cancelled BMR:", payload.cancellation_reason, "Cancellation reason"
+    )
+    triggers: list[str] = []
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    disposition_reason = cancellation_reason
+
+    if product.status != "ACTIVE":
+        triggers.append("PRODUCT_INACTIVE")
+        if not payload.approve_inactive_product:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "The selected product is inactive",
+                    "requires_rejected_batch_approval": True,
+                    "triggers": triggers,
+                },
+            )
+        if not user_has_permission(db, user, "issues.approve_rejected_batch"):
+            raise HTTPException(
+                status_code=403,
+                detail="Missing permission to approve a Cancelled BMR for an inactive product",
+            )
+        inactive_reason = _clean_text(payload.inactive_product_reason)
+        if not inactive_reason:
+            raise HTTPException(status_code=400, detail="Inactive-product approval reason is required")
+        approved_by = user.username
+        approved_at = _utc_now()
+        combined_reason = f"{cancellation_reason}; inactive product override: {inactive_reason}"
+        if len(combined_reason) > 500:
+            raise HTTPException(
+                status_code=400,
+                detail="Cancellation and inactive-product reasons must be 500 characters or fewer combined",
+            )
+        disposition_reason = combined_reason
+    elif payload.approve_inactive_product:
+        raise HTTPException(status_code=400, detail="The selected product is active; no override is needed")
+
+    created_at = _utc_now()
+    consumption_group_id = str(uuid4())
+    batch = ConsumptionBatch(
+        consumption_group_id=consumption_group_id,
+        consumption_type="CANCELLED_BMR",
+        product_id=product.id,
+        product_code_snapshot=product.product_code,
+        product_name_snapshot=product.product_name,
+        product_reference_snapshot=product.reference,
+        product_version_snapshot=product.version_number,
+        product_batch_no=batch_no,
+        product_manufacture_date=None,
+        total_batch_size=None,
+        batch_size_uom=None,
+        number_of_units=None,
+        target_ref=_clean_text(payload.target_ref),
+        disposition="CANCELLED",
+        disposition_reason=disposition_reason,
+        compliance_triggers=triggers,
+        missing_material_codes=[],
+        unexpected_material_codes=[],
+        approved_by=approved_by,
+        approved_at=approved_at,
+        comment=comment,
+        created_at=created_at,
+        created_by=user.username,
+        updated_at=created_at,
+        updated_by=user.username,
+    )
+    try:
+        db.add(batch)
+        db.flush()
+        db.add(
+            BatchAuditEvent(
+                event_type="CANCELLED_BMR_RECORDED",
+                consumption_group_id=consumption_group_id,
+                product_code=product.product_code,
+                product_batch_no=batch_no,
+                actor_username=user.username,
+                reason=cancellation_reason,
+                before_json=None,
+                after_json=_batch_snapshot(batch),
+            )
+        )
+        db.commit()
+        db.refresh(batch)
+    except Exception:
+        db.rollback()
+        raise
+
+    return IssueBatchOut(
+        consumption_group_id=consumption_group_id,
+        issues=[_cancelled_issue_out(batch)],
     )
 
 
@@ -615,10 +1014,41 @@ def list_issues(
     rows = db.execute(stmt).all()
     results: List[IssueOut] = []
 
-    for txn, lot, material in rows:
-        results.append(_issue_out(txn, lot, material))
+    group_ids = {
+        txn.consumption_group_id
+        for txn, _, _ in rows
+        if txn.consumption_group_id
+    }
+    batches = (
+        db.query(ConsumptionBatch)
+        .filter(ConsumptionBatch.consumption_group_id.in_(group_ids))
+        .all()
+        if group_ids
+        else []
+    )
+    batch_by_group = {batch.consumption_group_id: batch for batch in batches}
 
-    return results
+    for txn, lot, material in rows:
+        results.append(
+            _issue_out(
+                txn,
+                lot,
+                material,
+                batch=batch_by_group.get(txn.consumption_group_id or ""),
+            )
+        )
+
+    cancelled_batches = (
+        db.query(ConsumptionBatch)
+        .filter(ConsumptionBatch.disposition == "CANCELLED")
+        .order_by(ConsumptionBatch.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    results.extend(_cancelled_issue_out(batch) for batch in cancelled_batches)
+    results.sort(key=lambda issue: issue.created_at, reverse=True)
+
+    return results[:limit]
 
 
 @router.put("/{issue_id}", response_model=IssueOut)
@@ -661,6 +1091,50 @@ def update_issue(
             .one()
         )
         grouped_transactions = [txn]
+
+    batch: ConsumptionBatch | None = None
+    batch_before: dict | None = None
+    if txn.consumption_group_id:
+        batch = (
+            db.query(ConsumptionBatch)
+            .filter(ConsumptionBatch.consumption_group_id == txn.consumption_group_id)
+            .with_for_update()
+            .one_or_none()
+        )
+        if batch:
+            batch_before = _batch_snapshot(batch)
+            requested_code = (_clean_text(payload.es_product_code) or "").upper()
+            existing_code = (batch.product_code_snapshot or "").upper()
+            if requested_code != existing_code:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Product code is locked after a controlled batch is submitted",
+                )
+
+            requested_batch_no = _clean_text(payload.product_batch_no)
+            if requested_batch_no != batch.product_batch_no:
+                _lock_batch_number(db, requested_batch_no)
+                conflicting_header = (
+                    db.query(ConsumptionBatch.id)
+                    .filter(
+                        ConsumptionBatch.product_batch_no == requested_batch_no,
+                        ConsumptionBatch.id != batch.id,
+                    )
+                    .first()
+                )
+                conflicting_legacy_txn = (
+                    db.query(StockTransaction.id)
+                    .filter(
+                        StockTransaction.product_batch_no == requested_batch_no,
+                        or_(
+                            StockTransaction.consumption_group_id.is_(None),
+                            StockTransaction.consumption_group_id != batch.consumption_group_id,
+                        ),
+                    )
+                    .first()
+                )
+                if requested_batch_no and (conflicting_header or conflicting_legacy_txn):
+                    raise HTTPException(status_code=409, detail="This batch number has already been recorded")
 
     lot = (
         db.query(MaterialLot)
@@ -741,16 +1215,32 @@ def update_issue(
     # row under one audit reason. Legacy single issues retain their current
     # individual edit behaviour.
     shared_targets = grouped_transactions if txn.consumption_group_id else [txn]
+    shared_comment = _clean_text(payload.comment)
+    if batch and batch.disposition == "REJECTED":
+        shared_comment = batch.comment
     for shared_txn in shared_targets:
         shared_txn.consumption_type = requested_type
         shared_txn.target_ref = payload.target_ref
-        shared_txn.es_product_code = _clean_text(payload.es_product_code)
+        shared_txn.es_product_code = (
+            (_clean_text(payload.es_product_code) or "").upper() or None
+        )
         shared_txn.product_batch_no = _clean_text(payload.product_batch_no)
         shared_txn.product_manufacture_date = payload.product_manufacture_date
-        shared_txn.comment = _clean_text(payload.comment)
+        shared_txn.comment = shared_comment
         shared_txn.total_batch_size = _q_qty(_to_decimal(payload.total_batch_size))
         shared_txn.batch_size_uom = _clean_text(payload.batch_size_uom)
         shared_txn.number_of_units = payload.number_of_units
+
+    if batch:
+        batch.product_batch_no = _clean_text(payload.product_batch_no)
+        batch.product_manufacture_date = payload.product_manufacture_date
+        batch.total_batch_size = _q_qty(_to_decimal(payload.total_batch_size))
+        batch.batch_size_uom = _clean_text(payload.batch_size_uom)
+        batch.number_of_units = payload.number_of_units
+        batch.target_ref = _clean_text(payload.target_ref)
+        batch.comment = shared_comment
+        batch.updated_at = _utc_now()
+        batch.updated_by = user.username
 
     # Keep txn.material_status_at_txn unchanged (historical snapshot)
 
@@ -779,7 +1269,22 @@ def update_issue(
                 after_json=after_json,
             )
         )
+    if batch and batch_before is not None:
+        batch_after = _batch_snapshot(batch)
+        if batch_after != batch_before:
+            db.add(
+                BatchAuditEvent(
+                    event_type="BATCH_UPDATED",
+                    consumption_group_id=batch.consumption_group_id,
+                    product_code=batch.product_code_snapshot,
+                    product_batch_no=batch.product_batch_no,
+                    actor_username=user.username,
+                    reason=reason,
+                    before_json=batch_before,
+                    after_json=batch_after,
+                )
+            )
     db.commit()
 
     db.refresh(txn)
-    return _issue_out(txn, lot, material)
+    return _issue_out(txn, lot, material, batch=batch)

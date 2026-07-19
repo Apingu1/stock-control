@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from ..db import get_db
-from ..models import User, Role, Permission, RolePermission, ExpiryThresholdSetting
+from ..models import (
+    User,
+    Role,
+    Permission,
+    RolePermission,
+    RolePermissionAuditEvent,
+    ExpiryThresholdSetting,
+)
 from ..schemas import (
     UserCreate,
     UserOut,
@@ -313,6 +320,10 @@ def set_role_permissions_matrix(
     if not payload.permissions:
         raise HTTPException(status_code=400, detail="No permissions provided")
 
+    reason = (payload.edit_reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="edit_reason is required")
+
     valid = {p.key for p in db.query(Permission).all()}
 
     incoming: Dict[str, bool] = {}
@@ -327,6 +338,11 @@ def set_role_permissions_matrix(
     if not incoming:
         raise HTTPException(status_code=400, detail="No valid permissions provided")
 
+    all_permissions = sorted(valid)
+    existing_rows = db.query(RolePermission).filter(RolePermission.role_name == rn).all()
+    before_map = {key: False for key in all_permissions}
+    before_map.update({row.permission_key: bool(row.granted) for row in existing_rows})
+
     for k, granted in incoming.items():
         rp = (
             db.query(RolePermission)
@@ -339,6 +355,22 @@ def set_role_permissions_matrix(
         else:
             rp.granted = granted
 
+    db.flush()
+    after_rows = db.query(RolePermission).filter(RolePermission.role_name == rn).all()
+    after_map = {key: False for key in all_permissions}
+    after_map.update({row.permission_key: bool(row.granted) for row in after_rows})
+    if before_map == after_map:
+        raise HTTPException(status_code=400, detail="No permission changes were supplied")
+
+    db.add(
+        RolePermissionAuditEvent(
+            role_name=rn,
+            actor_username=admin.username,
+            reason=reason,
+            before_json=before_map,
+            after_json=after_map,
+        )
+    )
     db.commit()
     return get_role_permissions_matrix(rn, db, admin)
 

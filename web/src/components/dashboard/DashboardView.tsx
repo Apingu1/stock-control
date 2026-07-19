@@ -50,6 +50,9 @@ type LatestBatchRow = {
   product_batch_no: string;
   es_product_code: string;
   last_issue_at: string; // ISO string
+  product_name?: string | null;
+  batch_disposition?: string;
+  disposition_reason?: string | null;
   // manufactured_at was previously returned; keep optional for backwards compatibility
   manufactured_at?: string;
 };
@@ -280,12 +283,14 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   }, [actions, actionsLoaded, availableQtyByMaterial, lotBalances, materialByCode, materials]);
 
   // --- Metric values ---------------------------------------------------------
-  const m_total_materials = summary?.total_materials ?? materials.length;
+  const m_total_materials = summary?.total_materials ?? materials.filter((material) => !material.is_cancelled_bmr_marker).length;
   const m_low_expiry = summary?.materials_low_expiry ?? 0;
   const m_low_stock = summary?.materials_low_stock ?? 0;
   const m_batches_today = summary?.batches_manufactured_today ?? 0;
   const m_receipts_today = summary?.receipts_today ?? 0;
   const m_total_value = summary?.total_material_value ?? 0;
+  const m_rejected_today = summary?.rejected_batches_today ?? 0;
+  const m_cancelled_today = summary?.cancelled_batches_today ?? 0;
 
   return (
     <section className="content">
@@ -315,6 +320,18 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="metric-label">Materials in low expiry alerts</div>
               <div className="metric-value">{m_low_expiry}</div>
               <div className="mini-spark">⏳</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-label">Rejected batches today</div>
+              <div className="metric-value">{m_rejected_today}</div>
+              <div className="mini-spark">⚠</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-label">Cancelled BMRs today</div>
+              <div className="metric-value">{m_cancelled_today}</div>
+              <div className="mini-spark">⊘</div>
             </div>
 
             <div className="metric-card accent-2">
@@ -413,7 +430,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             {/* RIGHT: Latest manufactured batches */}
             <div className="dash-widget">
               <div className="dash-widget-header">
-                <div className="dash-widget-title">Latest manufactured batches</div>
+                <div className="dash-widget-title">Latest batch records</div>
                 <div className="hint" style={{ margin: 0 }}>
                   newest first
                 </div>
@@ -441,10 +458,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                         >
                           {r.product_batch_no}
                         </button>
-                        <div className="dash-batch-meta">{r.es_product_code}</div>
+                        <div className="dash-batch-meta">
+                          {r.es_product_code}{" "}
+                          <span className={`disposition-badge disposition-${(r.batch_disposition || "COMPLIANT").toLowerCase()}`} title={r.disposition_reason || ""}>
+                            {r.batch_disposition || "COMPLIANT"}
+                          </span>
+                        </div>
                       </div>
                       <div className="dash-batch-right">
-                        <div className="dash-k">Last issue</div>
+                        <div className="dash-k">Recorded</div>
                         <div className="dash-v">{fmtTs(r.last_issue_at)}</div>
                       </div>
                     </li>

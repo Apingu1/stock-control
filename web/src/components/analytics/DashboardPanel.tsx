@@ -34,6 +34,8 @@ export const DashboardPanel: React.FC<{
         code: x.es_product_code,
         name: "",
         batches: x.unique_batches,
+        rejected: x.rejected_batches,
+        cancelled: x.cancelled_batches,
         avgCost: x.avg_cost_per_batch,
         totalCost: x.total_cost,
       }));
@@ -52,6 +54,8 @@ export const DashboardPanel: React.FC<{
       code: x.material_code,
       name: x.material_name || "",
       batches: x.unique_batches,
+      rejected: x.rejected_batches,
+      cancelled: 0,
       avgCost: x.avg_cost_per_batch,
       totalCost: x.total_cost,
     }));
@@ -66,10 +70,14 @@ export const DashboardPanel: React.FC<{
       "total_spend_receipts",
       "total_consumption_issues",
       "unique_batches",
+      "rejected_batches",
+      "cancelled_batches",
       "view",
       "entity_code",
       "entity_name",
       "unique_batches_in_entity",
+      "rejected_batches_in_entity",
+      "cancelled_batches_in_entity",
       "avg_cost_per_batch",
       "total_cost_in_entity",
     ];
@@ -81,7 +89,11 @@ export const DashboardPanel: React.FC<{
       rangeDash.kpis.receipt_total_value,
       rangeDash.kpis.issue_total_value,
       rangeDash.kpis.unique_batches_issued,
+      rangeDash.kpis.rejected_batches,
+      rangeDash.kpis.cancelled_batches,
       dashView,
+      "",
+      "",
       "",
       "",
       "",
@@ -97,10 +109,14 @@ export const DashboardPanel: React.FC<{
         rangeDash.kpis.receipt_total_value,
         rangeDash.kpis.issue_total_value,
         rangeDash.kpis.unique_batches_issued,
+        rangeDash.kpis.rejected_batches,
+        rangeDash.kpis.cancelled_batches,
         r.kind,
         r.code,
         r.name || "",
         r.batches,
+        r.rejected,
+        r.cancelled,
         r.avgCost,
         r.totalCost,
       ]);
@@ -129,12 +145,14 @@ export const DashboardPanel: React.FC<{
         <div class="kpi"><div class="lab">Total spend (receipts)</div><div class="val">${escapeHtml(moneyText(rangeDash.kpis.receipt_total_value))}</div></div>
         <div class="kpi"><div class="lab">Total consumption cost (issues)</div><div class="val">${escapeHtml(moneyText(rangeDash.kpis.issue_total_value))}</div></div>
         <div class="kpi"><div class="lab">Unique ES batches</div><div class="val">${escapeHtml(rangeDash.kpis.unique_batches_issued)}</div></div>
+        <div class="kpi"><div class="lab">Rejected batches</div><div class="val">${escapeHtml(rangeDash.kpis.rejected_batches)}</div></div>
+        <div class="kpi"><div class="lab">Cancelled BMRs</div><div class="val">${escapeHtml(rangeDash.kpis.cancelled_batches)}</div></div>
       </div>
     `;
 
     const tableHead = dashView === "product"
-      ? `<tr><th>ES product code</th><th class="mono">Batches</th><th class="mono">Avg cost/batch</th><th class="mono">Total cost</th></tr>`
-      : `<tr><th>Material</th><th class="mono">Batches</th><th class="mono">Avg cost/batch</th><th class="mono">Total cost</th></tr>`;
+      ? `<tr><th>ES product code</th><th class="mono">Compliant</th><th class="mono">Rejected</th><th class="mono">Cancelled</th><th class="mono">Avg cost/batch</th><th class="mono">Total cost</th></tr>`
+      : `<tr><th>Material</th><th class="mono">Batches</th><th class="mono">Rejected</th><th class="mono">Cancelled</th><th class="mono">Avg cost/batch</th><th class="mono">Total cost</th></tr>`;
 
     const tableRows = rows
       .map((r) => {
@@ -145,6 +163,8 @@ export const DashboardPanel: React.FC<{
           <tr>
             <td>${left}</td>
             <td class="mono">${escapeHtml(r.batches)}</td>
+            <td class="mono">${escapeHtml(r.rejected)}</td>
+            <td class="mono">${escapeHtml(r.cancelled)}</td>
             <td class="mono">${escapeHtml(moneyText(r.avgCost))}</td>
             <td class="mono">${escapeHtml(moneyText(r.totalCost))}</td>
           </tr>
@@ -158,7 +178,7 @@ export const DashboardPanel: React.FC<{
         <div class="ct">Entities</div>
         <table>
           <thead>${tableHead}</thead>
-          <tbody>${tableRows || `<tr><td colspan="4" class="muted">No rows in range.</td></tr>`}</tbody>
+          <tbody>${tableRows || `<tr><td colspan="6" class="muted">No rows in range.</td></tr>`}</tbody>
         </table>
       </div>
     `;
@@ -223,7 +243,17 @@ export const DashboardPanel: React.FC<{
           <div className="metric-card">
             <div className="metric-label">Unique ES batches</div>
             <div className="metric-value">{rangeDash.kpis.unique_batches_issued}</div>
-            <div className="metric-sub">Distinct product_batch_no in ISSUE rows</div>
+            <div className="metric-sub">Compliant manufactured batches only</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Rejected batches</div>
+            <div className="metric-value">{rangeDash.kpis.rejected_batches}</div>
+            <div className="metric-sub">Usage and cost remain included</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Cancelled BMRs</div>
+            <div className="metric-value">{rangeDash.kpis.cancelled_batches}</div>
+            <div className="metric-sub">Zero-stock batch records</div>
           </div>
         </div>
       </div>
@@ -242,6 +272,8 @@ export const DashboardPanel: React.FC<{
               <tr>
                 <th>{dashView === "product" ? "ES product code" : "Material"}</th>
                 <th>Batches</th>
+                <th>Rejected</th>
+                <th>Cancelled</th>
                 <th>Avg cost/batch</th>
               </tr>
             </thead>
@@ -261,12 +293,14 @@ export const DashboardPanel: React.FC<{
                     {r.kind === "material" && r.name ? <div className="muted">{r.name}</div> : null}
                   </td>
                   <td className="mono">{r.batches}</td>
+                  <td className="mono">{r.rejected}</td>
+                  <td className="mono">{r.cancelled}</td>
                   <td className="mono">{money(r.avgCost)}</td>
                 </tr>
               ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="muted">
+                  <td colSpan={5} className="muted">
                     No results for the selected date range.
                   </td>
                 </tr>

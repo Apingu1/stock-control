@@ -19,6 +19,8 @@ export const BatchPanel: React.FC<{
       "issue_txn_count",
       "first_issue_at",
       "last_issue_at",
+      "batch_disposition",
+      "disposition_reason",
       "material_code",
       "material_name",
       "lot_number",
@@ -36,6 +38,8 @@ export const BatchPanel: React.FC<{
       batch.header.issue_txn_count,
       batch.header.first_issue_at,
       batch.header.last_issue_at,
+      batch.header.batch_disposition,
+      batch.header.disposition_reason || "",
       "",
       "",
       "",
@@ -53,6 +57,8 @@ export const BatchPanel: React.FC<{
         batch.header.issue_txn_count,
         batch.header.first_issue_at,
         batch.header.last_issue_at,
+        batch.header.batch_disposition,
+        batch.header.disposition_reason || "",
         m.material_code,
         m.material_name,
         m.lot_number,
@@ -76,6 +82,7 @@ export const BatchPanel: React.FC<{
           <div class="sub">
             <span class="pill">Snapshot (no date filtering)</span>
             <span class="pill" style="margin-left:8px;">Product: <span class="mono">${escapeHtml(batch.header.es_product_code || "-")}</span></span>
+            <span class="pill" style="margin-left:8px;">Disposition: <span class="mono">${escapeHtml(batch.header.batch_disposition)}</span></span>
           </div>
         </div>
         <div class="pill">Stock Control • Analytics</div>
@@ -85,6 +92,7 @@ export const BatchPanel: React.FC<{
         <div class="kpi"><div class="lab">Issue rows</div><div class="val">${escapeHtml(batch.header.issue_txn_count ?? "-")}</div></div>
         <div class="kpi"><div class="lab">First → Last issue</div><div class="val">${escapeHtml(`${dtFmt(batch.header.first_issue_at)} → ${dtFmt(batch.header.last_issue_at)}`)}</div></div>
       </div>
+      ${batch.header.disposition_reason ? `<div class="card"><div class="ct">Disposition reason</div><div>${escapeHtml(batch.header.disposition_reason)}</div></div>` : ""}
     `;
 
     const rows = (batch.materials || [])
@@ -139,6 +147,11 @@ export const BatchPanel: React.FC<{
 
         <div className="analytics-metricgrid">
           <div className="metric-card">
+            <div className="metric-label">Disposition</div>
+            <div className="metric-value"><span className={`disposition-badge disposition-${(batch?.header.batch_disposition || "COMPLIANT").toLowerCase()}`}>{batch?.header.batch_disposition || "COMPLIANT"}</span></div>
+            <div className="metric-sub">Structured batch outcome</div>
+          </div>
+          <div className="metric-card">
             <div className="metric-label">Batch total cost</div>
             <div className="metric-value">{money(batch?.header.batch_total_cost)}</div>
             <div className="metric-sub">Sum of ISSUE total_value for batch</div>
@@ -154,6 +167,17 @@ export const BatchPanel: React.FC<{
             <div className="metric-sub">ES product code</div>
           </div>
         </div>
+
+        {batch && batch.header.batch_disposition !== "COMPLIANT" && (
+          <div className="issue-compliance-panel">
+            <strong>{batch.header.batch_disposition === "CANCELLED" ? "Cancelled BMR" : "Rejected batch"}</strong>
+            <div>{batch.header.disposition_reason || "No reason recorded"}</div>
+            {batch.header.compliance_triggers?.length > 0 && <div>Triggers: {batch.header.compliance_triggers.join(", ")}</div>}
+            {batch.header.missing_material_codes?.length > 0 && <div>Missing: {batch.header.missing_material_codes.join(", ")}</div>}
+            {batch.header.unexpected_material_codes?.length > 0 && <div>Unexpected: {batch.header.unexpected_material_codes.join(", ")}</div>}
+            {batch.header.approved_by && <div>Approved by: {batch.header.approved_by}</div>}
+          </div>
+        )}
 
         <div className="analytics-minirow muted">
           <span>First issue: {dtFmt(batch?.header.first_issue_at)}</span>
@@ -200,7 +224,7 @@ export const BatchPanel: React.FC<{
               {!batch || batch.materials.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="muted">
-                    No materials found for this batch.
+                    {batch?.header.batch_disposition === "CANCELLED" ? "Cancelled BMR — no materials, quantity or stock movement." : "No materials found for this batch."}
                   </td>
                 </tr>
               ) : null}

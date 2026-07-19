@@ -68,7 +68,7 @@ app.add_middleware(
 from .db import get_db  # noqa: F401,E402
 from .models import Base  # noqa: F401,E402
 
-from .routers import materials, receipts, issues, lot_balances, summary  # noqa: E402
+from .routers import materials, products, receipts, issues, lot_balances, summary  # noqa: E402
 from .routers import analytics  # noqa: E402
 from .routers import auth, admin  # noqa: E402
 from .routers import audit
@@ -77,6 +77,7 @@ from .routers import quarantine  # ✅ ADD
 from .routers import admin_db_tools
 
 app.include_router(materials.router)
+app.include_router(products.router)
 app.include_router(receipts.router)
 app.include_router(issues.router)
 app.include_router(lot_balances.router)

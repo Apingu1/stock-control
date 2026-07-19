@@ -101,6 +101,11 @@ def create_receipt(
     )
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
+    if material.is_cancelled_bmr_marker:
+        raise HTTPException(
+            status_code=400,
+            detail="Cancelled BMR is a non-stock marker and cannot receive goods, quantity or value",
+        )
 
     if material.category_code == "TABLETS_CAPSULES":
         approved_rows = (

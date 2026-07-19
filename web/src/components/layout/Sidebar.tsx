@@ -9,6 +9,7 @@ type Props = {
   setView: (v: ViewMode) => void;
   isAdmin: boolean;
   canViewAudit: boolean;
+  canViewProducts: boolean;
   alertsCounts: AlertsCounts;
   onLogout: () => void;
 };
@@ -19,6 +20,7 @@ const Sidebar: React.FC<Props> = ({
   setView,
   isAdmin,
   canViewAudit,
+  canViewProducts,
   alertsCounts,
   onLogout,
 }) => {
@@ -47,6 +49,21 @@ const Sidebar: React.FC<Props> = ({
             <span className="badge">Today</span>
           </button>
         </li>
+
+        {canViewProducts && (
+          <li className="nav-item">
+            <button
+              type="button"
+              className={"nav-link as-button " + (view === "products" ? "active" : "")}
+              onClick={() => setView("products")}
+              disabled={!me}
+              title={!me ? "Please sign in" : ""}
+            >
+              <span className="icon">🧾</span>
+              Product List
+            </button>
+          </li>
+        )}
 <li className="nav-item">
   <button
     type="button"
