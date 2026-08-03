@@ -20,7 +20,7 @@ The production test uses:
 - Compose project: `stock-control-prodtest`
 - Database volume: `stock-control-prodtest-db-data`
 - Backups folder: `backups-production-test`
-- HTTP port: `8080` by default
+- HTTP port: `8088` by default
 - HTTPS port: `8443` by default
 
 It does not use or delete the existing development database volume.
@@ -33,6 +33,7 @@ Install:
 - Docker Engine
 - Docker Compose v2
 - OpenSSL, for the HTTPS/PWA installation test
+- curl, for deployment health checks
 
 The server and operator computers must be able to reach each other over the
 internal network. Allow the chosen application port through the server firewall.
@@ -64,7 +65,7 @@ Edit `.env` and replace at least:
 ```text
 DB_PASSWORD=<strong test password>
 JWT_SECRET=<long random secret>
-APP_HTTP_PORT=8080
+APP_HTTP_PORT=8088
 APP_HTTPS_PORT=8443
 ```
 
@@ -86,14 +87,14 @@ chmod +x scripts/production_test_*.sh scripts/generate_test_tls_cert.sh
 Test on the server:
 
 ```bash
-curl http://localhost:8080/api/health
-curl http://localhost:8080/manifest.webmanifest
+curl http://localhost:8088/api/health
+curl http://localhost:8088/manifest.webmanifest
 ```
 
 Open from another computer:
 
 ```text
-http://<SERVER_IP>:8080
+http://<SERVER_IP>:8088
 ```
 
 This verifies the Docker deployment, login, API routing and multi-user access.
@@ -111,14 +112,14 @@ stock-control.company.local
 For a temporary test without internal DNS, use:
 
 ```text
-stock-control.local
+stock-control.test
 ```
 
 and add the following line to each Windows test computer's hosts file as an
 administrator:
 
 ```text
-<SERVER_IP> stock-control.local
+<SERVER_IP> stock-control.test
 ```
 
 Windows hosts file:
@@ -132,7 +133,7 @@ C:\Windows\System32\drivers\etc\hosts
 On the server:
 
 ```bash
-./scripts/generate_test_tls_cert.sh stock-control.local <SERVER_IP>
+./scripts/generate_test_tls_cert.sh stock-control.test <SERVER_IP>
 ```
 
 This creates a private test CA and a server certificate under `infra/certs`.
@@ -172,7 +173,7 @@ Do not copy the CA private key or server private key to operator computers.
 Open from a trusted operator PC:
 
 ```text
-https://stock-control.local:8443
+https://stock-control.test:8443
 ```
 
 Chrome should now be able to load the manifest, register the service worker and

@@ -12,7 +12,7 @@ Expected runtime files:
 Generate them with:
 
 ```bash
-./scripts/generate_test_tls_cert.sh stock-control.local <SERVER_IP>
+./scripts/generate_test_tls_cert.sh stock-control.test <SERVER_IP>
 ```
 
 Protect the private keys and do not commit them to the repository.

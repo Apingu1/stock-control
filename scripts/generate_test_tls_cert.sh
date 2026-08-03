@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CERT_DIR="$ROOT_DIR/infra/certs"
-HOSTNAME_VALUE="${1:-stock-control.local}"
+HOSTNAME_VALUE="${1:-stock-control.test}"
 IP_ADDRESS="${2:-}"
 
 if ! command -v openssl >/dev/null 2>&1; then

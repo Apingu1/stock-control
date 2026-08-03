@@ -2,18 +2,33 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="$ROOT_DIR/infra/docker-compose.production.yml"
+BASE_COMPOSE="$ROOT_DIR/infra/docker-compose.production.yml"
+TLS_COMPOSE="$ROOT_DIR/infra/docker-compose.production.tls.yml"
 ENV_FILE="$ROOT_DIR/.env"
-APP_HTTP_PORT="${APP_HTTP_PORT:-8080}"
-APP_HTTPS_PORT="${APP_HTTPS_PORT:-8443}"
 
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+base_compose() {
+  docker compose -f "$BASE_COMPOSE" --env-file "$ENV_FILE" "$@"
+}
 
-echo
-echo "HTTP checks:"
-curl -fsS "http://127.0.0.1:${APP_HTTP_PORT}/api/health" && echo
-curl -fsS "http://127.0.0.1:${APP_HTTP_PORT}/manifest.webmanifest" | head -c 300 && echo
+tls_compose() {
+  docker compose -f "$BASE_COMPOSE" -f "$TLS_COMPOSE" --env-file "$ENV_FILE" "$@"
+}
 
-echo
-echo "HTTPS check (only when TLS override is running):"
-curl -kfsS "https://127.0.0.1:${APP_HTTPS_PORT}/api/health" && echo || true
+base_compose ps
+
+HTTP_BINDING="$(base_compose port web 80 2>/dev/null | tail -n 1 || true)"
+if [[ -n "$HTTP_BINDING" ]]; then
+  HTTP_PORT="${HTTP_BINDING##*:}"
+  echo
+  echo "HTTP checks on port ${HTTP_PORT}:"
+  curl -fsS "http://127.0.0.1:${HTTP_PORT}/api/health" && echo
+  curl -fsS "http://127.0.0.1:${HTTP_PORT}/manifest.webmanifest" | head -c 300 && echo
+fi
+
+HTTPS_BINDING="$(tls_compose port web 443 2>/dev/null | tail -n 1 || true)"
+if [[ -n "$HTTPS_BINDING" ]]; then
+  HTTPS_PORT="${HTTPS_BINDING##*:}"
+  echo
+  echo "HTTPS check on port ${HTTPS_PORT}:"
+  curl -kfsS "https://127.0.0.1:${HTTPS_PORT}/api/health" && echo
+fi
