@@ -26,9 +26,14 @@ if [[ -n "$HTTP_BINDING" ]]; then
 fi
 
 HTTPS_BINDING="$(tls_compose port web 443 2>/dev/null | tail -n 1 || true)"
-if [[ -n "$HTTPS_BINDING" ]]; then
-  HTTPS_PORT="${HTTPS_BINDING##*:}"
+HTTPS_PORT="${HTTPS_BINDING##*:}"
+
+if [[ "$HTTPS_PORT" =~ ^[0-9]+$ ]] && (( HTTPS_PORT > 0 )); then
   echo
   echo "HTTPS check on port ${HTTPS_PORT}:"
   curl -kfsS "https://127.0.0.1:${HTTPS_PORT}/api/health" && echo
+else
+  echo
+  echo "HTTPS is not enabled for this running stack."
+  echo "Generate the test certificate and run ./scripts/production_test_up_tls.sh when ready."
 fi
