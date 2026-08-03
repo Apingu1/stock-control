@@ -124,7 +124,9 @@ def dashboard(
                   issue_total_value,
                   receipt_txn_count,
                   issue_txn_count,
-                  unique_batches_issued
+                  unique_batches_issued,
+                  rejected_batches,
+                  cancelled_batches
                 FROM analytics_monthly_kpis
                 ORDER BY month_bucket;
                 """
@@ -136,7 +138,10 @@ def dashboard(
                 SELECT
                   es_product_code,
                   unique_batch_count,
-                  last_issue_at
+                  last_issue_at,
+                  compliant_batch_count,
+                  rejected_batch_count,
+                  cancelled_batch_count
                 FROM analytics_product_batch_frequency
                 ORDER BY unique_batch_count DESC, es_product_code ASC
                 LIMIT :top_n;
@@ -172,7 +177,18 @@ def dashboard(
               COALESCE(SUM(CASE WHEN st.txn_type='ISSUE' THEN st.total_value ELSE 0 END),0)::numeric AS issue_total_value,
               COUNT(*) FILTER (WHERE st.txn_type='RECEIPT')::int AS receipt_txn_count,
               COUNT(*) FILTER (WHERE st.txn_type='ISSUE')::int AS issue_txn_count,
-              COUNT(DISTINCT st.product_batch_no) FILTER (WHERE st.txn_type='ISSUE' AND st.product_batch_no IS NOT NULL)::int AS unique_batches_issued
+              (SELECT COUNT(*)::int FROM analytics_product_batches_cost a
+                WHERE a.batch_disposition='COMPLIANT'
+                  AND (:start_utc IS NULL OR a.last_issue_at >= :start_utc)
+                  AND (:end_utc IS NULL OR a.last_issue_at <= :end_utc)) AS unique_batches_issued,
+              (SELECT COUNT(*)::int FROM analytics_product_batches_cost a
+                WHERE a.batch_disposition='REJECTED'
+                  AND (:start_utc IS NULL OR a.last_issue_at >= :start_utc)
+                  AND (:end_utc IS NULL OR a.last_issue_at <= :end_utc)) AS rejected_batches,
+              (SELECT COUNT(*)::int FROM analytics_product_batches_cost a
+                WHERE a.batch_disposition='CANCELLED'
+                  AND (:start_utc IS NULL OR a.last_issue_at >= :start_utc)
+                  AND (:end_utc IS NULL OR a.last_issue_at <= :end_utc)) AS cancelled_batches
             FROM stock_transactions st
             WHERE {where_sql};
             """,
@@ -183,23 +199,27 @@ def dashboard(
             db,
             f"""
             SELECT
-              st.es_product_code,
-              COUNT(DISTINCT st.product_batch_no)::int AS unique_batches,
-              COALESCE(SUM(st.total_value),0)::numeric AS total_cost,
+              a.es_product_code,
+              COUNT(*) FILTER (WHERE a.batch_disposition='COMPLIANT')::int AS unique_batches,
+              COUNT(*)::int AS total_recorded_batches,
+              COUNT(*) FILTER (WHERE a.batch_disposition='REJECTED')::int AS rejected_batches,
+              COUNT(*) FILTER (WHERE a.batch_disposition='CANCELLED')::int AS cancelled_batches,
+              COALESCE(SUM(a.batch_total_cost),0)::numeric AS total_cost,
               CASE
-                WHEN COUNT(DISTINCT st.product_batch_no) = 0 THEN 0
-                ELSE COALESCE(SUM(st.total_value),0) / COUNT(DISTINCT st.product_batch_no)
+                WHEN COUNT(*) FILTER (WHERE a.batch_disposition='COMPLIANT') = 0 THEN 0
+                ELSE COALESCE(SUM(a.batch_total_cost) FILTER (WHERE a.batch_disposition='COMPLIANT'),0)
+                     / COUNT(*) FILTER (WHERE a.batch_disposition='COMPLIANT')
               END::numeric AS avg_cost_per_batch,
-              COUNT(*)::int AS issue_txn_count,
-              MIN(st.created_at) AS first_issue_at,
-              MAX(st.created_at) AS last_issue_at
-            FROM stock_transactions st
-            WHERE {where_sql}
-              AND st.txn_type='ISSUE'
-              AND st.es_product_code IS NOT NULL
-              AND st.product_batch_no IS NOT NULL
-            GROUP BY st.es_product_code
-            ORDER BY unique_batches DESC, st.es_product_code ASC;
+              COALESCE(SUM(a.issue_txn_count),0)::int AS issue_txn_count,
+              MIN(a.first_issue_at) AS first_issue_at,
+              MAX(a.last_issue_at) AS last_issue_at
+            FROM analytics_product_batches_cost a
+            WHERE (:start_utc IS NULL OR a.last_issue_at >= :start_utc)
+              AND (:end_utc IS NULL OR a.last_issue_at <= :end_utc)
+              AND a.es_product_code IS NOT NULL
+              AND a.product_batch_no IS NOT NULL
+            GROUP BY a.es_product_code
+            ORDER BY unique_batches DESC, a.es_product_code ASC;
             """,
             params,
         )
@@ -214,6 +234,7 @@ def dashboard(
               m.base_uom_code AS uom_code,
 
               COUNT(DISTINCT st.product_batch_no) FILTER (WHERE st.product_batch_no IS NOT NULL)::int AS unique_batches,
+              COUNT(DISTINCT st.product_batch_no) FILTER (WHERE cb.disposition='REJECTED')::int AS rejected_batches,
               COALESCE(SUM(st.total_value),0)::numeric AS total_cost,
               CASE
                 WHEN COUNT(DISTINCT st.product_batch_no) FILTER (WHERE st.product_batch_no IS NOT NULL) = 0 THEN 0
@@ -228,6 +249,7 @@ def dashboard(
             FROM stock_transactions st
             JOIN material_lots ml ON ml.id = st.material_lot_id
             JOIN materials m ON m.id = ml.material_id
+            LEFT JOIN consumption_batches cb ON cb.consumption_group_id = st.consumption_group_id
             WHERE st.txn_type='ISSUE'
               AND (:start_utc IS NULL OR st.created_at >= :start_utc)
               AND (:end_utc IS NULL OR st.created_at <= :end_utc)
@@ -240,16 +262,38 @@ def dashboard(
         monthly = rows(
             db,
             f"""
+            WITH transaction_months AS (
+              SELECT
+                date_trunc('month', st.created_at AT TIME ZONE 'Europe/London')::date AS month_bucket,
+                COALESCE(SUM(CASE WHEN st.txn_type='RECEIPT' THEN st.total_value ELSE 0 END),0)::numeric AS receipt_total_value,
+                COALESCE(SUM(CASE WHEN st.txn_type='ISSUE' THEN st.total_value ELSE 0 END),0)::numeric AS issue_total_value,
+                COUNT(*) FILTER (WHERE st.txn_type='RECEIPT')::int AS receipt_txn_count,
+                COUNT(*) FILTER (WHERE st.txn_type='ISSUE')::int AS issue_txn_count
+              FROM stock_transactions st
+              WHERE {where_sql}
+              GROUP BY 1
+            ), batch_months AS (
+              SELECT
+                date_trunc('month', a.last_issue_at AT TIME ZONE 'Europe/London')::date AS month_bucket,
+                COUNT(*) FILTER (WHERE a.batch_disposition='COMPLIANT')::int AS unique_batches_issued,
+                COUNT(*) FILTER (WHERE a.batch_disposition='REJECTED')::int AS rejected_batches,
+                COUNT(*) FILTER (WHERE a.batch_disposition='CANCELLED')::int AS cancelled_batches
+              FROM analytics_product_batches_cost a
+              WHERE (:start_utc IS NULL OR a.last_issue_at >= :start_utc)
+                AND (:end_utc IS NULL OR a.last_issue_at <= :end_utc)
+              GROUP BY 1
+            )
             SELECT
-              date_trunc('month', (st.created_at AT TIME ZONE 'Europe/London'))::date AS month_bucket,
-              COALESCE(SUM(CASE WHEN st.txn_type='RECEIPT' THEN st.total_value ELSE 0 END),0)::numeric AS receipt_total_value,
-              COALESCE(SUM(CASE WHEN st.txn_type='ISSUE' THEN st.total_value ELSE 0 END),0)::numeric AS issue_total_value,
-              COUNT(*) FILTER (WHERE st.txn_type='RECEIPT')::int AS receipt_txn_count,
-              COUNT(*) FILTER (WHERE st.txn_type='ISSUE')::int AS issue_txn_count,
-              COUNT(DISTINCT st.product_batch_no) FILTER (WHERE st.txn_type='ISSUE' AND st.product_batch_no IS NOT NULL)::int AS unique_batches_issued
-            FROM stock_transactions st
-            WHERE {where_sql}
-            GROUP BY 1
+              COALESCE(t.month_bucket, b.month_bucket) AS month_bucket,
+              COALESCE(t.receipt_total_value,0)::numeric AS receipt_total_value,
+              COALESCE(t.issue_total_value,0)::numeric AS issue_total_value,
+              COALESCE(t.receipt_txn_count,0)::int AS receipt_txn_count,
+              COALESCE(t.issue_txn_count,0)::int AS issue_txn_count,
+              COALESCE(b.unique_batches_issued,0)::int AS unique_batches_issued,
+              COALESCE(b.rejected_batches,0)::int AS rejected_batches,
+              COALESCE(b.cancelled_batches,0)::int AS cancelled_batches
+            FROM transaction_months t
+            FULL OUTER JOIN batch_months b ON b.month_bucket=t.month_bucket
             ORDER BY 1;
             """,
             params,
@@ -287,15 +331,11 @@ def product_summary(
         start_utc, end_utc = london_day_bounds_utc(date_from, date_to)
         params: Dict[str, Any] = {"product_code": product_code, "start_utc": start_utc, "end_utc": end_utc}
 
-        where_parts = [
-            "txn_type='ISSUE'",
-            "es_product_code = :product_code",
-            "product_batch_no IS NOT NULL",
-        ]
+        where_parts = ["es_product_code = :product_code", "product_batch_no IS NOT NULL"]
         if start_utc is not None:
-            where_parts.append("created_at >= :start_utc")
+            where_parts.append("last_issue_at >= :start_utc")
         if end_utc is not None:
-            where_parts.append("created_at <= :end_utc")
+            where_parts.append("last_issue_at <= :end_utc")
         where_sql = " AND ".join(where_parts)
 
         payload = one(
@@ -303,13 +343,17 @@ def product_summary(
             f"""
             SELECT
               :product_code AS es_product_code,
-              COUNT(DISTINCT product_batch_no)::int AS unique_batches,
-              COALESCE(SUM(total_value),0)::numeric AS total_cost,
+              COUNT(DISTINCT product_batch_no) FILTER (WHERE batch_disposition='COMPLIANT')::int AS unique_batches,
+              COUNT(DISTINCT product_batch_no)::int AS total_recorded_batches,
+              COUNT(DISTINCT product_batch_no) FILTER (WHERE batch_disposition='REJECTED')::int AS rejected_batches,
+              COUNT(DISTINCT product_batch_no) FILTER (WHERE batch_disposition='CANCELLED')::int AS cancelled_batches,
+              COALESCE(SUM(batch_total_cost),0)::numeric AS total_cost,
               CASE
-                WHEN COUNT(DISTINCT product_batch_no) = 0 THEN 0
-                ELSE COALESCE(SUM(total_value),0) / COUNT(DISTINCT product_batch_no)
+                WHEN COUNT(DISTINCT product_batch_no) FILTER (WHERE batch_disposition='COMPLIANT') = 0 THEN 0
+                ELSE COALESCE(SUM(batch_total_cost) FILTER (WHERE batch_disposition='COMPLIANT'),0)
+                     / COUNT(DISTINCT product_batch_no) FILTER (WHERE batch_disposition='COMPLIANT')
               END::numeric AS avg_cost_per_batch
-            FROM stock_transactions
+            FROM analytics_product_batches_cost
             WHERE {where_sql};
             """,
             params,
@@ -348,7 +392,18 @@ def product_batches(
                   last_issue_at,
                   total_batch_size,
                   batch_size_uom,
-                  number_of_units
+                  number_of_units,
+                  product_name,
+                  product_reference,
+                  product_version,
+                  batch_disposition,
+                  disposition_reason,
+                  compliance_triggers,
+                  missing_material_codes,
+                  unexpected_material_codes,
+                  created_by,
+                  approved_by,
+                  consumption_group_id
                 FROM analytics_product_batches_cost
                 WHERE es_product_code = :product_code
                 ORDER BY last_issue_at DESC
@@ -366,34 +421,40 @@ def product_batches(
             "end_utc": end_utc,
         }
 
-        where_parts = [
-            "st.txn_type='ISSUE'",
-            "st.es_product_code = :product_code",
-            "st.product_batch_no IS NOT NULL",
-        ]
+        where_parts = ["a.es_product_code = :product_code", "a.product_batch_no IS NOT NULL"]
         if start_utc is not None:
-            where_parts.append("st.created_at >= :start_utc")
+            where_parts.append("a.last_issue_at >= :start_utc")
         if end_utc is not None:
-            where_parts.append("st.created_at <= :end_utc")
+            where_parts.append("a.last_issue_at <= :end_utc")
         where_sql = " AND ".join(where_parts)
 
         payload = rows(
             db,
             f"""
             SELECT
-              st.es_product_code,
-              st.product_batch_no,
-              COALESCE(SUM(st.total_value),0)::numeric AS batch_total_cost,
-              COUNT(*)::int AS issue_txn_count,
-              MIN(st.created_at) AS first_issue_at,
-              MAX(st.created_at) AS last_issue_at,
-              MAX(st.total_batch_size) AS total_batch_size,
-              MAX(st.batch_size_uom) AS batch_size_uom,
-              MAX(st.number_of_units) AS number_of_units
-            FROM stock_transactions st
+              a.es_product_code,
+              a.product_batch_no,
+              a.batch_total_cost,
+              a.issue_txn_count,
+              a.first_issue_at,
+              a.last_issue_at,
+              a.total_batch_size,
+              a.batch_size_uom,
+              a.number_of_units,
+              a.product_name,
+              a.product_reference,
+              a.product_version,
+              a.batch_disposition,
+              a.disposition_reason,
+              a.compliance_triggers,
+              a.missing_material_codes,
+              a.unexpected_material_codes,
+              a.created_by,
+              a.approved_by,
+              a.consumption_group_id
+            FROM analytics_product_batches_cost a
             WHERE {where_sql}
-            GROUP BY st.es_product_code, st.product_batch_no
-            ORDER BY last_issue_at DESC
+            ORDER BY a.last_issue_at DESC
             LIMIT :limit OFFSET :offset;
             """,
             params,
@@ -428,7 +489,21 @@ def batch_analytics(
               batch_total_cost,
               issue_txn_count,
               first_issue_at,
-              last_issue_at
+              last_issue_at,
+              total_batch_size,
+              batch_size_uom,
+              number_of_units,
+              product_name,
+              product_reference,
+              product_version,
+              batch_disposition,
+              disposition_reason,
+              compliance_triggers,
+              missing_material_codes,
+              unexpected_material_codes,
+              created_by,
+              approved_by,
+              consumption_group_id
             FROM analytics_product_batches_cost
             WHERE product_batch_no = :batch_no
             ORDER BY last_issue_at DESC
@@ -826,13 +901,16 @@ def material_traceability(
               ml.lot_number,
               COALESCE(SUM(st.qty),0)::numeric AS issue_qty_sum,
               COALESCE(SUM(st.total_value),0)::numeric AS issue_value_sum,
-              MAX(st.created_at) AS last_issue_at
+              MAX(st.created_at) AS last_issue_at,
+              COALESCE(cb.disposition, 'COMPLIANT') AS batch_disposition,
+              cb.disposition_reason
             FROM stock_transactions st
             JOIN material_lots ml ON ml.id = st.material_lot_id
             JOIN materials m ON m.id = ml.material_id
+            LEFT JOIN consumption_batches cb ON cb.consumption_group_id = st.consumption_group_id
             WHERE {where_sql}
             {lot_filter_sql}
-            GROUP BY st.product_batch_no, st.es_product_code, ml.lot_number
+            GROUP BY st.product_batch_no, st.es_product_code, ml.lot_number, cb.disposition, cb.disposition_reason
             ORDER BY last_issue_at DESC, st.product_batch_no ASC, ml.lot_number ASC;
             """,
             params,
@@ -918,12 +996,15 @@ def analytics_search(
                 """
                 SELECT
                   'product'::text AS entity_type,
-                  a.es_product_code AS key,
-                  a.es_product_code AS label,
-                  ('Unique batches: ' || a.unique_batch_count::text) AS sublabel
-                FROM analytics_product_batch_frequency a
-                WHERE a.es_product_code ILIKE :p
-                ORDER BY a.unique_batch_count DESC, a.es_product_code
+                  p.product_code AS key,
+                  p.product_code AS label,
+                  (p.product_name || ' — ' || p.status || ' — compliant: ' || COALESCE(a.compliant_batch_count, 0)::text ||
+                   ', rejected: ' || COALESCE(a.rejected_batch_count, 0)::text ||
+                   ', cancelled: ' || COALESCE(a.cancelled_batch_count, 0)::text) AS sublabel
+                FROM products p
+                LEFT JOIN analytics_product_batch_frequency a ON a.es_product_code = p.product_code
+                WHERE p.product_code ILIKE :p OR p.product_name ILIKE :p
+                ORDER BY COALESCE(a.unique_batch_count, 0) DESC, p.product_code
                 LIMIT :limit;
                 """,
                 {"p": f"%{qq}%", "limit": limit},
@@ -938,7 +1019,7 @@ def analytics_search(
               'batch'::text AS entity_type,
               a.product_batch_no AS key,
               a.product_batch_no AS label,
-              (a.es_product_code || ' — total cost ' || a.batch_total_cost::text) AS sublabel
+              (a.es_product_code || ' — ' || a.batch_disposition || ' — total cost ' || a.batch_total_cost::text) AS sublabel
             FROM analytics_product_batches_cost a
             WHERE a.product_batch_no ILIKE :p
             ORDER BY a.last_issue_at DESC
@@ -973,15 +1054,16 @@ def latest_batches(
         db,
         """
         SELECT
-          st.product_batch_no,
-          st.es_product_code,
-          MAX(st.created_at) AS last_issue_at
-        FROM stock_transactions st
-        WHERE st.txn_type = 'ISSUE'
-          AND st.product_batch_no IS NOT NULL
-          AND st.es_product_code IS NOT NULL
-        GROUP BY st.product_batch_no, st.es_product_code
-        ORDER BY last_issue_at DESC
+          a.product_batch_no,
+          a.es_product_code,
+          a.product_name,
+          a.last_issue_at,
+          a.batch_disposition,
+          a.disposition_reason
+        FROM analytics_product_batches_cost a
+        WHERE a.product_batch_no IS NOT NULL
+          AND a.es_product_code IS NOT NULL
+        ORDER BY a.last_issue_at DESC
         LIMIT :limit;
         """,
         {"limit": limit},
@@ -991,7 +1073,7 @@ def latest_batches(
         {
             "meta": {
                 "data_cut": datetime.utcnow().isoformat(),
-                "logic": "latest unique batches from ISSUE txns (ordered by last_issue_at)",
+                "logic": "latest batch records including compliant, rejected and cancelled dispositions",
             },
             "rows": data,
         }

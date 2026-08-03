@@ -9,7 +9,8 @@ type ConsumptionTypeFilter =
   | "USAGE"
   | "WASTAGE"
   | "DESTRUCTION"
-  | "R_AND_D";
+  | "R_AND_D"
+  | "CANCELLED_BMR";
 
 interface ConsumptionViewProps {
   issues: Issue[];
@@ -33,6 +34,7 @@ const CONSUMPTION_TYPE_LABELS: Record<string, string> = {
   WASTAGE: "Wastage",
   DESTRUCTION: "Destruction",
   R_AND_D: "R&D usage",
+  CANCELLED_BMR: "Cancelled BMR",
 };
 
 /**
@@ -131,6 +133,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [manufacturerFilter, setManufacturerFilter] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<ConsumptionTypeFilter>("ALL");
+  const [dispositionFilter, setDispositionFilter] = useState("ALL");
 
   // CSV export modal state
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -185,6 +188,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       if (typeFilter !== "ALL" && ct !== typeFilter) {
         return false;
       }
+      if (dispositionFilter !== "ALL" && (i.batch_disposition || "COMPLIANT") !== dispositionFilter) return false;
 
       if (!q) return true;
 
@@ -203,13 +207,16 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.comment ?? "",
         i.consumption_type ?? "",
         i.material_status_at_txn ?? "",
+        i.batch_disposition ?? "COMPLIANT",
+        i.disposition_reason ?? "",
+        i.product_name_snapshot ?? "",
       ]
         .join(" ")
         .toLowerCase();
 
       return haystack.includes(q);
     });
-  }, [issues, search, dateFilter, manufacturerFilter, typeFilter]);
+  }, [issues, search, dateFilter, manufacturerFilter, typeFilter, dispositionFilter]);
 
   const renderConsumptionType = (raw?: string | null): string =>
     raw ? CONSUMPTION_TYPE_LABELS[raw] ?? raw : "Usage";
@@ -241,6 +248,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Issue Date",
       "Product Mfg Date",
       "Type",
+      "Batch Disposition",
+      "Disposition Reason",
       "ES Product Code",
       "ES Batch / Ref",
       "Total Batch Size",
@@ -263,7 +272,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
 
     const rows = exportRowsSource.map((i) => {
       const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
-      const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D";
+      const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D" || ct === "CANCELLED_BMR";
 
       const esProduct = isBatchRelevant ? i.es_product_code || "—" : "N/A";
       const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
@@ -272,6 +281,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         formatDate(i.created_at),
         formatDate(i.product_manufacture_date),
         renderConsumptionType(i.consumption_type),
+        i.batch_disposition || "COMPLIANT",
+        i.disposition_reason || "—",
         esProduct,
         esRef,
         isBatchRelevant ? i.total_batch_size ?? "—" : "N/A",
@@ -282,8 +293,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         i.material_name,
         i.lot_number,
         formatDate(i.expiry_date),
-        i.qty,
-        i.uom_code,
+        i.is_non_stock_record ? "N/A" : i.qty,
+        i.is_non_stock_record ? "N/A" : i.uom_code,
         formatMoney(i.total_value ?? null),
         formatUnitMoney(i.unit_price ?? null),
         i.manufacturer || "—",
@@ -328,6 +339,13 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
               <option value="30">Last 30 days</option>
               <option value="90">Last 90 days</option>
               <option value="365">Last 12 months</option>
+            </select>
+
+            <select className="input" style={{ width: 175 }} value={dispositionFilter} onChange={(e) => setDispositionFilter(e.target.value)}>
+              <option value="ALL">All dispositions</option>
+              <option value="COMPLIANT">Compliant</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="CANCELLED">Cancelled</option>
             </select>
 
             <select
@@ -390,6 +408,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th>Issue Date</th>
                   <th>Product Mfg Date</th>
                   <th>Type</th>
+                  <th>Disposition</th>
                   <th>ES Product</th>
                   <th>ES Batch / Ref</th>
                   <th>Batch Output</th>
@@ -414,7 +433,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
               <tbody>
                 {filteredIssues.length === 0 && (
                   <tr>
-                    <td colSpan={showActions ? 18 : 17} className="empty-row">
+                    <td colSpan={showActions ? 19 : 18} className="empty-row">
                       No issues match your filters.
                     </td>
                   </tr>
@@ -422,16 +441,17 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
 
                 {filteredIssues.map((i) => {
                   const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
-                  const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D";
+                  const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D" || ct === "CANCELLED_BMR";
 
                   const esProduct = isBatchRelevant ? i.es_product_code || "—" : "N/A";
                   const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
 
                   return (
-                    <tr key={i.id}>
+                    <tr key={i.id} className={i.batch_disposition === "REJECTED" ? "batch-row-rejected" : i.batch_disposition === "CANCELLED" ? "batch-row-cancelled" : ""}>
                       <td>{formatDate(i.created_at)}</td>
                       <td>{formatDate(i.product_manufacture_date)}</td>
                       <td>{renderConsumptionType(i.consumption_type)}</td>
+                      <td title={i.disposition_reason || ""}><span className={`disposition-badge disposition-${(i.batch_disposition || "COMPLIANT").toLowerCase()}`}>{i.batch_disposition || "COMPLIANT"}</span></td>
                       <td>{esProduct}</td>
                       <td>{esRef}</td>
                       <td>{isBatchRelevant ? formatBatchOutput(i) : "N/A"}</td>
@@ -439,8 +459,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td>{i.material_name}</td>
                       <td>{i.lot_number}</td>
                       <td>{formatDate(i.expiry_date)}</td>
-                      <td className="numeric">{i.qty}</td>
-                      <td>{i.uom_code}</td>
+                      <td className="numeric">{i.is_non_stock_record ? "N/A" : i.qty}</td>
+                      <td>{i.is_non_stock_record ? "N/A" : i.uom_code}</td>
 
                       {/* ✅ Decimal-safe */}
                       <td className="numeric">{formatMoney(i.total_value ?? null)}</td>
@@ -452,7 +472,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
 
                       {showActions && (
                         <td>
-                          <button
+                          {!i.is_non_stock_record ? <button
                             type="button"
                             className="btn btn-ghost"
                             style={{ padding: "4px 10px", fontSize: 12, borderRadius: 999 }}
@@ -460,6 +480,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                           >
                             Edit
                           </button>
+                          : "—"}
                         </td>
                       )}
                     </tr>

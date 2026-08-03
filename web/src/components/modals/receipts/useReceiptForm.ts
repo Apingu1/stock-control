@@ -69,8 +69,9 @@ export function useReceiptForm(args: {
 
   const filteredMaterials = useMemo(() => {
     const q = materialSearch.trim().toLowerCase();
-    if (!q) return materials.slice(0, 15);
-    return materials
+    const stockMaterials = materials.filter((material) => !material.is_cancelled_bmr_marker);
+    if (!q) return stockMaterials.slice(0, 15);
+    return stockMaterials
       .filter((m) => m.material_code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
       .slice(0, 15);
   }, [materialSearch, materials]);

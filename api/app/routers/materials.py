@@ -54,9 +54,11 @@ def create_material(
     _ensure_lookup_exists(db, MaterialType, body.type_code, "Type")
     _ensure_lookup_exists(db, Uom, body.base_uom_code, "UOM")
 
+    material_code = body.material_code.strip()
+    material_name = body.name.strip()
     m = Material(
-        material_code=body.material_code.strip(),
-        name=body.name.strip(),
+        material_code=material_code,
+        name=material_name,
         category_code=body.category_code.strip(),
         type_code=body.type_code.strip(),
         base_uom_code=body.base_uom_code.strip(),
@@ -68,6 +70,9 @@ def create_material(
         low_stock_threshold_qty=body.low_stock_threshold_qty,
         expiry_alert_days=body.expiry_alert_days,
         auto_quarantine_override_days=body.auto_quarantine_override_days,
+        is_cancelled_bmr_marker=(
+            material_code == "Cancelled BMR" and material_name == "Cancelled BMR"
+        ),
     )
 
     db.add(m)
@@ -157,6 +162,7 @@ def get_material(
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
+
     return m
 
 
@@ -170,6 +176,14 @@ def update_material(
     m = db.execute(select(Material).where(Material.material_code == material_code)).scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
+
+    if m.is_cancelled_bmr_marker and (
+        body.name.strip() != "Cancelled BMR" or body.status.strip().upper() != "ACTIVE"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="The Cancelled BMR marker name and active status are controlled and cannot be changed",
+        )
 
     _ensure_lookup_exists(db, MaterialCategory, body.category_code, "Category")
     _ensure_lookup_exists(db, MaterialType, body.type_code, "Type")

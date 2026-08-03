@@ -1,0 +1,75 @@
+.pwa-update-prompt {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: min(480px, calc(100vw - 32px));
+  padding: 16px 52px 16px 18px;
+  border: 1px solid rgba(54, 125, 210, 0.3);
+  border-radius: 16px;
+  background: rgba(7, 29, 58, 0.97);
+  color: #ffffff;
+  box-shadow: 0 22px 58px rgba(7, 29, 58, 0.3);
+  backdrop-filter: blur(14px);
+}
+
+.pwa-update-prompt div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pwa-update-prompt strong {
+  font-size: 0.96rem;
+}
+
+.pwa-update-prompt span {
+  color: #c9ddf5;
+  font-size: 0.82rem;
+}
+
+.pwa-update-prompt button {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  padding: 9px 13px;
+  background: #1476d4;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.pwa-update-prompt button:hover {
+  background: #1d84e5;
+}
+
+.pwa-update-prompt .pwa-update-prompt__dismiss {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  border: 0;
+  padding: 3px 8px;
+  background: transparent;
+  color: #bcd2eb;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.pwa-update-prompt .pwa-update-prompt__dismiss:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 640px) {
+  .pwa-update-prompt {
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    flex-wrap: wrap;
+    width: auto;
+  }
+}

@@ -1,5 +1,6 @@
 import React from "react";
 import type { ConsumptionTypeCode } from "./issueHelpers";
+import type { Product } from "../../../types";
 
 type Props = {
   showBatchFields: boolean;
@@ -14,6 +15,8 @@ type Props = {
 
   esProductCode: string;
   setEsProductCode: (v: string) => void;
+  products: Product[];
+  productCodeLocked: boolean;
 
   productBatchNo: string;
   setProductBatchNo: (v: string) => void;
@@ -32,6 +35,7 @@ type Props = {
 
   comment: string;
   setComment: (v: string) => void;
+  commentLocked: boolean;
 
   isEdit: boolean;
   editReason: string;
@@ -48,6 +52,8 @@ const IssueProductFields: React.FC<Props> = ({
   setManufacturer,
   esProductCode,
   setEsProductCode,
+  products,
+  productCodeLocked,
   productBatchNo,
   setProductBatchNo,
   productManufactureDate,
@@ -61,6 +67,7 @@ const IssueProductFields: React.FC<Props> = ({
   consumptionType,
   comment,
   setComment,
+  commentLocked,
   isEdit,
   editReason,
   setEditReason,
@@ -94,12 +101,21 @@ const IssueProductFields: React.FC<Props> = ({
             <label className="label">
               ES product code {isBatchRequired ? "(required)" : "(optional)"}
             </label>
-            <input
+            <select
               className="input"
               value={esProductCode}
               onChange={(e) => setEsProductCode(e.target.value)}
-              placeholder="e.g. DULO2"
-            />
+              disabled={productCodeLocked}
+            >
+              <option value="">Select a Product List item…</option>
+              {products
+                .filter((product) => product.status === "ACTIVE" || product.product_code === esProductCode)
+                .map((product) => (
+                  <option key={product.id} value={product.product_code}>
+                    {product.product_code} — {product.product_name}{product.status === "INACTIVE" ? " (inactive)" : ""}
+                  </option>
+                ))}
+            </select>
           </div>
 
           <div className="form-group">
@@ -177,6 +193,7 @@ const IssueProductFields: React.FC<Props> = ({
           className="input textarea"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
+          disabled={commentLocked}
           placeholder="Optional unless destruction…"
         />
       </div>

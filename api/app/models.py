@@ -7,6 +7,7 @@ from typing import Optional, Any, Dict, List
 import json
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -130,6 +131,9 @@ class Material(Base):
 
     complies_es_criteria: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    is_cancelled_bmr_marker: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -168,6 +172,134 @@ class Material(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Material code={self.material_code!r} name={self.name!r}>"
+
+
+# --- Product List ------------------------------------------------------------
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    product_code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    version_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    shelf_life_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    licence_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    line_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    storage_condition: Mapped[str] = mapped_column(String(20), nullable=False)
+    controlled_drug_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    export_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
+class ProductMaterial(Base):
+    __tablename__ = "product_materials"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    product_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False
+    )
+    material_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("materials.id", ondelete="RESTRICT"), nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("product_id", "material_id", name="uq_product_materials_product_material"),
+    )
+
+
+class ProductAuditEvent(Base):
+    __tablename__ = "product_audit_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    product_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False
+    )
+    product_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_username: Mapped[str] = mapped_column(String(100), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    before_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    after_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+
+class ConsumptionBatch(Base):
+    __tablename__ = "consumption_batches"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    consumption_group_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    consumption_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    product_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("products.id", ondelete="RESTRICT"), nullable=True
+    )
+    product_code_snapshot: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    product_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    product_reference_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    product_version_snapshot: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    product_batch_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    product_manufacture_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    total_batch_size: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
+    batch_size_uom: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    number_of_units: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    disposition: Mapped[str] = mapped_column(String(20), nullable=False, default="COMPLIANT")
+    disposition_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    compliance_triggers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    missing_material_codes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    unexpected_material_codes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    comment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
+class BatchAuditEvent(Base):
+    __tablename__ = "batch_audit_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    consumption_group_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("consumption_batches.consumption_group_id", ondelete="RESTRICT"), nullable=False
+    )
+    product_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    product_batch_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    actor_username: Mapped[str] = mapped_column(String(100), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    before_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    after_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
 
 # --- Material edit audit trail ----------------------------------------------
@@ -209,6 +341,7 @@ class MaterialEdit(Base):
             "supplier": m.supplier,
             "complies_es_criteria": m.complies_es_criteria,
             "status": m.status,
+            "is_cancelled_bmr_marker": m.is_cancelled_bmr_marker,
             "created_at": m.created_at.isoformat() if m.created_at else None,
             "created_by": m.created_by,
             "updated_at": m.updated_at.isoformat() if m.updated_at else None,
@@ -533,6 +666,22 @@ class RolePermission(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class RolePermissionAuditEvent(Base):
+    __tablename__ = "role_permission_audit_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    role_name: Mapped[str] = mapped_column(
+        Text, ForeignKey("roles.name", ondelete="RESTRICT"), nullable=False
+    )
+    actor_username: Mapped[str] = mapped_column(String(100), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    before_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    after_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
 
 # --- Phase D3: Admin-configurable expiry auto-quarantine thresholds ----------

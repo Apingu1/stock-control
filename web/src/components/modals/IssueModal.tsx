@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { LotBalance, Material, Issue } from "../../types";
+import type { LotBalance, Material, Issue, Product } from "../../types";
 import { apiFetch } from "../../utils/api";
 
 import { useIssueForm } from "./issues/useIssueForm";
@@ -17,6 +17,9 @@ export default function IssueModal({
   mode = "create",
   initial,
   canSuperEditLockedFields = false,
+  products,
+  canApproveRejectedBatch,
+  canRecordCancelledBmr,
 }: {
   open: boolean;
   onClose: () => void;
@@ -28,6 +31,9 @@ export default function IssueModal({
   mode?: "create" | "edit";
   initial?: Issue;
   canSuperEditLockedFields?: boolean;
+  products: Product[];
+  canApproveRejectedBatch: boolean;
+  canRecordCancelledBmr: boolean;
 }) {
   const form = useIssueForm({
     open,
@@ -51,6 +57,9 @@ export default function IssueModal({
         onIssuePosted={onIssuePosted}
         lotBalances={lotBalances}
         createdBy={createdBy}
+        products={products}
+        canApproveRejectedBatch={canApproveRejectedBatch}
+        canRecordCancelledBmr={canRecordCancelledBmr}
       />
     );
   }
@@ -250,6 +259,8 @@ export default function IssueModal({
               setManufacturer={form.setManufacturer}
               esProductCode={form.esProductCode}
               setEsProductCode={form.setEsProductCode}
+              products={products}
+              productCodeLocked={Boolean(initial?.consumption_group_id)}
               productBatchNo={form.productBatchNo}
               setProductBatchNo={form.setProductBatchNo}
               productManufactureDate={form.productManufactureDate}
@@ -263,6 +274,7 @@ export default function IssueModal({
               consumptionType={form.consumptionType}
               comment={form.comment}
               setComment={form.setComment}
+              commentLocked={initial?.batch_disposition === "REJECTED"}
               isEdit={form.isEdit}
               editReason={form.editReason}
               setEditReason={form.setEditReason}
