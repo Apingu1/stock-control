@@ -1,0 +1,87 @@
+name: stock-control-prodtest
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      TZ: ${TZ:-Europe/London}
+    volumes:
+      - prod_db_data:/var/lib/postgresql/data
+      - ../db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - stock_control_internal
+
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      BACKUP_DIR: /backups
+      TZ: ${TZ:-Europe/London}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../backups-production-test:/backups
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - stock_control_internal
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${APP_HTTP_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - stock_control_internal
+
+networks:
+  stock_control_internal:
+    driver: bridge
+
+volumes:
+  prod_db_data:
+    name: stock-control-prodtest-db-data

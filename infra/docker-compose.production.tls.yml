@@ -1,0 +1,7 @@
+services:
+  web:
+    volumes:
+      - ../web/nginx.production.tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    ports:
+      - "${APP_HTTPS_PORT:-8443}:443"
