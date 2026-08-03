@@ -67,6 +67,7 @@ if errorlevel 1 goto :config_failed
 
 echo Building and starting the production-test application...
 echo The first build may download Docker images.
+echo The database schema will be applied in the controlled go-live order.
 docker compose -f "infra\docker-compose.production.yml" --env-file ".env" up -d --build
 if errorlevel 1 goto :start_failed
 
@@ -81,6 +82,30 @@ for /L %%I in (1,1,90) do (
 goto :health_failed
 
 :ready
+setlocal DisableDelayedExpansion
+echo.
+echo Creating and verifying the bootstrap administrator...
+docker compose -f "infra\docker-compose.production.yml" --env-file ".env" exec -T -e BOOTSTRAP_ADMIN_PASSWORD=Admin123! api python -m app.bootstrap_admin
+if errorlevel 1 goto :admin_failed_disabled
+
+set "LOGIN_JSON=%TEMP%\eaststone-login-test-%RANDOM%.json"
+> "%LOGIN_JSON%" echo {"username":"admin","password":"Admin123!"}
+curl.exe -fsS -X POST -H "Content-Type: application/json" --data-binary "@%LOGIN_JSON%" "http://127.0.0.1:%APP_HTTP_PORT%/api/auth/login/" >nul 2>&1
+if errorlevel 1 goto :login_failed_disabled
+del /f /q "%LOGIN_JSON%" >nul 2>&1
+endlocal
+goto :installation_success
+
+:admin_failed_disabled
+endlocal
+goto :admin_failed
+
+:login_failed_disabled
+del /f /q "%LOGIN_JSON%" >nul 2>&1
+endlocal
+goto :login_failed
+
+:installation_success
 echo.
 echo ============================================================
 echo   Installation completed successfully
@@ -88,6 +113,10 @@ echo ============================================================
 echo.
 echo Server address: http://localhost:!APP_HTTP_PORT!
 echo Other computers: http://THIS-SERVER-IP:!APP_HTTP_PORT!
+echo.
+echo Initial username: admin
+echo Initial password: Admin123!
+echo Change the password immediately after the first login.
 echo.
 
 set "SHORTCUT=%USERPROFILE%\Desktop\Eaststone Stock Control.url"
@@ -131,10 +160,19 @@ goto :show_logs
 echo ERROR: The containers started, but the application did not become healthy.
 goto :show_logs
 
+:admin_failed
+echo ERROR: The bootstrap administrator could not be created.
+goto :show_logs
+
+:login_failed
+echo ERROR: The application became healthy, but the verified admin login failed.
+echo The installation has not been declared successful.
+goto :show_logs
+
 :show_logs
 echo.
 docker compose -f "infra\docker-compose.production.yml" --env-file ".env" ps
-docker compose -f "infra\docker-compose.production.yml" --env-file ".env" logs --tail=120
+docker compose -f "infra\docker-compose.production.yml" --env-file ".env" logs --tail=180 db db-init api web
 
 :failed
 echo.
