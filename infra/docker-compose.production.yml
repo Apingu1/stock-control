@@ -13,13 +13,33 @@ services:
       TZ: ${TZ:-Europe/London}
     volumes:
       - prod_db_data:/var/lib/postgresql/data
-      - ../db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 3s
       retries: 20
       start_period: 10s
+    networks:
+      - stock_control_internal
+
+  db-init:
+    image: postgres:16
+    restart: "no"
+    env_file:
+      - ../.env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../db/init:/sql:ro
+      - ../db/production-bootstrap.sh:/bootstrap/production-bootstrap.sh:ro
+    command: ["bash", "/bootstrap/production-bootstrap.sh"]
     networks:
       - stock_control_internal
 
@@ -40,8 +60,8 @@ services:
       BACKUP_DIR: /backups
       TZ: ${TZ:-Europe/London}
     depends_on:
-      db:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     volumes:
       - ../backups-production-test:/backups
     healthcheck:
