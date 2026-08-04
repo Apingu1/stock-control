@@ -48,6 +48,7 @@ export const ProductPanel: React.FC<{
       "total_cost",
       "avg_cost_per_batch",
       "batch_no",
+      "customer_name",
       "total_batch_size",
       "batch_size_uom",
       "number_of_units",
@@ -78,9 +79,10 @@ export const ProductPanel: React.FC<{
       "",
       "",
       "",
+      "",
     ]);
 
-    for (const b of batches) {
+    for (const batch of batches) {
       out.push([
         dateFrom,
         dateTo,
@@ -91,15 +93,16 @@ export const ProductPanel: React.FC<{
         summary.cancelled_batches,
         summary.total_cost,
         summary.avg_cost_per_batch,
-        b.product_batch_no,
-        b.total_batch_size,
-        b.batch_size_uom,
-        b.number_of_units,
-        b.batch_total_cost,
-        b.first_issue_at,
-        b.last_issue_at,
-        b.batch_disposition,
-        b.disposition_reason || "",
+        batch.product_batch_no,
+        batch.customer_name || "",
+        batch.total_batch_size,
+        batch.batch_size_uom,
+        batch.number_of_units,
+        batch.batch_total_cost,
+        batch.first_issue_at,
+        batch.last_issue_at,
+        batch.batch_disposition,
+        batch.disposition_reason || "",
       ]);
     }
 
@@ -109,7 +112,7 @@ export const ProductPanel: React.FC<{
   function exportPdf() {
     if (!summary) return;
 
-    const hdr = `
+    const header = `
       <div class="hdr">
         <div>
           <h1 class="h1">${escapeHtml(`Product Analytics: ${productCode}`)}</h1>
@@ -127,28 +130,29 @@ export const ProductPanel: React.FC<{
       </div>
     `;
 
-    const tableRows = (batches || [])
+    const tableRows = batches
       .map(
-        (b) => `
+        (batch) => `
         <tr>
-          <td class="mono">${escapeHtml(b.product_batch_no)}</td>
-          <td class="mono">${escapeHtml(b.batch_disposition)}</td>
-          <td class="mono">${escapeHtml(formatBatchOutput(b))}</td>
-          <td class="mono">${escapeHtml(moneyText(b.batch_total_cost))}</td>
-          <td class="mono">${escapeHtml(b.first_issue_at ? dtFmt(b.first_issue_at) : "")}</td>
-          <td class="mono">${escapeHtml(b.last_issue_at ? dtFmt(b.last_issue_at) : "")}</td>
+          <td class="mono">${escapeHtml(batch.product_batch_no)}</td>
+          <td>${escapeHtml(batch.customer_name || "—")}</td>
+          <td class="mono">${escapeHtml(batch.batch_disposition)}</td>
+          <td class="mono">${escapeHtml(formatBatchOutput(batch))}</td>
+          <td class="mono">${escapeHtml(moneyText(batch.batch_total_cost))}</td>
+          <td class="mono">${escapeHtml(batch.first_issue_at ? dtFmt(batch.first_issue_at) : "")}</td>
+          <td class="mono">${escapeHtml(batch.last_issue_at ? dtFmt(batch.last_issue_at) : "")}</td>
         </tr>
       `
       )
       .join("");
 
     const body = `
-      ${hdr}
+      ${header}
       <div class="card">
         <div class="ct">Batches (as shown)</div>
         <table>
-          <thead><tr><th>ES batch no</th><th>Disposition</th><th class="mono">Batch output</th><th class="mono">Total cost</th><th class="mono">First issue</th><th class="mono">Last issue</th></tr></thead>
-          <tbody>${tableRows || `<tr><td colspan="6" class="muted">No batches in range.</td></tr>`}</tbody>
+          <thead><tr><th>ES batch no</th><th>Customer</th><th>Disposition</th><th class="mono">Batch output</th><th class="mono">Total cost</th><th class="mono">First issue</th><th class="mono">Last issue</th></tr></thead>
+          <tbody>${tableRows || `<tr><td colspan="7" class="muted">No batches in range.</td></tr>`}</tbody>
         </table>
       </div>
     `;
@@ -164,7 +168,7 @@ export const ProductPanel: React.FC<{
             <div className="card-title">
               Product Analytics <Chip variant="green">{productCode}</Chip>
             </div>
-            <div className="card-subtitle">Date range filtered totals + batch list.</div>
+            <div className="card-subtitle">Date range filtered totals + customer-linked batch list.</div>
           </div>
 
           <div className="analytics-toolbar">
@@ -214,6 +218,7 @@ export const ProductPanel: React.FC<{
             <thead>
               <tr>
                 <th>ES batch no</th>
+                <th>Customer</th>
                 <th>Disposition</th>
                 <th>Batch output</th>
                 <th>Total cost</th>
@@ -222,27 +227,41 @@ export const ProductPanel: React.FC<{
               </tr>
             </thead>
             <tbody>
-              {batches.map((b) => (
-                <tr key={b.product_batch_no} className={b.batch_disposition === "REJECTED" ? "batch-row-rejected" : b.batch_disposition === "CANCELLED" ? "batch-row-cancelled" : ""}>
+              {batches.map((batch) => (
+                <tr
+                  key={batch.product_batch_no}
+                  className={
+                    batch.batch_disposition === "REJECTED"
+                      ? "batch-row-rejected"
+                      : batch.batch_disposition === "CANCELLED"
+                        ? "batch-row-cancelled"
+                        : ""
+                  }
+                >
                   <td className="mono">
-                    <button className="link mono" onClick={() => onOpenBatch(b.product_batch_no)}>
-                      {b.product_batch_no}
+                    <button className="link mono" onClick={() => onOpenBatch(batch.product_batch_no)}>
+                      {batch.product_batch_no}
                     </button>
                   </td>
-                  <td title={b.disposition_reason || ""}><span className={`disposition-badge disposition-${b.batch_disposition.toLowerCase()}`}>{b.batch_disposition}</span></td>
-                  <td className="mono">{formatBatchOutput(b)}</td>
-                  <td className="mono">{money(b.batch_total_cost)}</td>
-                  <td className="mono">{dtFmt(b.first_issue_at)}</td>
-                  <td className="mono">{dtFmt(b.last_issue_at)}</td>
+                  <td>{batch.customer_name || "—"}</td>
+                  <td title={batch.disposition_reason || ""}>
+                    <span className={`disposition-badge disposition-${batch.batch_disposition.toLowerCase()}`}>
+                      {batch.batch_disposition}
+                    </span>
+                  </td>
+                  <td className="mono">{formatBatchOutput(batch)}</td>
+                  <td className="mono">{money(batch.batch_total_cost)}</td>
+                  <td className="mono">{dtFmt(batch.first_issue_at)}</td>
+                  <td className="mono">{dtFmt(batch.last_issue_at)}</td>
                 </tr>
               ))}
-              {batches.length === 0 ? (
+              {batches.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted">
+                  <td colSpan={7} className="muted">
                     No batches found for this product in the selected date range.
                   </td>
                 </tr>
-              ) : null}
+              )}
             </tbody>
           </table>
         </div>
