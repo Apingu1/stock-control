@@ -13,8 +13,6 @@ type MaterialFormProps = {
   initial?: Partial<Material>;
   mode: "create" | "edit";
   onSaved: () => void;
-
-  // Phase D4: defaults lookup (read-only endpoint /materials/expiry-thresholds)
   expiryThresholds: ExpiryThresholdRow[];
   canSuperEditLockedFields?: boolean;
 };
@@ -37,7 +35,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
   const [status, setStatus] = useState((initial as any)?.status ?? "ACTIVE");
 
-  // Phase D4 fields
   const [lowStockThresholdQty, setLowStockThresholdQty] = useState<number | "">(
     toNumOrEmpty((initial as any)?.low_stock_threshold_qty)
   );
@@ -52,18 +49,14 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     toNumOrEmpty((initial as any)?.auto_quarantine_override_days)
   );
 
-  // edit-only audit reason
   const [editReason, setEditReason] = useState("");
-
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isEdit = mode === "edit";
   const isTabletsCaps = categoryCode === "TABLETS_CAPSULES";
-
   const am = useApprovedManufacturers();
 
-  // Phase D4: compute default threshold from settings
   const defaultThresholdDays = useMemo(() => {
     const row = expiryThresholds.find(
       (r) =>
@@ -88,14 +81,12 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
 
     setSubmitting(false);
     setError(null);
-
     setLowStockThresholdQty(toNumOrEmpty((initial as any)?.low_stock_threshold_qty));
     setExpiryAlertDays(toNumOrEmpty((initial as any)?.expiry_alert_days));
 
     const hasOverride = isOverrideEnabledFromInitial(initial);
     setOverrideEnabled(!!hasOverride);
     setOverrideDays(toNumOrEmpty((initial as any)?.auto_quarantine_override_days));
-
     setEditReason("");
 
     am.setNewApprovedName("");
@@ -107,11 +98,21 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       void am.loadApproved(initial.material_code);
     } else {
       am.setApprovedManufacturers([]);
+      setMaterialCode("Loading next code…");
+      void (async () => {
+        try {
+          const response = await apiFetch("/materials/next-code");
+          const preview = (await response.json()) as { material_code?: string };
+          setMaterialCode(preview.material_code || "Assigned automatically");
+        } catch (previewError) {
+          console.warn("Material code preview unavailable", previewError);
+          setMaterialCode("Assigned automatically");
+        }
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial, mode]);
 
-  // IMPORTANT: keep hook order safe
   if (!open) return null;
 
   const validateNonNeg = (label: string, v: number | ""): string | null => {
@@ -126,10 +127,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
     setError(null);
     am.setApprovedError(null);
 
-    if (!materialCode.trim() && mode === "create") {
-      setError("Material code is required.");
-      return;
-    }
     if (!name.trim()) {
       setError("Material name is required.");
       return;
@@ -139,7 +136,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       return;
     }
 
-    // Phase D4 validations
     const v1 = validateNonNeg("Low stock threshold", lowStockThresholdQty);
     if (v1) return void setError(v1);
 
@@ -151,7 +147,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       if (v3) return void setError(v3);
     }
 
-    // Require reason for edits (covers material edit + approved-manufacturer edits)
     if (isEdit && !editReason.trim()) {
       setError("Edit reason is required for audit trail.");
       return;
@@ -172,17 +167,15 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
 
       if (mode === "create") {
         const payload = {
-          material_code: materialCode.trim(),
+          material_code: null,
           name: name.trim(),
           category_code: categoryCode.trim(),
           type_code: typeCode.trim(),
           base_uom_code: baseUomCode.trim(),
           manufacturer: manufacturer || null,
           supplier: supplier || null,
-          // Silent default – we no longer expose this in the UI
           complies_es_criteria: true,
           status,
-          created_by: "apingu",
           ...d4Fields,
         };
 
@@ -192,7 +185,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           body: JSON.stringify(payload),
         });
       } else if (mode === "edit" && initial?.material_code) {
-        // 1) Save material (audit-trailed)
         const payload = {
           name: name.trim(),
           category_code: categoryCode.trim(),
@@ -212,7 +204,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           body: JSON.stringify(payload),
         });
 
-        // 2) Apply staged approved-manufacturer removals (edit_reason as QUERY param)
         const removeIds = Array.from(am.pendingRemoveIds);
         for (const id of removeIds) {
           const qs = `?edit_reason=${encodeURIComponent(editReason.trim())}`;
@@ -224,12 +215,10 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           );
         }
 
-        // 3) Apply staged approved-manufacturer adds (edit_reason in BODY)
         for (const manuName of am.pendingAddNames) {
           const body = {
             manufacturer_name: manuName.trim(),
             edit_reason: editReason.trim(),
-            created_by: "apingu",
           };
           await apiFetch(
             `/materials/${encodeURIComponent(initial.material_code)}/approved-manufacturers`,
@@ -241,7 +230,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           );
         }
 
-        // 4) Refresh list and reset staged changes
         await am.loadApproved(initial.material_code);
         am.setPendingRemoveIds(new Set());
         am.setPendingAddNames([]);
@@ -258,7 +246,6 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   };
 
   const handleCancel = () => {
-    // Discard staged approved-manufacturer changes
     am.setPendingRemoveIds(new Set());
     am.setPendingAddNames([]);
     am.setApprovedError(null);
@@ -297,7 +284,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
             <div className="modal-subtitle">
               {isEdit
                 ? "Update master data for this ES material."
-                : "Register a new material into the ES master list."}
+                : "Register a new material. Its controlled MAT code is assigned automatically."}
             </div>
           </div>
           <button type="button" className="icon-btn" onClick={handleCancel}>
