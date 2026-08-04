@@ -86,18 +86,46 @@ try {
     @'
 @echo off
 setlocal EnableExtensions
+set "STAGED=0"
+if /I "%~1"=="--staged" set "STAGED=1"
+
 net session >nul 2>&1
 if errorlevel 1 (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  set "STAGE=%TEMP%\EaststoneStockControlServerSetup-%RANDOM%-%RANDOM%"
+  mkdir "%STAGE%" >nul 2>&1
+  copy /Y "%~f0" "%STAGE%\server-setup-launcher.cmd" >nul
+  copy /Y "%~dp0server-payload.zip" "%STAGE%\server-payload.zip" >nul
+  if not exist "%STAGE%\server-payload.zip" (
+    echo ERROR: The installer payload could not be staged before administrator elevation.
+    pause
+    exit /b 1
+  )
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%STAGE%\server-setup-launcher.cmd' -ArgumentList '--staged' -Verb RunAs -WorkingDirectory '%STAGE%'"
   exit /b
 )
+
 set "INSTALL_DIR=%ProgramData%\Eaststone\StockControl"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%~dp0server-payload.zip' -DestinationPath '%INSTALL_DIR%' -Force"
-if errorlevel 1 exit /b 1
+if errorlevel 1 (
+  echo ERROR: The server payload could not be extracted to %INSTALL_DIR%.
+  pause
+  exit /b 1
+)
 cd /d "%INSTALL_DIR%"
 call "ESC_SERVER_SETUP_WINDOWS.bat"
-exit /b %ERRORLEVEL%
+set "RESULT=%ERRORLEVEL%"
+
+if "%STAGED%"=="1" (
+  set "STAGE_DIR=%~dp0"
+  set "CLEANUP=%TEMP%\eaststone-server-stage-cleanup-%RANDOM%.cmd"
+  >"%CLEANUP%" echo @echo off
+  >>"%CLEANUP%" echo timeout /t 3 /nobreak ^>nul
+  >>"%CLEANUP%" echo rmdir /s /q "%STAGE_DIR%"
+  >>"%CLEANUP%" echo del /f /q "%%~f0"
+  start "" /min cmd.exe /c ""%CLEANUP%""
+)
+exit /b %RESULT%
 '@ | Set-Content -LiteralPath $serverLauncher -Encoding ascii
 
     New-IExpressPackage -Name 'ESC Server Setup' -SourceDirectory $work -Files @('server-setup-launcher.cmd', 'server-payload.zip') -Launcher 'server-setup-launcher.cmd' -OutputPath (Join-Path $OutputDirectory 'ESC Server Setup.exe')
@@ -106,11 +134,6 @@ exit /b %ERRORLEVEL%
     @'
 @echo off
 setlocal EnableExtensions
-net session >nul 2>&1
-if errorlevel 1 (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
-  exit /b
-)
 set "INSTALL_DIR="
 for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath 2^>nul ^| find /I "InstallPath"') do set "INSTALL_DIR=%%B"
 if not defined INSTALL_DIR set "INSTALL_DIR=%ProgramData%\Eaststone\StockControl"
@@ -118,6 +141,12 @@ if not exist "%INSTALL_DIR%\UNINSTALL_WINDOWS.bat" (
   echo ERROR: Stock Control installation was not found at %INSTALL_DIR%.
   pause
   exit /b 1
+)
+
+net session >nul 2>&1
+if errorlevel 1 (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%INSTALL_DIR%\UNINSTALL_WINDOWS.bat' -Verb RunAs -WorkingDirectory '%INSTALL_DIR%'"
+  exit /b
 )
 cd /d "%INSTALL_DIR%"
 call "UNINSTALL_WINDOWS.bat"
