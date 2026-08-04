@@ -117,11 +117,11 @@ export type Issue = {
 
   consumption_type: string | null;
 
-  // ✅ NEW (Phase D5): ES product code (links ES Batch to a product code, e.g. DULO2)
   es_product_code?: string | null;
 
   product_batch_no: string | null;
   product_manufacture_date: string | null;
+  customer_name?: string | null;
 
   // Shared fields for multi-material consumption submissions.
   consumption_group_id?: string | null;
@@ -138,7 +138,6 @@ export type Issue = {
 
   created_by: string | null;
 
-  // ✅ ADDITIVE (D2 costing): populated by backend on ISSUE transactions
   unit_price?: number | null;
   total_value?: number | null;
   product_name_snapshot?: string | null;
@@ -179,7 +178,6 @@ export type LotBalance = {
   lot_unit_price?: number | null;
   lot_value?: number | null;
 
-  // ✅ ADDITIVE (Phase D3): derived expiry helper fields for tooltip/transparency
   days_to_expiry?: number | null;
   expiry_threshold_days?: number | null;
 };
@@ -211,7 +209,6 @@ export type AuditEvent = {
   after_json?: any;
 };
 
-// ✅ ADDITIVE (Phase D3): Admin Settings -> expiry threshold rows
 export type ExpiryThresholdRow = {
   id: number;
   category_code: string;
