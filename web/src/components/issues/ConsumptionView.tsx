@@ -17,8 +17,6 @@ interface ConsumptionViewProps {
   loadingIssues: boolean;
   issuesError: string | null;
   onNewIssue: () => void;
-
-  // ✅ NEW
   canEdit?: boolean;
   onEditIssue?: (i: Issue) => void;
 }
@@ -37,39 +35,20 @@ const CONSUMPTION_TYPE_LABELS: Record<string, string> = {
   CANCELLED_BMR: "Cancelled BMR",
 };
 
-/**
- * ✅ Decimal-safe formatting helpers.
- * After migrating backend DECIMAL fields, API may return them as strings (e.g. "12.340000").
- */
-const asNumber = (v: unknown): number | null => {
-  if (v === null || v === undefined) return null;
-  if (typeof v === "number") return Number.isFinite(v) ? v : null;
-
-  if (typeof v === "string") {
-    const s = v.trim();
-    if (!s) return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  try {
-    const n = Number(v as any);
-    return Number.isFinite(n) ? n : null;
-  } catch {
-    return null;
-  }
+const asNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 };
 
-const formatMoney = (v: unknown): string => {
-  const n = asNumber(v);
-  if (n === null) return "—";
-  return `£${n.toFixed(2)}`;
+const formatMoney = (value: unknown): string => {
+  const number = asNumber(value);
+  return number === null ? "—" : `£${number.toFixed(2)}`;
 };
 
-const formatUnitMoney = (v: unknown): string => {
-  const n = asNumber(v);
-  if (n === null) return "—";
-  return `£${n.toFixed(4)}`;
+const formatUnitMoney = (value: unknown): string => {
+  const number = asNumber(value);
+  return number === null ? "—" : `£${number.toFixed(4)}`;
 };
 
 const formatBatchOutput = (issue: Issue): string => {
@@ -80,12 +59,18 @@ const formatBatchOutput = (issue: Issue): string => {
 
   const parts: string[] = [];
   if (batchSize !== null) {
-    const sizeText = batchSize.toLocaleString("en-GB", { maximumFractionDigits: 6 });
-    parts.push(`${sizeText}${uom ? ` ${uom}` : ""}`);
+    parts.push(
+      `${batchSize.toLocaleString("en-GB", { maximumFractionDigits: 6 })}${
+        uom ? ` ${uom}` : ""
+      }`
+    );
   }
   if (units !== null) {
-    const unitsText = units.toLocaleString("en-GB", { maximumFractionDigits: 0 });
-    parts.push(`${unitsText} ${units === 1 ? "unit" : "units"}`);
+    parts.push(
+      `${units.toLocaleString("en-GB", { maximumFractionDigits: 0 })} ${
+        units === 1 ? "unit" : "units"
+      }`
+    );
   }
   return parts.join(" • ") || "—";
 };
@@ -96,26 +81,18 @@ const exportToCsv = (
 ) => {
   const escapeCell = (cell: string | number | null | undefined): string => {
     if (cell === null || cell === undefined) return "";
-    let s = String(cell);
-    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
-      s = '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
+    const value = String(cell);
+    return value.includes('"') || value.includes(",") || value.includes("\n")
+      ? `"${value.replace(/"/g, '""')}"`
+      : value;
   };
 
-  const csvContent =
-    rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
-
-  // ✅ Fix Excel “Â£” issue: add UTF-8 BOM
-  const BOM = "\ufeff";
-  const blob = new Blob([BOM + csvContent], {
-    type: "text/csv;charset=utf-8;",
-  });
-
+  const csv = `${rows.map((row) => row.map(escapeCell).join(",")).join("\r\n")}\r\n`;
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.setAttribute("download", filename);
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -131,11 +108,10 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
-  const [manufacturerFilter, setManufacturerFilter] = useState<string>("ALL");
+  const [manufacturerFilter, setManufacturerFilter] = useState("ALL");
+  const [customerFilter, setCustomerFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState<ConsumptionTypeFilter>("ALL");
   const [dispositionFilter, setDispositionFilter] = useState("ALL");
-
-  // CSV export modal state
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const uniqueManufacturers = useMemo(
@@ -143,8 +119,20 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       Array.from(
         new Set(
           issues
-            .map((i) => i.manufacturer || "")
-            .filter((x) => x && x.trim().length > 0)
+            .map((issue) => issue.manufacturer || "")
+            .filter((value) => value.trim().length > 0)
+        )
+      ).sort(),
+    [issues]
+  );
+
+  const uniqueCustomers = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          issues
+            .map((issue) => issue.customer_name || "")
+            .filter((value) => value.trim().length > 0)
         )
       ).sort(),
     [issues]
@@ -155,68 +143,74 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       Array.from(
         new Set(
           issues
-            .map((i) => (i.consumption_type || "USAGE") as string)
-            .filter((x) => x && x.trim().length > 0)
+            .map((issue) => issue.consumption_type || "USAGE")
+            .filter((value) => value.trim().length > 0)
         )
       ).sort(),
     [issues]
   );
 
   const filteredIssues = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
     const now = new Date();
 
-    return issues.filter((i) => {
-      const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
+    return issues.filter((issue) => {
+      const type = (issue.consumption_type || "USAGE") as ConsumptionTypeFilter;
 
       if (dateFilter !== "ALL") {
-        const created = new Date(i.created_at);
-        const diffMs = now.getTime() - created.getTime();
-        const diffDays = diffMs / (1000 * 60 * 60 * 24);
-        if (dateFilter === "30" && diffDays > 30) return false;
-        if (dateFilter === "90" && diffDays > 90) return false;
-        if (dateFilter === "365" && diffDays > 365) return false;
+        const ageDays =
+          (now.getTime() - new Date(issue.created_at).getTime()) / (1000 * 60 * 60 * 24);
+        if (ageDays > Number(dateFilter)) return false;
       }
-
+      if (manufacturerFilter !== "ALL" && issue.manufacturer !== manufacturerFilter) {
+        return false;
+      }
+      if (customerFilter !== "ALL" && issue.customer_name !== customerFilter) {
+        return false;
+      }
+      if (typeFilter !== "ALL" && type !== typeFilter) return false;
       if (
-        manufacturerFilter !== "ALL" &&
-        i.manufacturer !== manufacturerFilter
+        dispositionFilter !== "ALL" &&
+        (issue.batch_disposition || "COMPLIANT") !== dispositionFilter
       ) {
         return false;
       }
+      if (!query) return true;
 
-      if (typeFilter !== "ALL" && ct !== typeFilter) {
-        return false;
-      }
-      if (dispositionFilter !== "ALL" && (i.batch_disposition || "COMPLIANT") !== dispositionFilter) return false;
-
-      if (!q) return true;
-
-      const haystack = [
-        i.material_code,
-        i.material_name,
-        i.lot_number,
-        i.uom_code,
-        i.manufacturer ?? "",
-        i.es_product_code ?? "",
-        i.product_batch_no ?? "",
-        i.consumption_group_id ?? "",
-        i.total_batch_size ?? "",
-        i.batch_size_uom ?? "",
-        i.number_of_units ?? "",
-        i.comment ?? "",
-        i.consumption_type ?? "",
-        i.material_status_at_txn ?? "",
-        i.batch_disposition ?? "COMPLIANT",
-        i.disposition_reason ?? "",
-        i.product_name_snapshot ?? "",
+      return [
+        issue.material_code,
+        issue.material_name,
+        issue.lot_number,
+        issue.uom_code,
+        issue.manufacturer,
+        issue.customer_name,
+        issue.es_product_code,
+        issue.product_batch_no,
+        issue.consumption_group_id,
+        issue.total_batch_size,
+        issue.batch_size_uom,
+        issue.number_of_units,
+        issue.comment,
+        issue.consumption_type,
+        issue.material_status_at_txn,
+        issue.batch_disposition,
+        issue.disposition_reason,
+        issue.product_name_snapshot,
       ]
+        .map((value) => value ?? "")
         .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(q);
+        .toLowerCase()
+        .includes(query);
     });
-  }, [issues, search, dateFilter, manufacturerFilter, typeFilter, dispositionFilter]);
+  }, [
+    issues,
+    search,
+    dateFilter,
+    manufacturerFilter,
+    customerFilter,
+    typeFilter,
+    dispositionFilter,
+  ]);
 
   const renderConsumptionType = (raw?: string | null): string =>
     raw ? CONSUMPTION_TYPE_LABELS[raw] ?? raw : "Usage";
@@ -226,21 +220,15 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
     toDate,
     respectFilters,
   }: CsvExportParams) => {
-    const base = respectFilters ? filteredIssues : issues;
-
+    const source = respectFilters ? filteredIssues : issues;
     const from = fromDate ? new Date(fromDate) : null;
-    const to = toDate ? new Date(toDate) : null;
-    let toEnd: Date | null = null;
-    if (to) {
-      toEnd = new Date(to);
-      toEnd.setDate(toEnd.getDate() + 1); // inclusive
-    }
+    const toExclusive = toDate ? new Date(toDate) : null;
+    if (toExclusive) toExclusive.setDate(toExclusive.getDate() + 1);
 
-    const exportRowsSource = base.filter((i) => {
-      if (!from && !toEnd) return true;
-      const created = new Date(i.created_at);
+    const exportSource = source.filter((issue) => {
+      const created = new Date(issue.created_at);
       if (from && created < from) return false;
-      if (toEnd && created >= toEnd) return false;
+      if (toExclusive && created >= toExclusive) return false;
       return true;
     });
 
@@ -252,6 +240,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Disposition Reason",
       "ES Product Code",
       "ES Batch / Ref",
+      "Customer Name",
       "Total Batch Size",
       "Batch Size UOM",
       "Number of Units",
@@ -270,37 +259,35 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Created By",
     ];
 
-    const rows = exportRowsSource.map((i) => {
-      const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
-      const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D" || ct === "CANCELLED_BMR";
-
-      const esProduct = isBatchRelevant ? i.es_product_code || "—" : "N/A";
-      const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
-
+    const rows = exportSource.map((issue) => {
+      const type = (issue.consumption_type || "USAGE") as ConsumptionTypeFilter;
+      const batchRelevant =
+        type === "USAGE" || type === "R_AND_D" || type === "CANCELLED_BMR";
       return [
-        formatDate(i.created_at),
-        formatDate(i.product_manufacture_date),
-        renderConsumptionType(i.consumption_type),
-        i.batch_disposition || "COMPLIANT",
-        i.disposition_reason || "—",
-        esProduct,
-        esRef,
-        isBatchRelevant ? i.total_batch_size ?? "—" : "N/A",
-        isBatchRelevant ? i.batch_size_uom ?? "—" : "N/A",
-        isBatchRelevant ? i.number_of_units ?? "—" : "N/A",
-        i.consumption_group_id ?? "—",
-        i.material_code,
-        i.material_name,
-        i.lot_number,
-        formatDate(i.expiry_date),
-        i.is_non_stock_record ? "N/A" : i.qty,
-        i.is_non_stock_record ? "N/A" : i.uom_code,
-        formatMoney(i.total_value ?? null),
-        formatUnitMoney(i.unit_price ?? null),
-        i.manufacturer || "—",
-        i.material_status_at_txn || "—",
-        i.comment && i.comment.trim().length > 0 ? i.comment : "—",
-        i.created_by,
+        formatDate(issue.created_at),
+        formatDate(issue.product_manufacture_date),
+        renderConsumptionType(issue.consumption_type),
+        issue.batch_disposition || "COMPLIANT",
+        issue.disposition_reason || "—",
+        batchRelevant ? issue.es_product_code || "—" : "N/A",
+        batchRelevant ? issue.product_batch_no || "—" : "N/A",
+        batchRelevant ? issue.customer_name || "—" : "N/A",
+        batchRelevant ? issue.total_batch_size ?? "—" : "N/A",
+        batchRelevant ? issue.batch_size_uom ?? "—" : "N/A",
+        batchRelevant ? issue.number_of_units ?? "—" : "N/A",
+        issue.consumption_group_id ?? "—",
+        issue.material_code,
+        issue.material_name,
+        issue.lot_number,
+        formatDate(issue.expiry_date),
+        issue.is_non_stock_record ? "N/A" : issue.qty,
+        issue.is_non_stock_record ? "N/A" : issue.uom_code,
+        formatMoney(issue.total_value),
+        formatUnitMoney(issue.unit_price),
+        issue.manufacturer || "—",
+        issue.material_status_at_txn || "—",
+        issue.comment?.trim() || "—",
+        issue.created_by,
       ];
     });
 
@@ -308,7 +295,8 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
     setExportModalOpen(false);
   };
 
-  const showActions = !!canEdit;
+  const showActions = Boolean(canEdit);
+  const emptyColSpan = showActions ? 20 : 19;
 
   return (
     <section className="content">
@@ -316,94 +304,92 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         <div className="card-header">
           <div>
             <div className="card-title">Issue History</div>
-            <div className="card-subtitle">
-              Input consumption history
-            </div>
+            <div className="card-subtitle">Input consumption history</div>
           </div>
           <div className="card-actions card-actions-wrap">
             <input
               className="input"
-              style={{ minWidth: 260 }}
-              placeholder="Search material / lot / ES product / ES batch / comment…"
+              style={{ minWidth: 280 }}
+              placeholder="Search material / batch / customer / comment…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
             />
-
             <select
               className="input"
               style={{ width: 150 }}
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+              onChange={(event) => setDateFilter(event.target.value as DateFilter)}
             >
               <option value="ALL">All dates</option>
               <option value="30">Last 30 days</option>
               <option value="90">Last 90 days</option>
               <option value="365">Last 12 months</option>
             </select>
-
-            <select className="input" style={{ width: 175 }} value={dispositionFilter} onChange={(e) => setDispositionFilter(e.target.value)}>
+            <select
+              className="input"
+              style={{ width: 175 }}
+              value={dispositionFilter}
+              onChange={(event) => setDispositionFilter(event.target.value)}
+            >
               <option value="ALL">All dispositions</option>
               <option value="COMPLIANT">Compliant</option>
               <option value="REJECTED">Rejected</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
-
             <select
               className="input"
               style={{ width: 190 }}
               value={typeFilter}
-              onChange={(e) =>
-                setTypeFilter(e.target.value as ConsumptionTypeFilter)
+              onChange={(event) =>
+                setTypeFilter(event.target.value as ConsumptionTypeFilter)
               }
             >
               <option value="ALL">All types</option>
-              {uniqueTypes.map((t) => (
-                <option key={t} value={t}>
-                  {CONSUMPTION_TYPE_LABELS[t] ?? t}
+              {uniqueTypes.map((type) => (
+                <option key={type} value={type}>
+                  {CONSUMPTION_TYPE_LABELS[type] ?? type}
                 </option>
               ))}
             </select>
-
+            <select
+              className="input"
+              style={{ width: 210 }}
+              value={customerFilter}
+              onChange={(event) => setCustomerFilter(event.target.value)}
+            >
+              <option value="ALL">All customers</option>
+              {uniqueCustomers.map((customer) => (
+                <option key={customer} value={customer}>
+                  {customer}
+                </option>
+              ))}
+            </select>
             <select
               className="input"
               style={{ width: 210 }}
               value={manufacturerFilter}
-              onChange={(e) => setManufacturerFilter(e.target.value)}
+              onChange={(event) => setManufacturerFilter(event.target.value)}
             >
               <option value="ALL">All manufacturers</option>
-              {uniqueManufacturers.map((m) => (
-                <option key={m} value={m}>
-                  {m}
+              {uniqueManufacturers.map((manufacturer) => (
+                <option key={manufacturer} value={manufacturer}>
+                  {manufacturer}
                 </option>
               ))}
             </select>
-
             <button className="btn" onClick={() => setExportModalOpen(true)}>
               Export CSV
             </button>
           </div>
         </div>
 
-        {loadingIssues && (
-          <div className="info-row">Loading consumption history…</div>
-        )}
-        {issuesError && !loadingIssues && (
-          <div className="error-row">{issuesError}</div>
-        )}
+        {loadingIssues && <div className="info-row">Loading consumption history…</div>}
+        {issuesError && !loadingIssues && <div className="error-row">{issuesError}</div>}
+
         {!loadingIssues && !issuesError && (
-          <div
-            className="table-wrapper"
-            style={{ maxHeight: 480, overflowY: "auto" }}
-          >
+          <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
             <table className="table">
-              <thead
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 1,
-                  background: "#050816",
-                }}
-              >
+              <thead style={{ position: "sticky", top: 0, zIndex: 1, background: "#050816" }}>
                 <tr>
                   <th>Issue Date</th>
                   <th>Product Mfg Date</th>
@@ -411,6 +397,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th>Disposition</th>
                   <th>ES Product</th>
                   <th>ES Batch / Ref</th>
+                  <th>Customer</th>
                   <th>Batch Output</th>
                   <th>Material Code</th>
                   <th>Material Name</th>
@@ -418,10 +405,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th>Expiry</th>
                   <th className="numeric">Qty</th>
                   <th>UOM</th>
-
-                  {/* ✅ Cost column */}
                   <th className="numeric">Cost (£)</th>
-
                   <th>Manufacturer</th>
                   <th>Status @ use</th>
                   <th>Comment</th>
@@ -429,58 +413,73 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   {showActions && <th>Actions</th>}
                 </tr>
               </thead>
-
               <tbody>
                 {filteredIssues.length === 0 && (
                   <tr>
-                    <td colSpan={showActions ? 19 : 18} className="empty-row">
+                    <td colSpan={emptyColSpan} className="empty-row">
                       No issues match your filters.
                     </td>
                   </tr>
                 )}
 
-                {filteredIssues.map((i) => {
-                  const ct = (i.consumption_type || "USAGE") as ConsumptionTypeFilter;
-                  const isBatchRelevant = ct === "USAGE" || ct === "R_AND_D" || ct === "CANCELLED_BMR";
-
-                  const esProduct = isBatchRelevant ? i.es_product_code || "—" : "N/A";
-                  const esRef = isBatchRelevant ? i.product_batch_no || "—" : "N/A";
-
+                {filteredIssues.map((issue) => {
+                  const type = (issue.consumption_type || "USAGE") as ConsumptionTypeFilter;
+                  const batchRelevant =
+                    type === "USAGE" || type === "R_AND_D" || type === "CANCELLED_BMR";
                   return (
-                    <tr key={i.id} className={i.batch_disposition === "REJECTED" ? "batch-row-rejected" : i.batch_disposition === "CANCELLED" ? "batch-row-cancelled" : ""}>
-                      <td>{formatDate(i.created_at)}</td>
-                      <td>{formatDate(i.product_manufacture_date)}</td>
-                      <td>{renderConsumptionType(i.consumption_type)}</td>
-                      <td title={i.disposition_reason || ""}><span className={`disposition-badge disposition-${(i.batch_disposition || "COMPLIANT").toLowerCase()}`}>{i.batch_disposition || "COMPLIANT"}</span></td>
-                      <td>{esProduct}</td>
-                      <td>{esRef}</td>
-                      <td>{isBatchRelevant ? formatBatchOutput(i) : "N/A"}</td>
-                      <td>{i.material_code}</td>
-                      <td>{i.material_name}</td>
-                      <td>{i.lot_number}</td>
-                      <td>{formatDate(i.expiry_date)}</td>
-                      <td className="numeric">{i.is_non_stock_record ? "N/A" : i.qty}</td>
-                      <td>{i.is_non_stock_record ? "N/A" : i.uom_code}</td>
-
-                      {/* ✅ Decimal-safe */}
-                      <td className="numeric">{formatMoney(i.total_value ?? null)}</td>
-
-                      <td>{i.manufacturer || "—"}</td>
-                      <td>{i.material_status_at_txn || "—"}</td>
-                      <td>{i.comment && i.comment.trim().length > 0 ? i.comment : "—"}</td>
-                      <td>{i.created_by}</td>
-
+                    <tr
+                      key={issue.id}
+                      className={
+                        issue.batch_disposition === "REJECTED"
+                          ? "batch-row-rejected"
+                          : issue.batch_disposition === "CANCELLED"
+                            ? "batch-row-cancelled"
+                            : ""
+                      }
+                    >
+                      <td>{formatDate(issue.created_at)}</td>
+                      <td>{formatDate(issue.product_manufacture_date)}</td>
+                      <td>{renderConsumptionType(issue.consumption_type)}</td>
+                      <td title={issue.disposition_reason || ""}>
+                        <span
+                          className={`disposition-badge disposition-${(
+                            issue.batch_disposition || "COMPLIANT"
+                          ).toLowerCase()}`}
+                        >
+                          {issue.batch_disposition || "COMPLIANT"}
+                        </span>
+                      </td>
+                      <td>{batchRelevant ? issue.es_product_code || "—" : "N/A"}</td>
+                      <td>{batchRelevant ? issue.product_batch_no || "—" : "N/A"}</td>
+                      <td>{batchRelevant ? issue.customer_name || "—" : "N/A"}</td>
+                      <td>{batchRelevant ? formatBatchOutput(issue) : "N/A"}</td>
+                      <td>{issue.material_code}</td>
+                      <td>{issue.material_name}</td>
+                      <td>{issue.lot_number}</td>
+                      <td>{formatDate(issue.expiry_date)}</td>
+                      <td className="numeric">
+                        {issue.is_non_stock_record ? "N/A" : issue.qty}
+                      </td>
+                      <td>{issue.is_non_stock_record ? "N/A" : issue.uom_code}</td>
+                      <td className="numeric">{formatMoney(issue.total_value)}</td>
+                      <td>{issue.manufacturer || "—"}</td>
+                      <td>{issue.material_status_at_txn || "—"}</td>
+                      <td>{issue.comment?.trim() || "—"}</td>
+                      <td>{issue.created_by}</td>
                       {showActions && (
                         <td>
-                          {!i.is_non_stock_record ? <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ padding: "4px 10px", fontSize: 12, borderRadius: 999 }}
-                            onClick={() => onEditIssue?.(i)}
-                          >
-                            Edit
-                          </button>
-                          : "—"}
+                          {!issue.is_non_stock_record ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ padding: "4px 10px", fontSize: 12, borderRadius: 999 }}
+                              onClick={() => onEditIssue?.(issue)}
+                            >
+                              Edit
+                            </button>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                       )}
                     </tr>
@@ -494,7 +493,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         <CsvExportModal
           open={exportModalOpen}
           title="Export Issue / Consumption History"
-          helpText="Export stock issues / consumption history to CSV. Optionally limit by Issue Date range and keep your current filters."
+          helpText="Export stock issues and consumption history to CSV, including customer and controlled batch details."
           fromLabel="Issue date from (optional)"
           toLabel="Issue date to (optional)"
           defaultRespectFilters={true}
