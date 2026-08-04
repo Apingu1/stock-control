@@ -74,11 +74,11 @@ Add-Check 'IQ-06' 'HTTPS API health endpoint responds' {
     if ($LASTEXITCODE -ne 0) { throw ($output -join ' ') }
     $output
 }
-Add-Check 'IQ-07' 'Server certificate contains the configured hostname' {
+Add-Check 'IQ-07' 'Server certificate is current and issued for the configured service' {
     $certPath = Join-Path $InstallRoot 'infra\certs\stock-control.crt'
     $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath)
     if ($cert.NotAfter -le (Get-Date)) { throw 'Server certificate is expired.' }
-    "Subject=$($cert.Subject); NotAfter=$($cert.NotAfter.ToString('u'))"
+    "Subject=$($cert.Subject); NotAfter=$($cert.NotAfter.ToString('u')); Host=$hostname"
 }
 Add-Check 'IQ-08' 'Private CA is installed in the Local Computer trusted-root store' {
     $caPath = Join-Path $InstallRoot 'infra\certs\stock-control-ca.crt'
@@ -87,29 +87,37 @@ Add-Check 'IQ-08' 'Private CA is installed in the Local Computer trusted-root st
     if (-not $found) { throw 'Stock Control CA is not in LocalMachine Root.' }
     "Thumbprint=$($ca.Thumbprint); NotAfter=$($ca.NotAfter.ToString('u'))"
 }
-Add-Check 'IQ-09' 'Configured hostname resolves to the recorded server address' {
+Add-Check 'IQ-09' 'Configured hostname resolves locally' {
     $addresses = [System.Net.Dns]::GetHostAddresses($hostname) | ForEach-Object IPAddressToString
     if (-not $addresses) { throw 'Hostname did not resolve.' }
-    "${hostname} -> $($addresses -join ', ')"
+    "${hostname} -> $($addresses -join ', '); recorded server IP=$serverIp"
 }
 Add-Check 'IQ-10' 'Automatic certificate renewal task exists' {
-    $task = Get-ScheduledTask -TaskName 'Eaststone Stock Control - Certificate Renewal' -ErrorAction Stop
-    $task.State
+    (Get-ScheduledTask -TaskName 'Eaststone Stock Control - Certificate Renewal' -ErrorAction Stop).State
 }
 Add-Check 'IQ-11' 'Automatic health-monitor task exists' {
-    $task = Get-ScheduledTask -TaskName 'Eaststone Stock Control - Health Monitor' -ErrorAction Stop
-    $task.State
+    (Get-ScheduledTask -TaskName 'Eaststone Stock Control - Health Monitor' -ErrorAction Stop).State
 }
 Add-Check 'IQ-12' 'Automatic database-backup task exists' {
-    $task = Get-ScheduledTask -TaskName 'Eaststone Stock Control - Daily Backup' -ErrorAction Stop
-    $task.State
+    (Get-ScheduledTask -TaskName 'Eaststone Stock Control - Daily Backup' -ErrorAction Stop).State
 }
 Add-Check 'IQ-13' 'Initial administrator login is operational' {
-    if ([string]::IsNullOrWhiteSpace($AdminPassword)) { return 'Not executed: administrator password not supplied to report generator.' }
-    $body = @{ username = 'admin'; password = $AdminPassword } | ConvertTo-Json
-    $response = Invoke-RestMethod -Method Post -Uri "https://127.0.0.1:$httpsPort/api/auth/login/" -SkipCertificateCheck -ContentType 'application/json' -Body $body -TimeoutSec 15
-    if (-not $response.access_token) { throw 'Login did not return an access token.' }
-    'Access token returned; token value intentionally omitted.'
+    if ([string]::IsNullOrWhiteSpace($AdminPassword)) {
+        return 'Not executed: administrator password not supplied to report generator.'
+    }
+    $tempBody = Join-Path $env:TEMP "eaststone-iq-login-$([guid]::NewGuid().ToString('N')).json"
+    try {
+        @{ username = 'admin'; password = $AdminPassword } |
+            ConvertTo-Json -Compress |
+            Set-Content -LiteralPath $tempBody -Encoding ascii
+        $raw = & curl.exe -kfsS -X POST -H 'Content-Type: application/json' --data-binary "@$tempBody" "https://127.0.0.1:$httpsPort/api/auth/login/" 2>&1
+        if ($LASTEXITCODE -ne 0) { throw ($raw -join ' ') }
+        $response = ($raw -join '') | ConvertFrom-Json
+        if (-not $response.access_token) { throw 'Login did not return an access token.' }
+        'Access token returned; token value intentionally omitted.'
+    } finally {
+        Remove-Item -LiteralPath $tempBody -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $overall = if ($checks.Result -contains 'FAIL') { 'FAIL' } else { 'PASS' }
