@@ -34,7 +34,6 @@ type Props = {
   status: string;
   setStatus: (v: string) => void;
 
-  // Phase D4
   lowStockThresholdQty: number | "";
   setLowStockThresholdQty: (v: number | "") => void;
 
@@ -48,14 +47,11 @@ type Props = {
   setOverrideDays: (v: number | "") => void;
 
   defaultThresholdDays: number | null;
-
   isTabletsCaps: boolean;
 
-  // edit-only
   editReason: string;
   setEditReason: (v: string) => void;
 
-  // approved manufacturer section slot
   approvedManufacturersSection?: React.ReactNode;
 };
 
@@ -68,11 +64,17 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         <label className="label">Material code</label>
         <input
           className="input"
-          placeholder="e.g. MAT0327"
+          placeholder="Assigned automatically on save"
           value={props.materialCode}
-          onChange={(e) => props.setMaterialCode(e.target.value)}
-          disabled={isEdit}
+          readOnly
+          disabled
+          aria-describedby="material-code-help"
         />
+        <div id="material-code-help" className="content-subtitle" style={{ marginTop: 5 }}>
+          {isEdit
+            ? "Material codes are permanent and cannot be changed."
+            : "The server assigns the next controlled code (MAT0001, MAT0002, etc.)."}
+        </div>
       </div>
 
       <div className="form-group">
@@ -93,7 +95,6 @@ const MaterialFormFields: React.FC<Props> = (props) => {
           value={props.categoryCode ?? ""}
           onChange={(e) => props.setCategoryCode(e.target.value)}
         >
-          {/* ✅ Keep layout identical; add a real empty option so state/UI match */}
           <option value="">— Select category —</option>
           {MATERIAL_CATEGORY_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
@@ -110,7 +111,6 @@ const MaterialFormFields: React.FC<Props> = (props) => {
           value={props.typeCode ?? ""}
           onChange={(e) => props.setTypeCode(e.target.value)}
         >
-          {/* ✅ Keep layout identical; add a real empty option so state/UI match */}
           <option value="">— Select type —</option>
           {MATERIAL_TYPE_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
@@ -127,7 +127,6 @@ const MaterialFormFields: React.FC<Props> = (props) => {
           value={props.baseUomCode ?? ""}
           onChange={(e) => props.setBaseUomCode(e.target.value)}
         >
-          {/* ✅ Keep layout identical; add a real empty option so state/UI match */}
           <option value="">— Select base UOM —</option>
           {MATERIAL_UOM_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
@@ -169,7 +168,6 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         />
       </div>
 
-      {/* Phase D4: Alerts & Quarantine */}
       <div className="form-group form-group-full">
         <label className="label">Alerts &amp; Quarantine</label>
         <div className="content-subtitle" style={{ marginBottom: 10 }}>
@@ -255,15 +253,13 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         </div>
       )}
 
-      {/* Approved manufacturers block (only when tablets/caps + edit) */}
       {props.approvedManufacturersSection}
 
       {!isEdit && props.isTabletsCaps && (
         <div className="form-group form-group-full">
           <label className="label">Approved manufacturers</label>
           <p className="content-subtitle">
-            Save the material first, then edit it to configure the list of approved
-            manufacturers for TABLETS/CAPSULES.
+            The default manufacturer is automatically added to the approved list when the material is saved.
           </p>
         </div>
       )}
