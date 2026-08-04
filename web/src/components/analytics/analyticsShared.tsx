@@ -16,7 +16,14 @@ export type MonthlyRow = {
 export type DashboardLegacyResp = {
   meta: { data_cut: string | null; timezone_month_bucket: string; logic_version: string };
   monthly: MonthlyRow[];
-  top_products: { es_product_code: string; unique_batch_count: number; compliant_batch_count: number; rejected_batch_count: number; cancelled_batch_count: number; last_issue_at: string | null }[];
+  top_products: {
+    es_product_code: string;
+    unique_batch_count: number;
+    compliant_batch_count: number;
+    rejected_batch_count: number;
+    cancelled_batch_count: number;
+    last_issue_at: string | null;
+  }[];
 };
 
 export type DashboardRangeResp = {
@@ -74,6 +81,7 @@ export type ProductSummary = {
 export type ProductBatchRow = {
   es_product_code: string;
   product_batch_no: string;
+  customer_name: string | null;
   total_batch_size: string | null;
   batch_size_uom: string | null;
   number_of_units: number | null;
@@ -98,6 +106,7 @@ export type BatchAnalyticsResp = {
   header: {
     es_product_code: string;
     product_batch_no: string;
+    customer_name: string | null;
     batch_total_cost: string;
     issue_txn_count: number;
     first_issue_at: string;
@@ -182,10 +191,6 @@ export function qtyFmt(v: string | null | undefined) {
   return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
-/**
- * Date-only formatter for YYYY-MM-DD → DD-MM-YYYY
- * (use this where you currently print dateFrom/dateTo strings).
- */
 export function dmyFmt(ymd: string | null | undefined) {
   if (!ymd) return "";
   const s = String(ymd);
@@ -194,26 +199,13 @@ export function dmyFmt(ymd: string | null | undefined) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-/**
- * Robust datetime formatter.
- * Handles Postgres ISO strings with microseconds (6dp) which JS Date won't parse:
- *   2026-01-23T02:16:59.141442+00:00
- * We trim fractional seconds to milliseconds before parsing.
- * Output matches your Product/Batch style (en-GB, 24h, with seconds).
- */
 export function dtFmt(v: string | null | undefined) {
   if (!v) return "-";
 
   const raw = String(v);
-
-  // Trim microseconds to milliseconds if present (.123456 -> .123)
   const normalized = raw.replace(/\.(\d{3})\d+/, ".$1");
-
   const d = new Date(normalized);
-  if (Number.isNaN(d.getTime())) {
-    // Fall back to raw string if still unparseable
-    return raw;
-  }
+  if (Number.isNaN(d.getTime())) return raw;
 
   return d.toLocaleString("en-GB", {
     year: "numeric",
@@ -228,18 +220,18 @@ export function dtFmt(v: string | null | undefined) {
 
 /** ---------- Small UI atoms ---------- */
 
-export const Chip: React.FC<{ children: React.ReactNode; variant?: "blue" | "purple" | "green" | "muted" }> = ({
-  children,
-  variant = "muted",
-}) => {
+export const Chip: React.FC<{
+  children: React.ReactNode;
+  variant?: "blue" | "purple" | "green" | "muted";
+}> = ({ children, variant = "muted" }) => {
   const cls =
     variant === "blue"
       ? "analytics-chip analytics-chip-blue"
       : variant === "purple"
-      ? "analytics-chip analytics-chip-purple"
-      : variant === "green"
-      ? "analytics-chip analytics-chip-green"
-      : "analytics-chip";
+        ? "analytics-chip analytics-chip-purple"
+        : variant === "green"
+          ? "analytics-chip analytics-chip-green"
+          : "analytics-chip";
   return <span className={cls}>{children}</span>;
 };
 
@@ -259,8 +251,6 @@ export type MaterialTraceRow = {
   issue_qty_sum: string;
   issue_value_sum: string;
   last_issue_at: string | null;
-
-  // optional if you include it in the payload (you do)
   lot_number?: string | null;
   batch_disposition?: string;
   disposition_reason?: string | null;
