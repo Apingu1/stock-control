@@ -12,7 +12,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import User, Role, RolePermission
+from .models import User, Role, RolePermission, Permission
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +42,6 @@ def verify_password(plain: str, password_hash: str) -> bool:
 # ---------------------------------------------------------------------------
 # JWT helpers
 # ---------------------------------------------------------------------------
-
 def create_access_token(*, sub: str, role: str) -> str:
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=JWT_EXPIRES_MINUTES)
@@ -73,7 +72,6 @@ def _forbidden(detail: str = "Forbidden") -> HTTPException:
 # ---------------------------------------------------------------------------
 # Auth dependencies
 # ---------------------------------------------------------------------------
-
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -101,7 +99,6 @@ def get_current_user(
 # ---------------------------------------------------------------------------
 # Role-based guards (kept for backward compatibility)
 # ---------------------------------------------------------------------------
-
 def require_role(*allowed_roles: str) -> Callable[[User], User]:
     allowed = {r.upper() for r in allowed_roles}
 
@@ -121,16 +118,24 @@ require_senior = require_role("SENIOR", "ADMIN")
 # ---------------------------------------------------------------------------
 # Permission-based guards (Phase B)
 # ---------------------------------------------------------------------------
-
 def _get_permissions_for_role(db: Session, role_name: str) -> Set[str]:
     role = (role_name or "").strip().upper()
     if not role:
         return set()
 
-    # If role row missing, treat as no perms (FK should prevent this)
+    # If role row missing, treat as no perms (FK should prevent this).
     exists = db.query(Role).filter(Role.name == role).count()
     if not exists:
         return set()
+
+    # ADMIN is the system owner role. Resolve it dynamically from the permission
+    # catalogue so newly added features cannot accidentally be hidden from an
+    # administrator merely because an older role_permissions seed pre-dated them.
+    # The database migration still inserts matrix rows so the Admin UI accurately
+    # displays every permission as granted.
+    if role == "ADMIN":
+        rows = db.query(Permission.key).all()
+        return {row[0] for row in rows}
 
     rows = (
         db.query(RolePermission.permission_key)
@@ -172,6 +177,7 @@ def require_any_permission(*permission_keys: str) -> Callable[[User], User]:
 
     return _dep
 
+
 def user_has_permission(db: Session, user: User, permission_key: str) -> bool:
     """Utility for routers: check if a user has a permission without raising."""
     try:
@@ -179,7 +185,6 @@ def user_has_permission(db: Session, user: User, permission_key: str) -> bool:
         return permission_key.strip() in perms
     except Exception:
         return False
-
 
 
 # Admin gate for /admin/*
