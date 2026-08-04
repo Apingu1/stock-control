@@ -27,11 +27,8 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
         path = request.url.path or ""
         method = (request.method or "").upper()
 
-        # Always allow read-only
         if method in {"GET", "HEAD", "OPTIONS"}:
             return await call_next(request)
-
-        # Always allow health + auth + admin db-tools (operator actions)
         if path.startswith("/health"):
             return await call_next(request)
         if path.startswith("/auth/"):
@@ -70,9 +67,10 @@ from .db import get_db  # noqa: F401,E402
 from .models import Base  # noqa: F401,E402
 
 from .routers import (  # noqa: E402
-    materials_enhanced,
-    issues_enhanced,
+    admin_enhanced,
     analytics_enhanced,
+    issues_enhanced,
+    materials_enhanced,
 )
 from .routers import materials, products, receipts, issues, lot_balances, summary  # noqa: E402
 from .routers import analytics  # noqa: E402
@@ -87,6 +85,7 @@ from .routers import admin_db_tools
 app.include_router(materials_enhanced.router)
 app.include_router(issues_enhanced.router)
 app.include_router(analytics_enhanced.router)
+app.include_router(admin_enhanced.router)
 
 app.include_router(materials.router)
 app.include_router(products.router)
