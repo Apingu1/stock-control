@@ -83,21 +83,27 @@ function Restore-Backup([string]$BackupFile) {
     & docker @composeArgs stop api web
     if ($LASTEXITCODE -ne 0) { throw 'API/web services could not be stopped for restore.' }
 
-    $containerId = (& docker compose -f $baseCompose --env-file $envPath ps -q db).Trim()
+    $containerOutput = & docker compose -f $baseCompose --env-file $envPath ps -q db
+    $containerId = ([string]($containerOutput | Select-Object -First 1)).Trim()
     if (-not $containerId) { throw 'PostgreSQL container is not running.' }
 
     $containerFile = '/tmp/eaststone-restore.dump'
     & docker cp $BackupFile "${containerId}:$containerFile"
     if ($LASTEXITCODE -ne 0) { throw 'Backup could not be copied into PostgreSQL container.' }
 
-    Write-Log "Restoring database $dbName from $BackupFile"
-    & docker exec $containerId dropdb -U $dbUser --if-exists --force $dbName
-    if ($LASTEXITCODE -ne 0) { throw 'Existing database could not be dropped.' }
-    & docker exec $containerId createdb -U $dbUser $dbName
-    if ($LASTEXITCODE -ne 0) { throw 'Replacement database could not be created.' }
-    & docker exec $containerId pg_restore -U $dbUser -d $dbName --no-owner --no-privileges $containerFile
-    if ($LASTEXITCODE -ne 0) { throw 'pg_restore failed. The pre-restore backup remains available.' }
-    & docker exec $containerId rm -f $containerFile *> $null
+    try {
+        Write-Log "Restoring database $dbName from $BackupFile"
+        & docker exec $containerId dropdb -U $dbUser --if-exists --force $dbName
+        if ($LASTEXITCODE -ne 0) { throw 'Existing database could not be dropped.' }
+        & docker exec $containerId createdb -U $dbUser $dbName
+        if ($LASTEXITCODE -ne 0) { throw 'Replacement database could not be created.' }
+        & docker exec $containerId pg_restore -U $dbUser -d $dbName --no-owner --no-privileges $containerFile
+        if ($LASTEXITCODE -ne 0) {
+            throw 'pg_restore failed. The application remains stopped; use the pre-restore safety backup and recovery guide.'
+        }
+    } finally {
+        & docker exec $containerId rm -f $containerFile *> $null
+    }
 
     & docker @composeArgs up -d
     if ($LASTEXITCODE -ne 0) { throw 'Application could not restart after restore.' }
