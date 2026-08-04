@@ -15,26 +15,21 @@ export function useIssueForm(args: {
   const isEdit = mode === "edit" && !!initial;
 
   const [consumptionType, setConsumptionType] = useState<ConsumptionTypeCode>("USAGE");
-
   const [materialSearch, setMaterialSearch] = useState("");
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [selectedLot, setSelectedLot] = useState<LotBalance | null>(null);
-
   const [qty, setQty] = useState("");
-  const [esProductCode, setEsProductCode] = useState<string>("");
-
+  const [esProductCode, setEsProductCode] = useState("");
   const [productBatchNo, setProductBatchNo] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [productManufactureDate, setProductManufactureDate] = useState("");
   const [totalBatchSize, setTotalBatchSize] = useState("");
   const [batchSizeUom, setBatchSizeUom] = useState("");
   const [numberOfUnits, setNumberOfUnits] = useState("");
   const [comment, setComment] = useState("");
   const [manufacturer, setManufacturer] = useState("");
-
   const [editReason, setEditReason] = useState("");
 
-  // Non-superuser: in edit mode, block changing the traceability fields (material + lot).
-  // Superuser can change them (backend still audit-trails via edit_reason).
   const canEditTraceabilityFields = !isEdit || canSuperEditLockedFields;
 
   useEffect(() => {
@@ -42,22 +37,25 @@ export function useIssueForm(args: {
 
     if (isEdit && initial) {
       setConsumptionType((initial.consumption_type as ConsumptionTypeCode) || "USAGE");
-
       setMaterialSearch(`${initial.material_name} (${initial.material_code})`);
-      const mat = materials.find((m) => m.material_code === initial.material_code) || null;
-      setSelectedMaterial(mat);
-
-      const lot =
+      setSelectedMaterial(
+        materials.find((material) => material.material_code === initial.material_code) || null
+      );
+      setSelectedLot(
         lotBalances.find(
-          (l) => l.material_code === initial.material_code && l.lot_number === initial.lot_number
-        ) || null;
-      setSelectedLot(lot);
-
+          (lot) =>
+            lot.material_code === initial.material_code &&
+            lot.lot_number === initial.lot_number
+        ) || null
+      );
       setQty(String(initial.qty ?? ""));
-      setEsProductCode((initial as any).es_product_code || "");
+      setEsProductCode(initial.es_product_code || "");
       setProductBatchNo(initial.product_batch_no || "");
+      setCustomerName(initial.customer_name || "");
       setProductManufactureDate(
-        initial.product_manufacture_date ? String(initial.product_manufacture_date).slice(0, 10) : ""
+        initial.product_manufacture_date
+          ? String(initial.product_manufacture_date).slice(0, 10)
+          : ""
       );
       setTotalBatchSize(
         initial.total_batch_size === null || initial.total_batch_size === undefined
@@ -76,7 +74,6 @@ export function useIssueForm(args: {
       return;
     }
 
-    // Create reset
     setConsumptionType("USAGE");
     setMaterialSearch("");
     setSelectedMaterial(null);
@@ -84,6 +81,7 @@ export function useIssueForm(args: {
     setQty("");
     setEsProductCode("");
     setProductBatchNo("");
+    setCustomerName("");
     setProductManufactureDate("");
     setTotalBatchSize("");
     setBatchSizeUom("");
@@ -94,39 +92,46 @@ export function useIssueForm(args: {
   }, [open, isEdit, initial, materials, lotBalances]);
 
   const filteredMaterials = useMemo(() => {
-    const q = materialSearch.trim().toLowerCase();
+    const query = materialSearch.trim().toLowerCase();
     const stockMaterials = materials.filter((material) => !material.is_cancelled_bmr_marker);
-    if (!q) return stockMaterials.slice(0, 15);
+    if (!query) return stockMaterials.slice(0, 15);
     return stockMaterials
-      .filter((m) => m.material_code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+      .filter(
+        (material) =>
+          material.material_code.toLowerCase().includes(query) ||
+          material.name.toLowerCase().includes(query)
+      )
       .slice(0, 15);
   }, [materialSearch, materials]);
 
   const lotsForMaterial = useMemo(() => {
     if (!selectedMaterial) return [];
     return lotBalances
-      .filter((lot) => lot.material_code === selectedMaterial.material_code && lot.balance_qty > 0)
+      .filter(
+        (lot) => lot.material_code === selectedMaterial.material_code && lot.balance_qty > 0
+      )
       .sort((a, b) => rankLotStatus(a.status) - rankLotStatus(b.status));
   }, [selectedMaterial, lotBalances]);
 
   const isBatchRequired = consumptionType === "USAGE";
   const isBatchOptional = consumptionType === "R_AND_D";
-  const isBatchIrrelevant = consumptionType === "WASTAGE" || consumptionType === "DESTRUCTION";
+  const isBatchIrrelevant =
+    consumptionType === "WASTAGE" || consumptionType === "DESTRUCTION";
   const showBatchFields = !isBatchIrrelevant;
 
   const quantityUom = selectedLot?.uom_code || selectedMaterial?.base_uom_code || "";
   const isQuarantined = (selectedLot?.status || "").toUpperCase() === "QUARANTINE";
 
-  const handleSelectMaterial = (m: Material) => {
-    setSelectedMaterial(m);
-    setMaterialSearch(`${m.name} (${m.material_code})`);
+  const handleSelectMaterial = (material: Material) => {
+    setSelectedMaterial(material);
+    setMaterialSearch(`${material.name} (${material.material_code})`);
     setSelectedLot(null);
     setManufacturer("");
   };
 
   const handleSelectLot = (lotId: string) => {
-    const idNum = Number(lotId);
-    const lot = lotsForMaterial.find((l) => l.material_lot_id === idNum);
+    const id = Number(lotId);
+    const lot = lotsForMaterial.find((candidate) => candidate.material_lot_id === id);
     setSelectedLot(lot || null);
     setManufacturer(lot?.manufacturer || "");
   };
@@ -134,30 +139,26 @@ export function useIssueForm(args: {
   return {
     isEdit,
     canEditTraceabilityFields,
-
     consumptionType,
     setConsumptionType,
-
     materialSearch,
     setMaterialSearch,
     filteredMaterials,
-
     selectedMaterial,
     setSelectedMaterial,
     handleSelectMaterial,
-
     selectedLot,
     setSelectedLot,
     lotsForMaterial,
     handleSelectLot,
-
     qty,
     setQty,
     esProductCode,
     setEsProductCode,
-
     productBatchNo,
     setProductBatchNo,
+    customerName,
+    setCustomerName,
     productManufactureDate,
     setProductManufactureDate,
     totalBatchSize,
@@ -170,15 +171,12 @@ export function useIssueForm(args: {
     setComment,
     manufacturer,
     setManufacturer,
-
     editReason,
     setEditReason,
-
     isBatchRequired,
     isBatchOptional,
     isBatchIrrelevant,
     showBatchFields,
-
     quantityUom,
     isQuarantined,
   };
