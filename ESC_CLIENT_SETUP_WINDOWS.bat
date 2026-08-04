@@ -2,10 +2,21 @@
 setlocal EnableExtensions EnableDelayedExpansion
 title Eaststone Stock Control - Client Setup
 
+set "STAGED=0"
+if /I "%~1"=="--staged" set "STAGED=1"
+
 net session >nul 2>&1
 if errorlevel 1 (
   echo Requesting administrator access...
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs -WorkingDirectory '%~dp0'"
+  set "STAGE=%TEMP%\EaststoneStockControlClientSetup-%RANDOM%-%RANDOM%"
+  mkdir "!STAGE!" >nul 2>&1
+  xcopy "%~dp0*" "!STAGE!\" /E /I /Y /Q >nul
+  if not exist "!STAGE!\ESC_CLIENT_SETUP_WINDOWS.bat" (
+    echo ERROR: Client setup files could not be staged before elevation.
+    pause
+    exit /b 1
+  )
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!STAGE!\ESC_CLIENT_SETUP_WINDOWS.bat' -ArgumentList '--staged' -Verb RunAs -WorkingDirectory '!STAGE!'"
   exit /b
 )
 
@@ -15,13 +26,13 @@ set "CA_CERT=stock-control-ca.crt"
 
 if not exist "%CONFIG%" (
   echo ERROR: client-config.ini is missing from the client deployment package.
-  pause
-  exit /b 1
+  set "RESULT=1"
+  goto :finish
 )
 if not exist "%CA_CERT%" (
   echo ERROR: stock-control-ca.crt is missing from the client deployment package.
-  pause
-  exit /b 1
+  set "RESULT=1"
+  goto :finish
 )
 
 set "TLS_HOSTNAME=stock-control.test"
@@ -35,8 +46,8 @@ for /f "usebackq tokens=1,* delims==" %%A in ("%CONFIG%") do (
 
 if not defined SERVER_IP (
   echo ERROR: SERVER_IP is missing from client-config.ini.
-  pause
-  exit /b 1
+  set "RESULT=1"
+  goto :finish
 )
 
 echo ============================================================
@@ -48,18 +59,20 @@ echo.
 echo Installing the Stock Control trusted-root certificate...
 certutil.exe -addstore -f Root "%CA_CERT%" >nul
 if errorlevel 1 goto :cert_failed
+for /f "usebackq delims=" %%T in (`powershell.exe -NoProfile -Command "$c=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath '%CA_CERT%').Path);$c.Thumbprint"`) do set "CA_THUMBPRINT=%%T"
 
 echo Configuring the Stock Control hostname...
 if exist "Configure-Hosts.ps1" (
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Configure-Hosts.ps1" -Hostname "%TLS_HOSTNAME%" -IpAddress "%SERVER_IP%"
 ) else (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p='$env:SystemRoot\System32\drivers\etc\hosts';$h='%TLS_HOSTNAME%';$ip='%SERVER_IP%';$l=Get-Content $p;$l=$l^|?{($_ -split '#')[0] -notmatch ('(^|\s)'+[regex]::Escape($h)+'(\s|$)')};$l+=\"$ip`t$h`t# Eaststone Stock Control\";$l^|Set-Content $p -Encoding ascii;ipconfig /flushdns^|Out-Null"
+  echo ERROR: Configure-Hosts.ps1 is missing.
+  goto :hosts_failed
 )
 if errorlevel 1 goto :hosts_failed
 
 set "APP_URL=https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/"
 echo Creating application shortcuts...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir 'Eaststone Stock Control.lnk'));if(Test-Path $edge){$s.TargetPath=$edge;$s.Arguments='--app=%APP_URL%';$s.IconLocation=$edge}else{$s.TargetPath='%SystemRoot%\System32\cmd.exe';$s.Arguments='/c start "" "%APP_URL%"'};$s.WorkingDirectory='%~dp0';$s.Description='Eaststone Stock Control';$s.Save()}}"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir 'Eaststone Stock Control.lnk'));if(Test-Path $edge){$s.TargetPath=$edge;$s.Arguments='--app=%APP_URL%';$s.IconLocation=$edge}else{$s.TargetPath='%SystemRoot%\System32\cmd.exe';$s.Arguments='/c start "" "%APP_URL%"'};$s.Description='Eaststone Stock Control';$s.Save()}}"
 if errorlevel 1 goto :shortcut_failed
 
 echo Verifying trusted HTTPS access...
@@ -67,6 +80,9 @@ curl.exe -fsS "%APP_URL%api/health" >nul 2>&1
 if errorlevel 1 goto :health_failed
 
 reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerUrl /t REG_SZ /d "%APP_URL%" /f >nul
+reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerHostname /t REG_SZ /d "%TLS_HOSTNAME%" /f >nul
+reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerIP /t REG_SZ /d "%SERVER_IP%" /f >nul
+if defined CA_THUMBPRINT reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v CAThumbprint /t REG_SZ /d "%CA_THUMBPRINT%" /f >nul
 reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v InstalledOn /t REG_SZ /d "%DATE% %TIME%" /f >nul
 
 echo.
@@ -75,23 +91,36 @@ echo   Client setup completed successfully
 echo ============================================================
 echo The trusted certificate, hostname and application shortcuts are configured.
 start "" "%APP_URL%"
-pause
-exit /b 0
+set "RESULT=0"
+goto :finish
 
 :cert_failed
 echo ERROR: The trusted-root certificate could not be installed.
-goto :failed
+set "RESULT=1"
+goto :finish
 :hosts_failed
 echo ERROR: The Windows hosts entry could not be configured.
-goto :failed
+set "RESULT=1"
+goto :finish
 :shortcut_failed
 echo ERROR: The application shortcut could not be created.
-goto :failed
+set "RESULT=1"
+goto :finish
 :health_failed
 echo ERROR: The client cannot reach %APP_URL%
 echo Check that the server is running, the IP address is correct, and port %APP_HTTPS_PORT% is allowed.
-goto :failed
-:failed
+set "RESULT=1"
+
+:finish
 echo.
 pause
-exit /b 1
+if "%STAGED%"=="1" (
+  set "STAGE_DIR=%~dp0"
+  set "CLEANUP=%TEMP%\eaststone-client-stage-cleanup-%RANDOM%.cmd"
+  >"!CLEANUP!" echo @echo off
+  >>"!CLEANUP!" echo timeout /t 3 /nobreak ^>nul
+  >>"!CLEANUP!" echo rmdir /s /q "!STAGE_DIR!"
+  >>"!CLEANUP!" echo del /f /q "%%~f0"
+  start "" /min cmd.exe /c ""!CLEANUP!""
+)
+exit /b %RESULT%
