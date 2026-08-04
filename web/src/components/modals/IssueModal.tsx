@@ -27,7 +27,6 @@ export default function IssueModal({
   materials: Material[];
   lotBalances: LotBalance[];
   createdBy: string;
-
   mode?: "create" | "edit";
   initial?: Issue;
   canSuperEditLockedFields?: boolean;
@@ -64,21 +63,12 @@ export default function IssueModal({
     );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
 
-    if (!form.selectedMaterial) {
-      setSubmitError("Please select a material.");
-      return;
-    }
-    if (!form.selectedLot) {
-      setSubmitError("Please select a lot for this material.");
-      return;
-    }
-    if (!form.qty) {
-      setSubmitError("Please enter a quantity.");
-      return;
-    }
+    if (!form.selectedMaterial) return void setSubmitError("Please select a material.");
+    if (!form.selectedLot) return void setSubmitError("Please select a lot for this material.");
+    if (!form.qty) return void setSubmitError("Please enter a quantity.");
 
     if (form.isBatchRequired && !form.productBatchNo.trim()) {
       setSubmitError("Please enter the ES batch number for Usage.");
@@ -105,13 +95,11 @@ export default function IssueModal({
       setSubmitError("Please enter a comment explaining the destruction of stock.");
       return;
     }
-
     if (!createdBy?.trim()) {
       setSubmitError("Not signed in (created_by missing). Please re-login.");
       return;
     }
-
-    if (form.isEdit && !form.editReason.trim()) {
+    if (!form.editReason.trim()) {
       setSubmitError("Edit reason is required for audit trail.");
       return;
     }
@@ -120,81 +108,56 @@ export default function IssueModal({
     setSubmitError(null);
 
     try {
-      if (!form.isEdit) {
-        const payload = {
-          material_code: form.selectedMaterial.material_code,
-          lot_number: form.selectedLot.lot_number,
-          material_lot_id: form.selectedLot.material_lot_id,
+      const payload: any = {
+        qty: Number(form.qty),
+        uom_code: form.selectedLot.uom_code || form.selectedMaterial.base_uom_code,
+        es_product_code: form.esProductCode.trim() || null,
+        product_batch_no:
+          form.isBatchRequired || form.isBatchOptional
+            ? form.productBatchNo.trim() || null
+            : null,
+        customer_name:
+          form.isBatchRequired || form.isBatchOptional
+            ? form.customerName.trim() || null
+            : null,
+        product_manufacture_date:
+          form.isBatchRequired || form.isBatchOptional
+            ? form.productManufactureDate || null
+            : null,
+        total_batch_size:
+          form.isBatchRequired || form.isBatchOptional
+            ? Number(form.totalBatchSize) || null
+            : null,
+        batch_size_uom:
+          form.isBatchRequired || form.isBatchOptional
+            ? form.batchSizeUom.trim() || null
+            : null,
+        number_of_units:
+          form.isBatchRequired || form.isBatchOptional
+            ? Number(form.numberOfUnits) || null
+            : null,
+        consumption_type: form.consumptionType,
+        comment: form.comment || null,
+        target_ref: null,
+        edit_reason: form.editReason.trim(),
+      };
 
-          qty: Number(form.qty),
-          uom_code: form.selectedLot.uom_code || form.selectedMaterial.base_uom_code,
-
-          es_product_code: form.esProductCode.trim() || null,
-
-          product_batch_no:
-            form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
-          product_manufacture_date:
-            form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
-          total_batch_size:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.totalBatchSize) || null : null,
-          batch_size_uom:
-            form.isBatchRequired || form.isBatchOptional ? form.batchSizeUom.trim() || null : null,
-          number_of_units:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.numberOfUnits) || null : null,
-
-          consumption_type: form.consumptionType,
-          created_by: createdBy,
-
-          comment: form.comment || null,
-          manufacturer: form.manufacturer || null,
-          target_ref: null,
-        };
-
-        await apiFetch("/issues/", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      } else {
-        const payload: any = {
-          qty: Number(form.qty),
-          uom_code: form.selectedLot.uom_code || form.selectedMaterial.base_uom_code,
-
-          es_product_code: form.esProductCode.trim() || null,
-
-          product_batch_no:
-            form.isBatchRequired || form.isBatchOptional ? form.productBatchNo.trim() || null : null,
-          product_manufacture_date:
-            form.isBatchRequired || form.isBatchOptional ? form.productManufactureDate || null : null,
-          total_batch_size:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.totalBatchSize) || null : null,
-          batch_size_uom:
-            form.isBatchRequired || form.isBatchOptional ? form.batchSizeUom.trim() || null : null,
-          number_of_units:
-            form.isBatchRequired || form.isBatchOptional ? Number(form.numberOfUnits) || null : null,
-
-          consumption_type: form.consumptionType,
-          comment: form.comment || null,
-          target_ref: null,
-          edit_reason: form.editReason.trim(),
-        };
-
-        if (canSuperEditLockedFields) {
-          payload.material_code = form.selectedMaterial.material_code;
-          payload.lot_number = form.selectedLot.lot_number;
-          payload.material_lot_id = form.selectedLot.material_lot_id;
-        }
-
-        await apiFetch(`/issues/${initial!.id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+      if (canSuperEditLockedFields) {
+        payload.material_code = form.selectedMaterial.material_code;
+        payload.lot_number = form.selectedLot.lot_number;
+        payload.material_lot_id = form.selectedLot.material_lot_id;
       }
+
+      await apiFetch(`/issues/${initial!.id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
 
       onIssuePosted();
       onClose();
-    } catch (err: any) {
-      console.error(err);
-      setSubmitError(err.message ?? "Failed to save issue");
+    } catch (error: any) {
+      console.error(error);
+      setSubmitError(error.message ?? "Failed to save issue");
     } finally {
       setSubmitting(false);
     }
@@ -205,10 +168,10 @@ export default function IssueModal({
       <div className="modal">
         <div className="modal-header">
           <div>
-            <div className="modal-title">{form.isEdit ? "Edit Consumption" : "New Consumption"}</div>
+            <div className="modal-title">Edit Consumption</div>
             <div className="modal-subtitle">
               {initial?.consumption_group_id
-                ? "Quantity applies to this material; batch-detail corrections apply to every linked material."
+                ? "Quantity applies to this material; customer and batch-detail corrections apply to every linked material."
                 : "Edits are audit-trailed. Provide a reason for change."}
             </div>
           </div>
@@ -263,6 +226,8 @@ export default function IssueModal({
               productCodeLocked={Boolean(initial?.consumption_group_id)}
               productBatchNo={form.productBatchNo}
               setProductBatchNo={form.setProductBatchNo}
+              customerName={form.customerName}
+              setCustomerName={form.setCustomerName}
               productManufactureDate={form.productManufactureDate}
               setProductManufactureDate={form.setProductManufactureDate}
               totalBatchSize={form.totalBatchSize}
@@ -295,9 +260,8 @@ export default function IssueModal({
             >
               Cancel
             </button>
-
             <button className="btn-primary" type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : form.isEdit ? "Save changes" : "Post consumption"}
+              {submitting ? "Saving…" : "Save changes"}
             </button>
           </div>
         </form>
