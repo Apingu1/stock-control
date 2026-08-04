@@ -21,9 +21,12 @@ function Register-EaststoneTask(
     Write-Host "Registered scheduled task: $Name"
 }
 
+# On supported Windows 10/11 and Server 2016+ ScheduledTasks implementations,
+# omitting RepetitionDuration creates an indefinite repetition pattern. This
+# avoids the previous hidden ten-year endpoint.
 $healthTriggers = @(
     (New-ScheduledTaskTrigger -AtLogOn -User $userId),
-    (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Days 3650))
+    (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 30))
 )
 $renewalTrigger = New-ScheduledTaskTrigger -Daily -At '02:15'
 $backupTrigger = New-ScheduledTaskTrigger -Daily -At '02:30'
@@ -31,5 +34,12 @@ $backupTrigger = New-ScheduledTaskTrigger -Daily -At '02:30'
 Register-EaststoneTask -Name 'Eaststone Stock Control - Health Monitor' -ScriptName 'Health-Monitor.ps1' -Triggers $healthTriggers
 Register-EaststoneTask -Name 'Eaststone Stock Control - Certificate Renewal' -ScriptName 'Certificate-Renewal.ps1' -Triggers @($renewalTrigger)
 Register-EaststoneTask -Name 'Eaststone Stock Control - Daily Backup' -ScriptName 'Automatic-Backup.ps1' -Triggers @($backupTrigger)
+
+# Run the monitor once immediately after registration so installation does not
+# depend on waiting for the first trigger.
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallRoot 'windows\Health-Monitor.ps1') -InstallRoot $InstallRoot
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning 'Maintenance tasks were registered, but the initial health-monitor run reported a problem.'
+}
 
 Write-Host 'Automatic maintenance tasks registered successfully.'
