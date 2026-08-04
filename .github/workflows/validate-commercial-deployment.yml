@@ -1,0 +1,347 @@
+name: Validate Commercial Deployment
+
+on:
+  push:
+    branches:
+      - feature/windows-commercial-deployment-and-data-enhancements
+      - checkpoint/windows-pwa-working-2026-08-04
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  source-validation:
+    name: Source and frontend validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install API dependencies
+        run: python -m pip install --upgrade pip && pip install -r api/requirements.txt
+
+      - name: Compile and import API
+        env:
+          PYTHONPATH: api
+          DB_HOST: db
+          DB_PORT: "5432"
+          DB_NAME: stock
+          DB_USER: stock
+          DB_PASSWORD: ci-password
+          JWT_SECRET: ci-jwt-secret
+        run: |
+          python -m compileall -q api/app
+          python - <<'PY'
+          from app.main import app
+          paths = {route.path for route in app.routes}
+          required = {
+              "/materials/next-code",
+              "/materials/",
+              "/issues/batch",
+              "/issues/batch/cancelled",
+              "/issues/",
+              "/analytics/products/{product_code}/batches",
+              "/analytics/batches/{batch_no}",
+          }
+          missing = sorted(required - paths)
+          if missing:
+              raise SystemExit(f"Missing enhanced API routes: {missing}")
+          print(f"API imported with {len(paths)} registered paths")
+          PY
+
+      - name: Validate shell scripts
+        run: |
+          find scripts db -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build production frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Validate production Compose configuration
+        run: |
+          cat > .env <<'EOF'
+          DB_HOST=db
+          DB_PORT=5432
+          DB_NAME=stock
+          DB_USER=stock
+          DB_PASSWORD=ci-password
+          JWT_SECRET=ci-jwt-secret
+          TZ=Europe/London
+          FEATURE_STOCK_CONTROL=true
+          FEATURE_REQUIRE_SECOND_CHECK=false
+          FEATURE_REQUIRE_SCAN=false
+          BACKUP_DIR=/backups
+          APP_HTTP_PORT=8088
+          APP_HTTPS_PORT=8443
+          EOF
+          docker compose -f infra/docker-compose.production.yml --env-file .env config --quiet
+          docker compose -f infra/docker-compose.production.yml -f infra/docker-compose.production.tls.yml --env-file .env config --quiet
+
+  docker-integration:
+    name: Clean Docker integration test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create isolated test environment
+        run: |
+          cat > .env <<'EOF'
+          DB_HOST=db
+          DB_PORT=5432
+          DB_NAME=stock
+          DB_USER=stock
+          DB_PASSWORD=ci-integration-password
+          JWT_SECRET=ci-integration-jwt-secret
+          TZ=Europe/London
+          FEATURE_STOCK_CONTROL=true
+          FEATURE_REQUIRE_SECOND_CHECK=false
+          FEATURE_REQUIRE_SCAN=false
+          BACKUP_DIR=/backups
+          APP_HTTP_PORT=8088
+          APP_HTTPS_PORT=8443
+          EOF
+          mkdir -p backups-production-test
+
+      - name: Build and start production stack
+        run: docker compose -f infra/docker-compose.production.yml --env-file .env up -d --build
+
+      - name: Wait for application health
+        run: |
+          for attempt in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1:8088/api/health >/tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f infra/docker-compose.production.yml --env-file .env ps -a
+          docker compose -f infra/docker-compose.production.yml --env-file .env logs --tail=300 db db-init api web
+          exit 1
+
+      - name: Bootstrap administrator
+        run: |
+          docker compose -f infra/docker-compose.production.yml --env-file .env exec -T \
+            -e BOOTSTRAP_ADMIN_PASSWORD='Admin123!' \
+            api python -m app.bootstrap_admin
+
+      - name: Verify admin permissions, MAT numbering, customer and analytics
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          BASE = "http://127.0.0.1:8088/api"
+
+          def request(path, *, method="GET", payload=None, token=None):
+              headers = {"Accept": "application/json"}
+              data = None
+              if payload is not None:
+                  headers["Content-Type"] = "application/json"
+                  data = json.dumps(payload).encode("utf-8")
+              if token:
+                  headers["Authorization"] = f"Bearer {token}"
+              req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      raw = response.read().decode("utf-8")
+                      return json.loads(raw) if raw else None
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(f"{method} {path} -> HTTP {exc.code}: {body}") from exc
+
+          login = request(
+              "/auth/login/",
+              method="POST",
+              payload={"username": "admin", "password": "Admin123!"},
+          )
+          token = login["access_token"]
+
+          my_permissions = request("/auth/my-permissions", token=token)
+          permissions = set(my_permissions["permissions"])
+          required_permissions = {
+              "admin.full",
+              "audit.view",
+              "analytics.view",
+              "materials.create",
+              "materials.edit",
+              "issues.create",
+              "issues.edit",
+              "issues.record_cancelled_bmr",
+          }
+          missing = sorted(required_permissions - permissions)
+          if missing:
+              raise AssertionError(f"ADMIN missing required permissions: {missing}")
+
+          preview = request("/materials/next-code", token=token)
+          if preview["material_code"] != "MAT0001":
+              raise AssertionError(f"Unexpected initial material code preview: {preview}")
+
+          material = request(
+              "/materials/",
+              method="POST",
+              token=token,
+              payload={
+                  "material_code": "USER-SUPPLIED-CODE-MUST-BE-IGNORED",
+                  "name": "CI Customer Analytics Material",
+                  "category_code": "SOLID_RAW_MAT",
+                  "type_code": "API",
+                  "base_uom_code": "G",
+                  "manufacturer": "CI Manufacturer",
+                  "supplier": "CI Supplier",
+                  "complies_es_criteria": True,
+                  "status": "ACTIVE",
+                  "low_stock_threshold_qty": None,
+                  "expiry_alert_days": None,
+                  "auto_quarantine_override_days": None,
+              },
+          )
+          if material["material_code"] != "MAT0001":
+              raise AssertionError(f"Server did not assign MAT0001: {material}")
+
+          product = request(
+              "/products/",
+              method="POST",
+              token=token,
+              payload={
+                  "product_code": "CI001",
+                  "product_name": "CI Customer Analytics Product",
+                  "reference": "CI-REF",
+                  "version_number": "V01",
+                  "shelf_life_days": 30,
+                  "licence_status": "UNLICENSED",
+                  "line_type": "BESPOKE",
+                  "storage_condition": "AMBIENT",
+                  "controlled_drug_status": "N_A",
+                  "export_status": "N_A",
+                  "material_ids": [material["id"]],
+                  "audit_reason": "Automated CI product setup",
+              },
+          )
+          if product["product_code"] != "CI001":
+              raise AssertionError(product)
+
+          customer = "Cohen's C100, Stock"
+          cancelled = request(
+              "/issues/batch/cancelled",
+              method="POST",
+              token=token,
+              payload={
+                  "es_product_code": "CI001",
+                  "product_batch_no": "ESCI0001",
+                  "customer_name": customer,
+                  "target_ref": "CI",
+                  "cancellation_reason": "Automated CI customer analytics validation",
+                  "approve_inactive_product": False,
+                  "inactive_product_reason": None,
+              },
+          )
+          if not cancelled["consumption_group_id"]:
+              raise AssertionError(cancelled)
+
+          issues = request("/issues/?limit=50", token=token)
+          matching = [row for row in issues if row.get("product_batch_no") == "ESCI0001"]
+          if not matching or matching[0].get("customer_name") != customer:
+              raise AssertionError(f"Customer missing from issue history: {matching}")
+
+          product_batches = request("/analytics/products/CI001/batches", token=token)
+          matching_batches = [row for row in product_batches if row.get("product_batch_no") == "ESCI0001"]
+          if not matching_batches or matching_batches[0].get("customer_name") != customer:
+              raise AssertionError(f"Customer missing from product analytics: {matching_batches}")
+
+          batch = request("/analytics/batches/ESCI0001", token=token)
+          if batch["header"].get("customer_name") != customer:
+              raise AssertionError(f"Customer missing from batch analytics: {batch['header']}")
+
+          next_preview = request("/materials/next-code", token=token)
+          if next_preview["material_code"] != "MAT0002":
+              raise AssertionError(f"Sequence did not progress safely: {next_preview}")
+
+          print("Integration checks passed: admin permissions, MAT allocation, customer history and analytics")
+          PY
+
+      - name: Verify database permission matrix and schema
+        run: |
+          MISSING="$(docker compose -f infra/docker-compose.production.yml --env-file .env exec -T db \
+            psql -U stock -d stock -tAc "SELECT COUNT(*) FROM permissions p LEFT JOIN role_permissions rp ON rp.role_name='ADMIN' AND rp.permission_key=p.key AND rp.granted=TRUE WHERE rp.permission_key IS NULL;")"
+          test "$(echo "$MISSING" | tr -d '[:space:]')" = "0"
+          docker compose -f infra/docker-compose.production.yml --env-file .env exec -T db \
+            psql -U stock -d stock -v ON_ERROR_STOP=1 -c "SELECT customer_name FROM consumption_batches WHERE product_batch_no='ESCI0001'; SELECT last_value, is_called FROM material_code_seq;"
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose -f infra/docker-compose.production.yml --env-file .env ps -a || true
+          docker compose -f infra/docker-compose.production.yml --env-file .env logs --tail=400 db db-init api web || true
+
+      - name: Remove integration stack
+        if: always()
+        run: docker compose -f infra/docker-compose.production.yml --env-file .env down -v --remove-orphans || true
+
+  windows-package-validation:
+    name: Windows script and executable package validation
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse all PowerShell scripts
+        shell: powershell
+        run: |
+          $errors = @()
+          Get-ChildItem -Path windows -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) {
+              $errors += $parseErrors | ForEach-Object { "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)" }
+            }
+          }
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+          Write-Host 'All PowerShell scripts parsed successfully.'
+
+      - name: Build Windows executable packages
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\Build-Installers.ps1 -RepositoryRoot $PWD -OutputDirectory "$PWD\dist"
+          $expected = @(
+            'ESC Server Setup.exe',
+            'ESC Uninstall.exe',
+            'ESC Backup and Restore Tool.exe'
+          )
+          foreach ($name in $expected) {
+            $path = Join-Path $PWD "dist\$name"
+            if (-not (Test-Path $path)) { throw "Missing built executable: $name" }
+            if ((Get-Item $path).Length -le 0) { throw "Built executable is empty: $name" }
+          }
+          Get-ChildItem dist -Filter 'ESC *.exe' | Select-Object Name, Length
+
+      - name: Upload unsigned installer test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows-installer-validation-build
+          path: dist/ESC *.exe
+          if-no-files-found: error
+          retention-days: 7
