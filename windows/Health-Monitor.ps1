@@ -1,0 +1,158 @@
+param(
+    [string]$InstallRoot = (Split-Path -Parent $PSScriptRoot)
+)
+
+$ErrorActionPreference = 'Stop'
+$InstallRoot = (Resolve-Path -LiteralPath $InstallRoot).Path
+$logDir = Join-Path $InstallRoot 'logs'
+$logPath = Join-Path $logDir 'health-monitor.log'
+$statusPath = Join-Path $logDir 'health-status.json'
+New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+
+function Write-Log([string]$Message) {
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ssK') $Message"
+    Add-Content -LiteralPath $logPath -Value $line -Encoding utf8
+    Write-Host $line
+}
+
+function Read-DotEnv([string]$Path) {
+    $result = @{}
+    if (Test-Path $Path) {
+        foreach ($line in Get-Content -LiteralPath $Path) {
+            if ($line -match '^\s*([^#;][^=]*)=(.*)$') {
+                $result[$matches[1].Trim()] = $matches[2].Trim()
+            }
+        }
+    }
+    return $result
+}
+
+function Ensure-Docker {
+    docker info *> $null
+    if ($LASTEXITCODE -eq 0) { return $true }
+
+    Write-Log 'Docker engine is unavailable. Attempting to start Docker Desktop.'
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Docker\Docker\Docker Desktop.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Docker\Docker Desktop.exe')
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    if ($candidates.Count -gt 0) {
+        Start-Process -FilePath $candidates[0] | Out-Null
+    }
+
+    for ($i = 0; $i -lt 60; $i++) {
+        Start-Sleep -Seconds 2
+        docker info *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log 'Docker engine recovered successfully.'
+            return $true
+        }
+    }
+
+    Write-Log 'ERROR: Docker engine did not become available.'
+    return $false
+}
+
+$status = [ordered]@{
+    checked_at = (Get-Date).ToString('o')
+    docker = $false
+    containers = $false
+    http = $false
+    https = $false
+    server_certificate_days_remaining = $null
+    root_certificate_days_remaining = $null
+    latest_backup_age_hours = $null
+    free_disk_gb = $null
+    healthy = $false
+    errors = @()
+}
+
+try {
+    $envPath = Join-Path $InstallRoot '.env'
+    if (-not (Test-Path $envPath)) { throw '.env is missing.' }
+    $settings = Read-DotEnv $envPath
+    $httpPort = if ($settings['APP_HTTP_PORT']) { $settings['APP_HTTP_PORT'] } else { '8088' }
+    $httpsPort = if ($settings['APP_HTTPS_PORT']) { $settings['APP_HTTPS_PORT'] } else { '8443' }
+
+    if (-not (Ensure-Docker)) { throw 'Docker could not be started.' }
+    $status.docker = $true
+
+    $base = Join-Path $InstallRoot 'infra\docker-compose.production.yml'
+    $tls = Join-Path $InstallRoot 'infra\docker-compose.production.tls.yml'
+    $serverCert = Join-Path $InstallRoot 'infra\certs\stock-control.crt'
+    $useTls = Test-Path $serverCert
+
+    if ($useTls) {
+        & docker compose -f $base -f $tls --env-file $envPath up -d 2>&1 | ForEach-Object { Write-Log ([string]$_) }
+    } else {
+        & docker compose -f $base --env-file $envPath up -d 2>&1 | ForEach-Object { Write-Log ([string]$_) }
+    }
+    if ($LASTEXITCODE -ne 0) { throw 'Docker Compose could not start the application.' }
+    $status.containers = $true
+
+    try {
+        $health = Invoke-RestMethod -Uri "http://127.0.0.1:$httpPort/api/health" -TimeoutSec 10
+        $status.http = [bool]$health.ok
+    } catch {
+        $status.errors += "HTTP health failed: $($_.Exception.Message)"
+    }
+
+    if ($useTls) {
+        try {
+            $health = Invoke-RestMethod -Uri "https://127.0.0.1:$httpsPort/api/health" -SkipCertificateCheck -TimeoutSec 10
+            $status.https = [bool]$health.ok
+        } catch {
+            # Windows PowerShell 5.1 does not support -SkipCertificateCheck.
+            try {
+                & curl.exe -kfsS "https://127.0.0.1:$httpsPort/api/health" *> $null
+                $status.https = $LASTEXITCODE -eq 0
+            } catch {
+                $status.errors += "HTTPS health failed: $($_.Exception.Message)"
+            }
+        }
+    }
+
+    foreach ($item in @(
+        @{ Path = $serverCert; Key = 'server_certificate_days_remaining' },
+        @{ Path = (Join-Path $InstallRoot 'infra\certs\stock-control-ca.crt'); Key = 'root_certificate_days_remaining' }
+    )) {
+        if (Test-Path $item.Path) {
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($item.Path)
+            $status[$item.Key] = [math]::Floor(($cert.NotAfter.ToUniversalTime() - [datetime]::UtcNow).TotalDays)
+        }
+    }
+
+    $backupDir = Join-Path $InstallRoot 'backups-production-test'
+    $latestBackup = Get-ChildItem -LiteralPath $backupDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in '.dump', '.backup', '.sql' } |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    if ($latestBackup) {
+        $status.latest_backup_age_hours = [math]::Round(((Get-Date).ToUniversalTime() - $latestBackup.LastWriteTimeUtc).TotalHours, 1)
+    }
+
+    $drive = Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($InstallRoot).TrimEnd(':\')) -ErrorAction SilentlyContinue
+    if ($drive) { $status.free_disk_gb = [math]::Round($drive.Free / 1GB, 2) }
+
+    $status.healthy = $status.docker -and $status.containers -and $status.http -and ((-not $useTls) -or $status.https)
+    if ($status.server_certificate_days_remaining -ne $null -and $status.server_certificate_days_remaining -lt 30) {
+        $status.errors += 'Server certificate has fewer than 30 days remaining.'
+    }
+    if ($status.free_disk_gb -ne $null -and $status.free_disk_gb -lt 5) {
+        $status.errors += 'Host disk has fewer than 5 GB free.'
+    }
+    if ($status.latest_backup_age_hours -ne $null -and $status.latest_backup_age_hours -gt 48) {
+        $status.errors += 'Latest database backup is older than 48 hours.'
+    }
+
+    $status | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statusPath -Encoding utf8
+    Write-Log "Health check completed. healthy=$($status.healthy) http=$($status.http) https=$($status.https)"
+    exit $(if ($status.healthy) { 0 } else { 1 })
+} catch {
+    $status.errors += $_.Exception.Message
+    $status | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statusPath -Encoding utf8
+    Write-Log "ERROR: $($_.Exception.Message)"
+    exit 1
+}
