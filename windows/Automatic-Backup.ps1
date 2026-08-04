@@ -30,6 +30,8 @@ function Read-DotEnv([string]$Path) {
     return $result
 }
 
+$containerId = $null
+$containerFile = $null
 try {
     if (-not (Test-Path $envPath)) { throw '.env is missing.' }
     docker info *> $null
@@ -39,7 +41,8 @@ try {
     $dbName = if ($settings['DB_NAME']) { $settings['DB_NAME'] } else { 'stock' }
     $dbUser = if ($settings['DB_USER']) { $settings['DB_USER'] } else { 'stock' }
 
-    $containerId = (& docker compose -f $composePath --env-file $envPath ps -q db).Trim()
+    $containerOutput = & docker compose -f $composePath --env-file $envPath ps -q db
+    $containerId = ([string]($containerOutput | Select-Object -First 1)).Trim()
     if (-not $containerId) { throw 'PostgreSQL container is not running.' }
 
     $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
@@ -53,7 +56,6 @@ try {
 
     & docker cp "${containerId}:$containerFile" $hostFile
     if ($LASTEXITCODE -ne 0) { throw 'Docker could not copy the backup to the host.' }
-    & docker exec $containerId rm -f $containerFile *> $null
 
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $hostFile).Hash
     $manifest = [ordered]@{
@@ -78,4 +80,8 @@ try {
 } catch {
     Write-Log "ERROR: $($_.Exception.Message)"
     exit 1
+} finally {
+    if ($containerId -and $containerFile) {
+        & docker exec $containerId rm -f $containerFile *> $null
+    }
 }
