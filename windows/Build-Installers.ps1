@@ -1,0 +1,151 @@
+param(
+    [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$OutputDirectory
+)
+
+$ErrorActionPreference = 'Stop'
+$RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $RepositoryRoot 'dist' }
+New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+
+function New-IExpressPackage {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$SourceDirectory,
+        [Parameter(Mandatory = $true)][string[]]$Files,
+        [Parameter(Mandatory = $true)][string]$Launcher,
+        [Parameter(Mandatory = $true)][string]$OutputPath
+    )
+
+    $entries = New-Object System.Collections.Generic.List[string]
+    $strings = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $Files.Count; $i++) {
+        $key = "FILE$i"
+        $entries.Add("%$key%=")
+        $strings.Add("$key=`"$($Files[$i])`"")
+    }
+
+    $source = $SourceDirectory.TrimEnd('\') + '\'
+    $sedPath = Join-Path $env:TEMP "eaststone-$([guid]::NewGuid().ToString('N')).sed"
+    @"
+[Version]
+Class=IEXPRESS
+SEDVersion=3
+[Options]
+PackagePurpose=InstallApp
+ShowInstallProgramWindow=1
+HideExtractAnimation=0
+UseLongFileName=1
+InsideCompressed=0
+CAB_FixedSize=0
+CAB_ResvCodeSigning=0
+RebootMode=N
+InstallPrompt=
+DisplayLicense=
+FinishMessage=
+TargetName=$OutputPath
+FriendlyName=$Name
+AppLaunched=$Launcher
+PostInstallCmd=<None>
+AdminQuietInstCmd=$Launcher
+UserQuietInstCmd=$Launcher
+SourceFiles=SourceFiles
+[SourceFiles]
+SourceFiles0=$source
+[SourceFiles0]
+$($entries -join "`r`n")
+[Strings]
+$($strings -join "`r`n")
+"@ | Set-Content -LiteralPath $sedPath -Encoding ascii
+
+    try {
+        & "$env:SystemRoot\System32\iexpress.exe" /N $sedPath
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OutputPath)) {
+            throw "IExpress did not create $OutputPath"
+        }
+    } finally {
+        Remove-Item -LiteralPath $sedPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+$work = Join-Path $env:TEMP "eaststone-build-$([guid]::NewGuid().ToString('N'))"
+New-Item -ItemType Directory -Path $work -Force | Out-Null
+try {
+    $payloadZip = Join-Path $work 'server-payload.zip'
+    $payloadItems = @(
+        'api', 'db', 'infra', 'scripts', 'web', 'windows', 'docs',
+        '.env.example', 'INSTALL_WINDOWS.bat', 'ENABLE_HTTPS_WINDOWS.bat',
+        'START_WINDOWS.bat', 'STOP_WINDOWS.bat', 'STATUS_WINDOWS.bat',
+        'RESET_ADMIN_PASSWORD_WINDOWS.bat', 'UNINSTALL_WINDOWS.bat',
+        'ESC_SERVER_SETUP_WINDOWS.bat', 'ESC_CLIENT_SETUP_WINDOWS.bat',
+        'ESC_BACKUP_RESTORE_WINDOWS.bat', 'PRODUCTION_TEST_DEPLOYMENT.md'
+    ) | ForEach-Object { Join-Path $RepositoryRoot $_ } | Where-Object { Test-Path $_ }
+    Compress-Archive -Path $payloadItems -DestinationPath $payloadZip -CompressionLevel Optimal -Force
+
+    $serverLauncher = Join-Path $work 'server-setup-launcher.cmd'
+    @'
+@echo off
+setlocal EnableExtensions
+net session >nul 2>&1
+if errorlevel 1 (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+set "INSTALL_DIR=%ProgramData%\Eaststone\StockControl"
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%~dp0server-payload.zip' -DestinationPath '%INSTALL_DIR%' -Force"
+if errorlevel 1 exit /b 1
+cd /d "%INSTALL_DIR%"
+call "ESC_SERVER_SETUP_WINDOWS.bat"
+exit /b %ERRORLEVEL%
+'@ | Set-Content -LiteralPath $serverLauncher -Encoding ascii
+
+    New-IExpressPackage -Name 'ESC Server Setup' -SourceDirectory $work -Files @('server-setup-launcher.cmd', 'server-payload.zip') -Launcher 'server-setup-launcher.cmd' -OutputPath (Join-Path $OutputDirectory 'ESC Server Setup.exe')
+
+    $uninstallLauncher = Join-Path $work 'uninstall-launcher.cmd'
+    @'
+@echo off
+setlocal EnableExtensions
+net session >nul 2>&1
+if errorlevel 1 (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+set "INSTALL_DIR="
+for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath 2^>nul ^| find /I "InstallPath"') do set "INSTALL_DIR=%%B"
+if not defined INSTALL_DIR set "INSTALL_DIR=%ProgramData%\Eaststone\StockControl"
+if not exist "%INSTALL_DIR%\UNINSTALL_WINDOWS.bat" (
+  echo ERROR: Stock Control installation was not found at %INSTALL_DIR%.
+  pause
+  exit /b 1
+)
+cd /d "%INSTALL_DIR%"
+call "UNINSTALL_WINDOWS.bat"
+exit /b %ERRORLEVEL%
+'@ | Set-Content -LiteralPath $uninstallLauncher -Encoding ascii
+    New-IExpressPackage -Name 'ESC Uninstall' -SourceDirectory $work -Files @('uninstall-launcher.cmd') -Launcher 'uninstall-launcher.cmd' -OutputPath (Join-Path $OutputDirectory 'ESC Uninstall.exe')
+
+    $backupLauncher = Join-Path $work 'backup-tool-launcher.cmd'
+    @'
+@echo off
+setlocal EnableExtensions
+set "INSTALL_DIR="
+for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath 2^>nul ^| find /I "InstallPath"') do set "INSTALL_DIR=%%B"
+if not defined INSTALL_DIR set "INSTALL_DIR=%ProgramData%\Eaststone\StockControl"
+if not exist "%INSTALL_DIR%\ESC_BACKUP_RESTORE_WINDOWS.bat" (
+  echo ERROR: Stock Control installation was not found.
+  pause
+  exit /b 1
+)
+call "%INSTALL_DIR%\ESC_BACKUP_RESTORE_WINDOWS.bat"
+exit /b %ERRORLEVEL%
+'@ | Set-Content -LiteralPath $backupLauncher -Encoding ascii
+    New-IExpressPackage -Name 'ESC Backup and Restore Tool' -SourceDirectory $work -Files @('backup-tool-launcher.cmd') -Launcher 'backup-tool-launcher.cmd' -OutputPath (Join-Path $OutputDirectory 'ESC Backup and Restore Tool.exe')
+
+    Write-Host ''
+    Write-Host 'Created:'
+    Get-ChildItem -LiteralPath $OutputDirectory -Filter 'ESC *.exe' | Select-Object Name, Length | Format-Table -AutoSize
+    Write-Host 'ESC Client Setup.exe is generated by ESC Server Setup after the customer certificate and IP are known.'
+} finally {
+    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+}
