@@ -47,6 +47,7 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
             },
         )
 
+
 app = FastAPI(title="Stock Control API")
 
 app.add_middleware(MaintenanceMiddleware)
@@ -68,13 +69,24 @@ app.add_middleware(
 from .db import get_db  # noqa: F401,E402
 from .models import Base  # noqa: F401,E402
 
+from .routers import (  # noqa: E402
+    materials_enhanced,
+    issues_enhanced,
+    analytics_enhanced,
+)
 from .routers import materials, products, receipts, issues, lot_balances, summary  # noqa: E402
 from .routers import analytics  # noqa: E402
 from .routers import auth, admin  # noqa: E402
 from .routers import audit
 from .routers import alerts
-from .routers import quarantine  # ✅ ADD
+from .routers import quarantine
 from .routers import admin_db_tools
+
+# Enhanced routes are registered first so their exact paths take precedence.
+# Existing routers remain intact as the fallback for every unaffected endpoint.
+app.include_router(materials_enhanced.router)
+app.include_router(issues_enhanced.router)
+app.include_router(analytics_enhanced.router)
 
 app.include_router(materials.router)
 app.include_router(products.router)
@@ -86,13 +98,11 @@ app.include_router(analytics.router)
 
 app.include_router(auth.router)
 app.include_router(admin.router)
-
-# ✅ Audit API (read model for UI)
 app.include_router(audit.router)
-
 app.include_router(alerts.router)
-app.include_router(quarantine.router)  # ✅ ADD
+app.include_router(quarantine.router)
 app.include_router(admin_db_tools.router)
+
 
 @app.get("/health")
 def health():
