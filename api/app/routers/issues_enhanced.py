@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import Field
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -81,16 +81,14 @@ def _persist_group_customer(
 def _customer_map(db: Session, group_ids: set[str]) -> dict[str, str | None]:
     if not group_ids:
         return {}
-    rows = db.execute(
-        text(
-            """
-            SELECT consumption_group_id, customer_name
-            FROM consumption_batches
-            WHERE consumption_group_id = ANY(:group_ids)
-            """
-        ),
-        {"group_ids": list(group_ids)},
-    ).mappings()
+    statement = text(
+        """
+        SELECT consumption_group_id, customer_name
+        FROM consumption_batches
+        WHERE consumption_group_id IN :group_ids
+        """
+    ).bindparams(bindparam("group_ids", expanding=True))
+    rows = db.execute(statement, {"group_ids": sorted(group_ids)}).mappings()
     return {str(row["consumption_group_id"]): row["customer_name"] for row in rows}
 
 
@@ -144,11 +142,11 @@ def list_issues_with_customer(
 ) -> List[CustomerIssueOut]:
     results = legacy_issues.list_issues(limit=limit, db=db, _=user)
     group_ids = {
-        issue.consumption_group_id
+        str(issue.consumption_group_id)
         for issue in results
         if issue.consumption_group_id
     }
-    customers = _customer_map(db, {str(group_id) for group_id in group_ids})
+    customers = _customer_map(db, group_ids)
     return [
         _enhanced_issue(
             issue,
