@@ -7,6 +7,7 @@ $InstallRoot = (Resolve-Path -LiteralPath $InstallRoot).Path
 $logDir = Join-Path $InstallRoot 'logs'
 $logPath = Join-Path $logDir 'health-monitor.log'
 $statusPath = Join-Path $logDir 'health-status.json'
+$manualStopPath = Join-Path $InstallRoot 'deployment\manual-stop.flag'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 
 function Write-Log([string]$Message) {
@@ -57,6 +58,7 @@ function Ensure-Docker {
 
 $status = [ordered]@{
     checked_at = (Get-Date).ToString('o')
+    controlled_stop = $false
     docker = $false
     containers = $false
     http = $false
@@ -70,6 +72,14 @@ $status = [ordered]@{
 }
 
 try {
+    if (Test-Path $manualStopPath) {
+        $status.controlled_stop = $true
+        $status.healthy = $true
+        $status | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statusPath -Encoding utf8
+        Write-Log 'Controlled stop flag is present. Automatic restart was intentionally suppressed.'
+        exit 0
+    }
+
     $envPath = Join-Path $InstallRoot '.env'
     if (-not (Test-Path $envPath)) { throw '.env is missing.' }
     $settings = Read-DotEnv $envPath
@@ -100,18 +110,9 @@ try {
     }
 
     if ($useTls) {
-        try {
-            $health = Invoke-RestMethod -Uri "https://127.0.0.1:$httpsPort/api/health" -SkipCertificateCheck -TimeoutSec 10
-            $status.https = [bool]$health.ok
-        } catch {
-            # Windows PowerShell 5.1 does not support -SkipCertificateCheck.
-            try {
-                & curl.exe -kfsS "https://127.0.0.1:$httpsPort/api/health" *> $null
-                $status.https = $LASTEXITCODE -eq 0
-            } catch {
-                $status.errors += "HTTPS health failed: $($_.Exception.Message)"
-            }
-        }
+        & curl.exe -kfsS "https://127.0.0.1:$httpsPort/api/health" *> $null
+        $status.https = $LASTEXITCODE -eq 0
+        if (-not $status.https) { $status.errors += 'HTTPS health check failed.' }
     }
 
     foreach ($item in @(
@@ -133,12 +134,16 @@ try {
         $status.latest_backup_age_hours = [math]::Round(((Get-Date).ToUniversalTime() - $latestBackup.LastWriteTimeUtc).TotalHours, 1)
     }
 
-    $drive = Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($InstallRoot).TrimEnd(':\')) -ErrorAction SilentlyContinue
+    $rootName = [System.IO.Path]::GetPathRoot($InstallRoot).TrimEnd(':\')
+    $drive = Get-PSDrive -Name $rootName -ErrorAction SilentlyContinue
     if ($drive) { $status.free_disk_gb = [math]::Round($drive.Free / 1GB, 2) }
 
     $status.healthy = $status.docker -and $status.containers -and $status.http -and ((-not $useTls) -or $status.https)
     if ($status.server_certificate_days_remaining -ne $null -and $status.server_certificate_days_remaining -lt 30) {
         $status.errors += 'Server certificate has fewer than 30 days remaining.'
+    }
+    if ($status.root_certificate_days_remaining -ne $null -and $status.root_certificate_days_remaining -lt 1825) {
+        $status.errors += 'Private CA has fewer than five years remaining; controlled rollover planning is required.'
     }
     if ($status.free_disk_gb -ne $null -and $status.free_disk_gb -lt 5) {
         $status.errors += 'Host disk has fewer than 5 GB free.'
