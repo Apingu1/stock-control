@@ -8,123 +8,11 @@ $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $RepositoryRoot 'dist' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
-function New-IExpressPackage {
-    param(
-        [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][string]$SourceDirectory,
-        [Parameter(Mandatory = $true)][string[]]$Files,
-        [Parameter(Mandatory = $true)][string]$Launcher,
-        [Parameter(Mandatory = $true)][string]$OutputPath
-    )
-
-    $entries = New-Object System.Collections.Generic.List[string]
-    $strings = New-Object System.Collections.Generic.List[string]
-    for ($i = 0; $i -lt $Files.Count; $i++) {
-        $key = "FILE$i"
-        $entries.Add("%$key%=")
-        $strings.Add("$key=`"$($Files[$i])`"")
-    }
-
-    $source = $SourceDirectory.TrimEnd('\') + '\'
-    $sedPath = Join-Path $env:TEMP "eaststone-$([guid]::NewGuid().ToString('N')).sed"
-    $launcherCommand = "cmd.exe /d /c `"$Launcher`""
-    @"
-[Version]
-Class=IEXPRESS
-SEDVersion=3
-[Options]
-PackagePurpose=InstallApp
-ShowInstallProgramWindow=0
-HideExtractAnimation=1
-UseLongFileName=1
-InsideCompressed=0
-CAB_FixedSize=0
-CAB_ResvCodeSigning=0
-RebootMode=N
-InstallPrompt=%InstallPrompt%
-DisplayLicense=%DisplayLicense%
-FinishMessage=%FinishMessage%
-TargetName=%TargetName%
-FriendlyName=%FriendlyName%
-AppLaunched=%AppLaunched%
-PostInstallCmd=%PostInstallCmd%
-AdminQuietInstCmd=%AdminQuietInstCmd%
-UserQuietInstCmd=%UserQuietInstCmd%
-SourceFiles=SourceFiles
-[Strings]
-InstallPrompt=
-DisplayLicense=
-FinishMessage=
-TargetName=$OutputPath
-FriendlyName=$Name
-AppLaunched=$launcherCommand
-PostInstallCmd=<None>
-AdminQuietInstCmd=
-UserQuietInstCmd=
-$($strings -join "`r`n")
-[SourceFiles]
-SourceFiles0=$source
-[SourceFiles0]
-$($entries -join "`r`n")
-"@ | Set-Content -LiteralPath $sedPath -Encoding ascii
-
-    try {
-        $iexpress = Join-Path $env:SystemRoot 'System32\iexpress.exe'
-        $process = Start-Process -FilePath $iexpress -ArgumentList "/N /Q `"$sedPath`"" -PassThru
-        $deadline = [DateTime]::UtcNow.AddSeconds(90)
-        $lastSize = -1L
-        $stableCount = 0
-        $packageReady = $false
-
-        while ([DateTime]::UtcNow -lt $deadline) {
-            if (Test-Path -LiteralPath $OutputPath) {
-                $size = (Get-Item -LiteralPath $OutputPath).Length
-                if ($size -gt 0 -and $size -eq $lastSize) {
-                    $stableCount++
-                } else {
-                    $lastSize = $size
-                    $stableCount = 0
-                }
-
-                if ($size -gt 0 -and $stableCount -ge 4) {
-                    $packageReady = $true
-                    break
-                }
-            }
-
-            $process.Refresh()
-            if ($process.HasExited) {
-                break
-            }
-
-            Start-Sleep -Seconds 1
-        }
-
-        $process.Refresh()
-        $exitCode = $null
-        if ($process.HasExited) {
-            $exitCode = $process.ExitCode
-        } else {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            try { $process.WaitForExit() } catch {}
-        }
-
-        if (-not $packageReady -and (Test-Path -LiteralPath $OutputPath)) {
-            $packageReady = (Get-Item -LiteralPath $OutputPath).Length -gt 0
-        }
-
-        if (-not $packageReady) {
-            $exitLabel = if ($null -ne $exitCode) { $exitCode } else { 'timeout' }
-            throw "IExpress did not create $OutputPath within 90 seconds (exit code $exitLabel)"
-        }
-
-        if ($null -ne $exitCode -and $exitCode -ne 0) {
-            throw "IExpress failed to create $OutputPath (exit code $exitCode)"
-        }
-    } finally {
-        Remove-Item -LiteralPath $sedPath -Force -ErrorAction SilentlyContinue
-    }
+$packageBuilder = Join-Path $PSScriptRoot 'Self-Extracting-Package.ps1'
+if (-not (Test-Path -LiteralPath $packageBuilder)) {
+    throw "Windows package builder is missing: $packageBuilder"
 }
+. $packageBuilder
 
 $work = Join-Path $env:TEMP "eaststone-build-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $work -Force | Out-Null
@@ -186,7 +74,12 @@ if "%STAGED%"=="1" (
 exit /b %RESULT%
 '@ | Set-Content -LiteralPath $serverLauncher -Encoding ascii
 
-    New-IExpressPackage -Name 'ESC Server Setup' -SourceDirectory $work -Files @('server-setup-launcher.cmd', 'server-payload.zip') -Launcher 'server-setup-launcher.cmd' -OutputPath (Join-Path $OutputDirectory 'ESC Server Setup.exe')
+    New-EaststoneSelfExtractingPackage `
+        -Name 'ESC Server Setup' `
+        -SourceDirectory $work `
+        -Files @('server-setup-launcher.cmd', 'server-payload.zip') `
+        -Launcher 'server-setup-launcher.cmd' `
+        -OutputPath (Join-Path $OutputDirectory 'ESC Server Setup.exe')
 
     $uninstallLauncher = Join-Path $work 'uninstall-launcher.cmd'
     @'
@@ -210,7 +103,13 @@ cd /d "%INSTALL_DIR%"
 call "UNINSTALL_WINDOWS.bat"
 exit /b %ERRORLEVEL%
 '@ | Set-Content -LiteralPath $uninstallLauncher -Encoding ascii
-    New-IExpressPackage -Name 'ESC Uninstall' -SourceDirectory $work -Files @('uninstall-launcher.cmd') -Launcher 'uninstall-launcher.cmd' -OutputPath (Join-Path $OutputDirectory 'ESC Uninstall.exe')
+
+    New-EaststoneSelfExtractingPackage `
+        -Name 'ESC Uninstall' `
+        -SourceDirectory $work `
+        -Files @('uninstall-launcher.cmd') `
+        -Launcher 'uninstall-launcher.cmd' `
+        -OutputPath (Join-Path $OutputDirectory 'ESC Uninstall.exe')
 
     $backupLauncher = Join-Path $work 'backup-tool-launcher.cmd'
     @'
@@ -227,7 +126,13 @@ if not exist "%INSTALL_DIR%\ESC_BACKUP_RESTORE_WINDOWS.bat" (
 call "%INSTALL_DIR%\ESC_BACKUP_RESTORE_WINDOWS.bat"
 exit /b %ERRORLEVEL%
 '@ | Set-Content -LiteralPath $backupLauncher -Encoding ascii
-    New-IExpressPackage -Name 'ESC Backup and Restore Tool' -SourceDirectory $work -Files @('backup-tool-launcher.cmd') -Launcher 'backup-tool-launcher.cmd' -OutputPath (Join-Path $OutputDirectory 'ESC Backup and Restore Tool.exe')
+
+    New-EaststoneSelfExtractingPackage `
+        -Name 'ESC Backup and Restore Tool' `
+        -SourceDirectory $work `
+        -Files @('backup-tool-launcher.cmd') `
+        -Launcher 'backup-tool-launcher.cmd' `
+        -OutputPath (Join-Path $OutputDirectory 'ESC Backup and Restore Tool.exe')
 
     Write-Host ''
     Write-Host 'Created:'
