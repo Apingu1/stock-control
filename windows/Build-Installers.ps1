@@ -60,9 +60,56 @@ $($strings -join "`r`n")
 
     try {
         $iexpress = Join-Path $env:SystemRoot 'System32\iexpress.exe'
-        $process = Start-Process -FilePath $iexpress -ArgumentList "/N `"$sedPath`"" -Wait -PassThru
-        if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $OutputPath)) {
-            throw "IExpress did not create $OutputPath (exit code $($process.ExitCode))"
+        $process = Start-Process -FilePath $iexpress -ArgumentList "/N `"$sedPath`"" -PassThru
+        $deadline = [DateTime]::UtcNow.AddSeconds(90)
+        $lastSize = -1L
+        $stableCount = 0
+        $packageReady = $false
+
+        while ([DateTime]::UtcNow -lt $deadline) {
+            if (Test-Path -LiteralPath $OutputPath) {
+                $size = (Get-Item -LiteralPath $OutputPath).Length
+                if ($size -gt 0 -and $size -eq $lastSize) {
+                    $stableCount++
+                } else {
+                    $lastSize = $size
+                    $stableCount = 0
+                }
+
+                if ($size -gt 0 -and $stableCount -ge 4) {
+                    $packageReady = $true
+                    break
+                }
+            }
+
+            $process.Refresh()
+            if ($process.HasExited) {
+                break
+            }
+
+            Start-Sleep -Seconds 1
+        }
+
+        $process.Refresh()
+        $exitCode = $null
+        if ($process.HasExited) {
+            $exitCode = $process.ExitCode
+        } else {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            try { $process.WaitForExit() } catch {}
+        }
+
+        if (-not $packageReady -and (Test-Path -LiteralPath $OutputPath)) {
+            $packageReady = (Get-Item -LiteralPath $OutputPath).Length -gt 0
+        }
+
+        if (-not $packageReady) {
+            $exitLabel = if ($null -ne $exitCode) { $exitCode } else { 'timeout' }
+            throw "IExpress did not create $OutputPath within 90 seconds (exit code $exitLabel)"
+        }
+
+        if ($null -ne $exitCode -and $exitCode -ne 0) {
+            throw "IExpress failed to create $OutputPath (exit code $exitCode)"
         }
     } finally {
         Remove-Item -LiteralPath $sedPath -Force -ErrorAction SilentlyContinue
