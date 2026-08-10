@@ -300,7 +300,7 @@ jobs:
 
   windows-package-validation:
     name: Windows script and executable package validation
-    runs-on: windows-2022
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -337,6 +337,25 @@ jobs:
             if ((Get-Item $path).Length -le 0) { throw "Built executable is empty: $name" }
           }
           Get-ChildItem dist -Filter 'ESC *.exe' | Select-Object Name, Length
+
+      - name: Build customer client executable package
+        shell: powershell
+        run: |
+          $client = Join-Path $PWD 'client-package-ci'
+          New-Item -ItemType Directory -Path $client -Force | Out-Null
+          Copy-Item -LiteralPath 'ESC_CLIENT_SETUP_WINDOWS.bat' -Destination $client
+          Copy-Item -LiteralPath 'windows\Configure-Hosts.ps1' -Destination $client
+          Set-Content -LiteralPath (Join-Path $client 'client-config.ini') -Encoding ascii -Value @(
+            'HOSTNAME=stock-control.test',
+            'SERVER_IP=127.0.0.1',
+            'HTTPS_PORT=8443'
+          )
+          Set-Content -LiteralPath (Join-Path $client 'stock-control-ca.crt') -Encoding ascii -Value 'CI PACKAGE BUILD PLACEHOLDER - NOT A DEPLOYMENT CERTIFICATE'
+          $clientExe = Join-Path $client 'ESC Client Setup.exe'
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\Build-ClientInstaller.ps1 -ClientPackageDirectory $client -OutputPath $clientExe
+          if (-not (Test-Path -LiteralPath $clientExe)) { throw 'Missing built executable: ESC Client Setup.exe' }
+          if ((Get-Item -LiteralPath $clientExe).Length -le 0) { throw 'Built client executable is empty.' }
+          Get-Item -LiteralPath $clientExe | Select-Object Name, Length
 
       - name: Upload unsigned installer test artifacts
         uses: actions/upload-artifact@v4
