@@ -12,7 +12,7 @@ A built Windows release contains:
 - Automatic certificate renewal, health recovery and daily backup scheduled tasks.
 - Installation Qualification execution report and recovery documentation.
 
-The executables are self-extracting Windows packages built with the Windows `IExpress.exe` component. They do not remove the need for Docker Desktop/Docker Engine on the computer hosting Stock Control.
+The executables are self-extracting Windows packages built from the approved source using the Windows .NET Framework compiler. The package stub embeds only the declared launcher and payload files, extracts them to a temporary working directory at runtime, runs the controlled launcher, and then performs best-effort temporary-file cleanup. They do not remove the need for Docker Desktop/Docker Engine on the computer hosting Stock Control.
 
 ## Recommended architecture
 
