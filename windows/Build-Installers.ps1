@@ -59,9 +59,10 @@ $($strings -join "`r`n")
 "@ | Set-Content -LiteralPath $sedPath -Encoding ascii
 
     try {
-        & "$env:SystemRoot\System32\iexpress.exe" /N $sedPath
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OutputPath)) {
-            throw "IExpress did not create $OutputPath"
+        $iexpress = Join-Path $env:SystemRoot 'System32\iexpress.exe'
+        $process = Start-Process -FilePath $iexpress -ArgumentList "/N `"$sedPath`"" -Wait -PassThru
+        if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $OutputPath)) {
+            throw "IExpress did not create $OutputPath (exit code $($process.ExitCode))"
         }
     } finally {
         Remove-Item -LiteralPath $sedPath -Force -ErrorAction SilentlyContinue
