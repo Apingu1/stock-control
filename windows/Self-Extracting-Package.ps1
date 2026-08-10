@@ -45,6 +45,7 @@ function New-EaststoneSelfExtractingPackage {
     }
 
     $resolvedFiles = New-Object System.Collections.Generic.List[string]
+    $leafNames = New-Object System.Collections.Generic.List[string]
     $seenNames = @{}
     foreach ($file in $Files) {
         if ([System.IO.Path]::IsPathRooted($file)) {
@@ -61,8 +62,10 @@ function New-EaststoneSelfExtractingPackage {
         if ($seenNames.ContainsKey($leafKey)) {
             throw "Duplicate package file name is not allowed: $leaf"
         }
+
         $seenNames[$leafKey] = $true
         $resolvedFiles.Add($candidate)
+        $leafNames.Add($leaf)
     }
 
     $compiler = Get-EaststoneCSharpCompiler
@@ -70,26 +73,24 @@ function New-EaststoneSelfExtractingPackage {
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
     try {
-        $payloadDirectory = Join-Path $work 'payload'
-        New-Item -ItemType Directory -Path $payloadDirectory -Force | Out-Null
-
-        foreach ($path in $resolvedFiles) {
-            Copy-Item -LiteralPath $path -Destination (Join-Path $payloadDirectory ([System.IO.Path]::GetFileName($path))) -Force
-        }
-
-        $payloadZip = Join-Path $work 'payload.zip'
-        $payloadContents = Get-ChildItem -LiteralPath $payloadDirectory -File | Select-Object -ExpandProperty FullName
-        Compress-Archive -LiteralPath $payloadContents -DestinationPath $payloadZip -CompressionLevel Optimal -Force
-
         $launcherLiteral = ConvertTo-CSharpStringLiteral -Value ([System.IO.Path]::GetFileName($Launcher))
         $nameLiteral = ConvertTo-CSharpStringLiteral -Value $Name
-        $sourcePath = Join-Path $work 'EaststoneSfx.cs'
+        $resourceNames = New-Object System.Collections.Generic.List[string]
+        $fileNameLiterals = New-Object System.Collections.Generic.List[string]
+        $resourceArgs = New-Object System.Collections.Generic.List[string]
 
+        for ($index = 0; $index -lt $resolvedFiles.Count; $index++) {
+            $resourceName = "Eaststone.Payload.$index"
+            $resourceNames.Add("`"$resourceName`"")
+            $fileNameLiterals.Add("`"$(ConvertTo-CSharpStringLiteral -Value $leafNames[$index])`"")
+            $resourceArgs.Add("/resource:$($resolvedFiles[$index]),$resourceName")
+        }
+
+        $sourcePath = Join-Path $work 'EaststoneSfx.cs'
         @"
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -97,7 +98,16 @@ internal static class EaststoneSfx
 {
     private const string PackageName = "$nameLiteral";
     private const string LauncherName = "$launcherLiteral";
-    private const string PayloadResourceName = "Eaststone.Payload.zip";
+
+    private static readonly string[] ResourceNames = new string[]
+    {
+        $($resourceNames -join ",`r`n        ")
+    };
+
+    private static readonly string[] FileNames = new string[]
+    {
+        $($fileNameLiterals -join ",`r`n        ")
+    };
 
     [STAThread]
     private static int Main()
@@ -109,19 +119,20 @@ internal static class EaststoneSfx
         try
         {
             Directory.CreateDirectory(extractDirectory);
-            string zipPath = Path.Combine(extractDirectory, "payload.zip");
+            Assembly assembly = Assembly.GetExecutingAssembly();
 
-            using (Stream input = Assembly.GetExecutingAssembly().GetManifestResourceStream(PayloadResourceName))
+            for (int i = 0; i < ResourceNames.Length; i++)
             {
-                if (input == null)
-                    throw new InvalidOperationException("Embedded package payload is missing.");
+                string destination = Path.Combine(extractDirectory, FileNames[i]);
+                using (Stream input = assembly.GetManifestResourceStream(ResourceNames[i]))
+                {
+                    if (input == null)
+                        throw new InvalidOperationException("Embedded package file is missing: " + FileNames[i]);
 
-                using (FileStream output = File.Create(zipPath))
-                    input.CopyTo(output);
+                    using (FileStream output = File.Create(destination))
+                        input.CopyTo(output);
+                }
             }
-
-            ZipFile.ExtractToDirectory(zipPath, extractDirectory);
-            File.Delete(zipPath);
 
             string launcherPath = Path.Combine(extractDirectory, LauncherName);
             if (!File.Exists(launcherPath))
@@ -141,6 +152,7 @@ internal static class EaststoneSfx
             {
                 if (process == null)
                     throw new InvalidOperationException("The package launcher could not be started.");
+
                 process.WaitForExit();
                 return process.ExitCode;
             }
@@ -171,41 +183,28 @@ internal static class EaststoneSfx
 }
 "@ | Set-Content -LiteralPath $sourcePath -Encoding UTF8
 
-        $references = @(
-            (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\System.IO.Compression.dll'),
-            (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\System.IO.Compression.FileSystem.dll'),
-            (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\System.Windows.Forms.dll')
-        )
-
-        if (-not (Test-Path -LiteralPath $references[0])) {
-            $references = @(
-                (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\System.IO.Compression.dll'),
-                (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\System.IO.Compression.FileSystem.dll'),
-                (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\System.Windows.Forms.dll')
-            )
+        $formsReference = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\System.Windows.Forms.dll'
+        if (-not (Test-Path -LiteralPath $formsReference)) {
+            $formsReference = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\System.Windows.Forms.dll'
         }
-
-        foreach ($reference in $references) {
-            if (-not (Test-Path -LiteralPath $reference)) {
-                throw "Required .NET Framework assembly was not found: $reference"
-            }
+        if (-not (Test-Path -LiteralPath $formsReference)) {
+            throw "Required .NET Framework assembly was not found: $formsReference"
         }
 
         Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
 
-        $compilerArgs = @(
-            '/nologo',
-            '/target:winexe',
-            '/optimize+',
-            "/out:$OutputPath",
-            "/resource:$payloadZip,Eaststone.Payload.zip",
-            "/reference:$($references[0])",
-            "/reference:$($references[1])",
-            "/reference:$($references[2])",
-            $sourcePath
-        )
+        $compilerArgs = New-Object System.Collections.Generic.List[string]
+        $compilerArgs.Add('/nologo')
+        $compilerArgs.Add('/target:winexe')
+        $compilerArgs.Add('/optimize+')
+        $compilerArgs.Add("/out:$OutputPath")
+        $compilerArgs.Add("/reference:$formsReference")
+        foreach ($resourceArg in $resourceArgs) {
+            $compilerArgs.Add($resourceArg)
+        }
+        $compilerArgs.Add($sourcePath)
 
-        & $compiler @compilerArgs
+        & $compiler $compilerArgs.ToArray()
         if ($LASTEXITCODE -ne 0) {
             throw "C# package compiler failed for '$Name' with exit code $LASTEXITCODE."
         }
