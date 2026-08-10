@@ -27,40 +27,50 @@ function New-IExpressPackage {
 
     $source = $SourceDirectory.TrimEnd('\') + '\'
     $sedPath = Join-Path $env:TEMP "eaststone-$([guid]::NewGuid().ToString('N')).sed"
+    $launcherCommand = "cmd.exe /d /c `"$Launcher`""
     @"
 [Version]
 Class=IEXPRESS
 SEDVersion=3
 [Options]
 PackagePurpose=InstallApp
-ShowInstallProgramWindow=1
-HideExtractAnimation=0
+ShowInstallProgramWindow=0
+HideExtractAnimation=1
 UseLongFileName=1
 InsideCompressed=0
 CAB_FixedSize=0
 CAB_ResvCodeSigning=0
 RebootMode=N
+InstallPrompt=%InstallPrompt%
+DisplayLicense=%DisplayLicense%
+FinishMessage=%FinishMessage%
+TargetName=%TargetName%
+FriendlyName=%FriendlyName%
+AppLaunched=%AppLaunched%
+PostInstallCmd=%PostInstallCmd%
+AdminQuietInstCmd=%AdminQuietInstCmd%
+UserQuietInstCmd=%UserQuietInstCmd%
+SourceFiles=SourceFiles
+[Strings]
 InstallPrompt=
 DisplayLicense=
 FinishMessage=
 TargetName=$OutputPath
 FriendlyName=$Name
-AppLaunched=$Launcher
+AppLaunched=$launcherCommand
 PostInstallCmd=<None>
-AdminQuietInstCmd=$Launcher
-UserQuietInstCmd=$Launcher
-SourceFiles=SourceFiles
+AdminQuietInstCmd=
+UserQuietInstCmd=
+$($strings -join "`r`n")
 [SourceFiles]
 SourceFiles0=$source
 [SourceFiles0]
 $($entries -join "`r`n")
-[Strings]
-$($strings -join "`r`n")
 "@ | Set-Content -LiteralPath $sedPath -Encoding ascii
 
     try {
         $iexpress = Join-Path $env:SystemRoot 'System32\iexpress.exe'
-        $process = Start-Process -FilePath $iexpress -ArgumentList "/N `"$sedPath`"" -PassThru
+        $process = Start-Process -FilePath $iexpress -ArgumentList "/N /Q `"$sedPath`"" -PassThru
         $deadline = [DateTime]::UtcNow.AddSeconds(90)
         $lastSize = -1L
         $stableCount = 0
