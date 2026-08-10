@@ -7,7 +7,7 @@ set -euo pipefail
 
 export PGPASSWORD="$DB_PASSWORD"
 PSQL=(psql -h db -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
-BOOTSTRAP_VERSION="production-schema-v2-customer-material-sequence"
+BOOTSTRAP_VERSION="production-schema-v3-cancelled-bmr-marker"
 
 marker_exists="$(${PSQL[@]} -tAc "SELECT CASE WHEN to_regclass('public.deployment_schema_bootstrap') IS NULL THEN 0 ELSE 1 END;")"
 if [[ "$marker_exists" == "1" ]]; then
