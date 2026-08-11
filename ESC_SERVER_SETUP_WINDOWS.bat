@@ -15,8 +15,11 @@ set "TLS_HOSTNAME=%~1"
 set "SERVER_IP=%~2"
 if not defined TLS_HOSTNAME set "TLS_HOSTNAME=stock-control.test"
 
+rem Automatically select only a private RFC1918 address on an active adapter
+rem with a default gateway. This prevents VPN/public/WAN addresses from being
+rem written into the client deployment package.
 if not defined SERVER_IP (
-  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$ip=Get-NetIPConfiguration ^| Where-Object {$_.IPv4DefaultGateway -and $_.IPv4Address} ^| ForEach-Object {$_.IPv4Address ^| ForEach-Object {$_.IPAddress}} ^| Where-Object {$_ -notlike '127.*' -and $_ -notlike '169.254*'} ^| Select-Object -First 1; if($ip){$ip}"`) do set "SERVER_IP=%%I"
+  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$ips=Get-NetIPConfiguration ^| Where-Object {$_.IPv4DefaultGateway -and $_.IPv4Address -and $_.NetAdapter.Status -eq 'Up'} ^| ForEach-Object {$_.IPv4Address.IPAddress}; $private=$ips ^| Where-Object { if($_ -match '^10\.'){$true} elseif($_ -match '^192\.168\.'){$true} elseif($_ -match '^172\.(\d+)\.'){ $n=[int]$Matches[1]; $n -ge 16 -and $n -le 31 } else {$false} } ^| Select-Object -First 1; if($private){$private}"`) do set "SERVER_IP=%%I"
 )
 
 :validate_server_ip
@@ -29,8 +32,9 @@ if defined SERVER_IP (
 
 if not defined SERVER_IP_VALID (
   echo.
-  echo A valid company-network IPv4 address could not be detected automatically.
+  echo A valid private LAN IPv4 address could not be detected automatically.
   echo Run IPCONFIG in Command Prompt and use the IPv4 Address for the active Ethernet or Wi-Fi adapter.
+  echo Typical internal addresses start 10.x.x.x, 172.16-31.x.x or 192.168.x.x.
   set "SERVER_IP="
   set /p "SERVER_IP=Enter this computer's company-network IPv4 address: "
   if not defined SERVER_IP goto :configuration_failed
@@ -136,6 +140,7 @@ echo   Server setup completed
 echo ============================================================
 echo Application: https://%TLS_HOSTNAME%:8443/
 echo Client package: %INSTALL_ROOT%\client-deployment
+echo Client package server IP: %SERVER_IP%
 echo Initial login: admin / Admin123!
 echo Change the administrator password immediately.
 echo IQ report: %INSTALL_ROOT%\deployment-records\ESC-IQ-Execution-Latest.html
