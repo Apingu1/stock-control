@@ -22,10 +22,22 @@ if not defined TLS_HOSTNAME (
   set /p "TLS_HOSTNAME=Internal hostname [stock-control.test]: "
   if not defined TLS_HOSTNAME set "TLS_HOSTNAME=stock-control.test"
 )
-if not defined SERVER_IP set /p "SERVER_IP=Server IPv4 address: "
+
+if not defined SERVER_IP if "!QUIET!"=="0" set /p "SERVER_IP=Server IPv4 address: "
 if not defined SERVER_IP (
-  echo ERROR: A server IP address is required.
-  if "%QUIET%"=="0" pause
+  echo ERROR: A server IPv4 address is required for HTTPS certificate generation.
+  if "!QUIET!"=="0" pause
+  exit /b 1
+)
+
+set "ESC_SERVER_IP_TO_VALIDATE=!SERVER_IP!"
+powershell.exe -NoProfile -Command "$parsed=$null; if(-not [System.Net.IPAddress]::TryParse($env:ESC_SERVER_IP_TO_VALIDATE,[ref]$parsed)){exit 1}; if($parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork){exit 1}; exit 0" >nul 2>&1
+set "IP_VALIDATION_ERROR=!ERRORLEVEL!"
+set "ESC_SERVER_IP_TO_VALIDATE="
+if not "!IP_VALIDATION_ERROR!"=="0" (
+  echo ERROR: '!SERVER_IP!' is not a valid IPv4 address.
+  echo Use the IPv4 Address shown by IPCONFIG for the active Ethernet or Wi-Fi adapter.
+  if "!QUIET!"=="0" pause
   exit /b 1
 )
 
@@ -34,7 +46,7 @@ docker run --rm -v "%CD%:/workspace" -w /workspace alpine:3.20 sh -c "apk add --
 if errorlevel 1 (
   echo ERROR: TLS certificate generation failed.
   echo A mapped network drive may not be mountable by Docker.
-  if "%QUIET%"=="0" pause
+  if "!QUIET!"=="0" pause
   exit /b 1
 )
 
@@ -42,7 +54,7 @@ echo Starting the HTTPS application stack...
 docker compose -f "infra\docker-compose.production.yml" -f "infra\docker-compose.production.tls.yml" --env-file ".env" up -d --build
 if errorlevel 1 (
   echo ERROR: The HTTPS stack could not be started.
-  if "%QUIET%"=="0" pause
+  if "!QUIET!"=="0" pause
   exit /b 1
 )
 
@@ -57,7 +69,7 @@ for /L %%I in (1,1,90) do (
 )
 
 echo ERROR: HTTPS did not become healthy.
-if "%QUIET%"=="0" pause
+if "!QUIET!"=="0" pause
 exit /b 1
 
 :ready
@@ -65,7 +77,7 @@ echo.
 echo HTTPS is ready: https://!TLS_HOSTNAME!:!APP_HTTPS_PORT!
 echo Public CA certificate: %CD%\infra\certs\stock-control-ca.crt
 echo Private keys remain on the server in infra\certs.
-if "%QUIET%"=="1" exit /b 0
+if "!QUIET!"=="1" exit /b 0
 echo.
 echo Manual client setup requires:
 echo   1. Import stock-control-ca.crt into Local Computer Trusted Root.
