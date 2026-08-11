@@ -94,6 +94,11 @@ using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 
+[assembly: AssemblyTitle("$nameLiteral")]
+[assembly: AssemblyProduct("Eaststone Stock Control")]
+[assembly: AssemblyCompany("Pharmagrowth Consulting Ltd")]
+[assembly: AssemblyCopyright("Copyright © Pharmagrowth Consulting Ltd")]
+
 internal static class EaststoneSfx
 {
     private const string PackageName = "$nameLiteral";
