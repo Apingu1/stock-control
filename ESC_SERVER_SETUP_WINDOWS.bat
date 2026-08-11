@@ -16,14 +16,26 @@ set "SERVER_IP=%~2"
 if not defined TLS_HOSTNAME set "TLS_HOSTNAME=stock-control.test"
 
 if not defined SERVER_IP (
-  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$ip=Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object {$_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' -and $_.InterfaceAlias -notmatch 'Docker|vEthernet|Loopback'} ^| Sort-Object InterfaceMetric ^| Select-Object -First 1 -ExpandProperty IPAddress; if($ip){$ip}"`) do set "SERVER_IP=%%I"
+  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$ip=Get-NetIPConfiguration ^| Where-Object {$_.IPv4DefaultGateway -and $_.IPv4Address} ^| ForEach-Object {$_.IPv4Address ^| ForEach-Object {$_.IPAddress}} ^| Where-Object {$_ -notlike '127.*' -and $_ -notlike '169.254*'} ^| Select-Object -First 1; if($ip){$ip}"`) do set "SERVER_IP=%%I"
 )
 
-if not defined SERVER_IP (
-  echo ERROR: A suitable server IPv4 address could not be detected.
-  set /p "SERVER_IP=Enter this computer's company-network IPv4 address: "
+:validate_server_ip
+set "SERVER_IP_VALID="
+if defined SERVER_IP (
+  set "ESC_SERVER_IP_TO_VALIDATE=%SERVER_IP%"
+  for /f "usebackq delims=" %%V in (`powershell.exe -NoProfile -Command "$parsed=$null; if([System.Net.IPAddress]::TryParse($env:ESC_SERVER_IP_TO_VALIDATE,[ref]$parsed) -and $parsed.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork){'VALID'}"`) do set "SERVER_IP_VALID=%%V"
+  set "ESC_SERVER_IP_TO_VALIDATE="
 )
-if not defined SERVER_IP goto :configuration_failed
+
+if not defined SERVER_IP_VALID (
+  echo.
+  echo A valid company-network IPv4 address could not be detected automatically.
+  echo Run IPCONFIG in Command Prompt and use the IPv4 Address for the active Ethernet or Wi-Fi adapter.
+  set "SERVER_IP="
+  set /p "SERVER_IP=Enter this computer's company-network IPv4 address: "
+  if not defined SERVER_IP goto :configuration_failed
+  goto :validate_server_ip
+)
 
 echo ============================================================
 echo   Eaststone Stock Control - Recommended Server Setup
@@ -139,7 +151,7 @@ goto :failed
 echo ERROR: Docker Desktop did not become ready.
 goto :failed
 :configuration_failed
-echo ERROR: Server address configuration is incomplete.
+echo ERROR: Server address configuration is incomplete or invalid.
 goto :failed
 :base_install_failed
 echo ERROR: Base Stock Control installation failed.
