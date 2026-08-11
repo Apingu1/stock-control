@@ -50,10 +50,23 @@ if not defined SERVER_IP (
   goto :finish
 )
 
+rem A real client maps the application hostname to the server's LAN address.
+rem When this client package is deliberately tested on the server itself, keep
+rem the hostname on loopback so the server does not try to hairpin through its
+rem own LAN/WAN address.
+set "HOSTS_IP=%SERVER_IP%"
+set "RUNNING_ON_SERVER=0"
+reg query "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath >nul 2>&1
+if not errorlevel 1 (
+  set "HOSTS_IP=127.0.0.1"
+  set "RUNNING_ON_SERVER=1"
+)
+
 echo ============================================================
 echo   Eaststone Stock Control - Client Setup
 echo ============================================================
 echo Server: https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%
+if "%RUNNING_ON_SERVER%"=="1" echo Local server installation detected - using 127.0.0.1 for this computer only.
 echo.
 
 echo Installing the Stock Control trusted-root certificate...
@@ -63,7 +76,7 @@ for /f "usebackq delims=" %%T in (`powershell.exe -NoProfile -Command "$c=New-Ob
 
 echo Configuring the Stock Control hostname...
 if exist "Configure-Hosts.ps1" (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Configure-Hosts.ps1" -Hostname "%TLS_HOSTNAME%" -IpAddress "%SERVER_IP%"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Configure-Hosts.ps1" -Hostname "%TLS_HOSTNAME%" -IpAddress "%HOSTS_IP%"
 ) else (
   echo ERROR: Configure-Hosts.ps1 is missing.
   goto :hosts_failed
