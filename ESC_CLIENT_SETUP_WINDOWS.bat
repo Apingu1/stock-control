@@ -89,7 +89,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environmen
 if errorlevel 1 goto :shortcut_failed
 
 echo Verifying trusted HTTPS access...
-curl.exe -fsS "%APP_URL%api/health" >nul 2>&1
+rem Windows curl uses Schannel. A private CA without CRL/OCSP distribution
+rem points can return CRYPT_E_NO_REVOCATION_CHECK even when the certificate
+rem chain and hostname are otherwise valid. Best-effort revocation keeps normal
+rem certificate and hostname validation while tolerating an unavailable
+rem revocation endpoint.
+curl.exe --ssl-revoke-best-effort -fsS "%APP_URL%api/health" >nul 2>&1
 if errorlevel 1 goto :health_failed
 
 reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerUrl /t REG_SZ /d "%APP_URL%" /f >nul
