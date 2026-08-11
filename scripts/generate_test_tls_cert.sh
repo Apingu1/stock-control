@@ -12,6 +12,25 @@ if ! command -v openssl >/dev/null 2>&1; then
   exit 1
 fi
 
+validate_ipv4() {
+  local value="$1"
+  local a b c d extra
+
+  [[ "$value" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+  IFS='.' read -r a b c d extra <<< "$value"
+  [[ -z "${extra:-}" ]] || return 1
+
+  local octet
+  for octet in "$a" "$b" "$c" "$d"; do
+    (( 10#$octet >= 0 && 10#$octet <= 255 )) || return 1
+  done
+}
+
+if [[ -n "$IP_ADDRESS" ]] && ! validate_ipv4 "$IP_ADDRESS"; then
+  echo "ERROR: Invalid IPv4 address supplied for TLS certificate: '$IP_ADDRESS'"
+  exit 1
+fi
+
 mkdir -p "$CERT_DIR"
 umask 077
 
