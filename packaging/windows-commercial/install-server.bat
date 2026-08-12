@@ -39,6 +39,16 @@ if %ROBOCOPY_RC% GEQ 8 (
   exit /b 1
 )
 
+rem Remove obsolete unsigned/self-extracting installer tooling that may remain
+rem from an earlier test installation. Runtime/database/configuration data are
+rem deliberately not touched here.
+del /f /q "%INSTALL_ROOT%\BUILD_WINDOWS_INSTALLERS.bat" >nul 2>&1
+del /f /q "%INSTALL_ROOT%\windows\Build-Installers.ps1" >nul 2>&1
+del /f /q "%INSTALL_ROOT%\windows\Build-ClientInstaller.ps1" >nul 2>&1
+del /f /q "%INSTALL_ROOT%\windows\Self-Extracting-Package.ps1" >nul 2>&1
+if exist "%INSTALL_ROOT%\dist" rmdir /s /q "%INSTALL_ROOT%\dist" >nul 2>&1
+if exist "%INSTALL_ROOT%\client-deployment\ESC Client Setup.exe" del /f /q "%INSTALL_ROOT%\client-deployment\ESC Client Setup.exe" >nul 2>&1
+
 echo Starting the server setup...
 pushd "%INSTALL_ROOT%"
 call "ESC_SERVER_SETUP_WINDOWS.bat"
