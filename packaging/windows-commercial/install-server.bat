@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions DisableDelayedExpansion
+setlocal EnableExtensions EnableDelayedExpansion
 title Pharmagrowth Stock Control - Install Server
 
 net session >nul 2>&1
@@ -57,7 +57,7 @@ if exist "%INSTALL_ROOT%\client-deployment" (
   if exist "%PACKAGE_ROOT%CLIENT DEPLOYMENT" rmdir /s /q "%PACKAGE_ROOT%CLIENT DEPLOYMENT"
   mkdir "%PACKAGE_ROOT%CLIENT DEPLOYMENT"
   robocopy "%INSTALL_ROOT%\client-deployment" "%PACKAGE_ROOT%CLIENT DEPLOYMENT" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP >nul
-  set "CLIENT_COPY_RC=%ERRORLEVEL%"
+  set "CLIENT_COPY_RC=!ERRORLEVEL!"
   if !CLIENT_COPY_RC! GEQ 8 (
     echo WARNING: The client deployment folder could not be copied back into the release package.
     echo It is still available at:
