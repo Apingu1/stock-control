@@ -4,6 +4,7 @@ title Eaststone Stock Control - Client Setup
 
 set "STAGED=0"
 if /I "%~1"=="--staged" set "STAGED=1"
+set "SELF_NAME=%~nx0"
 
 net session >nul 2>&1
 if errorlevel 1 (
@@ -11,12 +12,12 @@ if errorlevel 1 (
   set "STAGE=%TEMP%\EaststoneStockControlClientSetup-%RANDOM%-%RANDOM%"
   mkdir "!STAGE!" >nul 2>&1
   xcopy "%~dp0*" "!STAGE!\" /E /I /Y /Q >nul
-  if not exist "!STAGE!\ESC_CLIENT_SETUP_WINDOWS.bat" (
+  if not exist "!STAGE!\!SELF_NAME!" (
     echo ERROR: Client setup files could not be staged before elevation.
     pause
     exit /b 1
   )
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!STAGE!\ESC_CLIENT_SETUP_WINDOWS.bat' -ArgumentList '--staged' -Verb RunAs -WorkingDirectory '!STAGE!'"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!STAGE!\!SELF_NAME!' -ArgumentList '--staged' -Verb RunAs -WorkingDirectory '!STAGE!'"
   exit /b
 )
 
@@ -30,7 +31,10 @@ if not exist "%CONFIG%" (
   goto :finish
 )
 if not exist "%CA_CERT%" (
-  echo ERROR: stock-control-ca.crt is missing from the client deployment package.
+  echo ERROR: stock-control-ca.crt is missing.
+  echo Run the server installation first so the CLIENT DEPLOYMENT folder receives
+  echo the server-specific public CA certificate, then copy the complete folder
+  echo to this computer.
   set "RESULT=1"
   goto :finish
 )
@@ -45,7 +49,8 @@ for /f "usebackq tokens=1,* delims==" %%A in ("%CONFIG%") do (
 )
 
 if not defined SERVER_IP (
-  echo ERROR: SERVER_IP is missing from client-config.ini.
+  echo ERROR: SERVER_IP has not yet been populated in client-config.ini.
+  echo Run 01 - INSTALL SERVER.bat on the server before distributing this folder.
   set "RESULT=1"
   goto :finish
 )
@@ -53,7 +58,7 @@ if not defined SERVER_IP (
 rem A real client maps the application hostname to the server's LAN address.
 rem When this client package is deliberately tested on the server itself, keep
 rem the hostname on loopback so the server does not try to hairpin through its
-rem own LAN/WAN address.
+rem own LAN address.
 set "HOSTS_IP=%SERVER_IP%"
 set "RUNNING_ON_SERVER=0"
 reg query "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath >nul 2>&1
