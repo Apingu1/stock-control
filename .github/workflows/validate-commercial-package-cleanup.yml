@@ -91,10 +91,28 @@ jobs:
           if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) { throw 'Commercial ZIP was not created.' }
           Get-Item -LiteralPath $zip | Select-Object Name, Length
 
-      - name: Upload commercial package
+      - name: Stage single-extract GitHub artifact
+        shell: powershell
+        run: |
+          $staging = Join-Path $PWD 'artifact-staging'
+          if (Test-Path -LiteralPath $staging) {
+            Remove-Item -LiteralPath $staging -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $PWD 'release\Pharmagrowth Stock Control') -Destination $staging -Recurse -Force
+
+          $stagedRoot = Join-Path $staging 'Pharmagrowth Stock Control'
+          if (-not (Test-Path -LiteralPath (Join-Path $stagedRoot '01 - INSTALL SERVER.bat'))) {
+            throw 'Single-extract artifact staging is missing the clean package root.'
+          }
+          if (Get-ChildItem -LiteralPath $staging -File -Filter '*.zip') {
+            throw 'Nested ZIP detected in artifact staging.'
+          }
+
+      - name: Upload single-extract commercial package
         uses: actions/upload-artifact@v4
         with:
-          name: pharmagrowth-stock-control-commercial-package
-          path: release/Pharmagrowth-Stock-Control-Commercial-Package.zip
+          name: Pharmagrowth-Stock-Control-Commercial-Package
+          path: artifact-staging/
           if-no-files-found: error
           retention-days: 14
