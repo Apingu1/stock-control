@@ -16,6 +16,7 @@ $adminDir = Join-Path $OutputDirectory 'Administration & Recovery'
 $docsDir = Join-Path $OutputDirectory 'Documentation'
 $templatesDir = Join-Path $RepositoryRoot 'packaging\windows-commercial'
 
+New-Item -ItemType Directory -Path $outputParent -Force | Out-Null
 if (Test-Path -LiteralPath $OutputDirectory) {
     Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
 }
@@ -53,7 +54,7 @@ Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Val
 
 # Keep the full controlled Windows documentation available without cluttering
 # the package root.
-Copy-Item -LiteralPath (Join-Path $RepositoryRoot 'docs\windows\*') -Destination $docsDir -Recurse -Force
+Copy-Item -Path (Join-Path $RepositoryRoot 'docs\windows\*') -Destination $docsDir -Recurse -Force
 
 # Copy only runtime/source directories required by the tested Docker deployment.
 $runtimeDirectories = @('api', 'db', 'infra', 'scripts', 'web', 'windows')
@@ -73,11 +74,15 @@ Get-ChildItem -LiteralPath $RepositoryRoot -File -Filter '*.bat' | Where-Object 
     Copy-Item -LiteralPath $_.FullName -Destination $systemDir -Force
 }
 
-# Commercial package building itself is developer/release tooling, not runtime.
-Remove-Item -LiteralPath (Join-Path $systemDir 'windows\Build-CommercialPackage.ps1') -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath (Join-Path $systemDir 'windows\Build-Installers.ps1') -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath (Join-Path $systemDir 'windows\Build-ClientInstaller.ps1') -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath (Join-Path $systemDir 'windows\Self-Extracting-Package.ps1') -Force -ErrorAction SilentlyContinue
+# Commercial packaging/build utilities are developer tooling, not runtime.
+@(
+    'Build-CommercialPackage.ps1',
+    'Build-Installers.ps1',
+    'Build-ClientInstaller.ps1',
+    'Self-Extracting-Package.ps1'
+) | ForEach-Object {
+    Remove-Item -LiteralPath (Join-Path $systemDir "windows\$_") -Force -ErrorAction SilentlyContinue
+}
 
 # Remove build artefacts/caches if they happen to exist in a developer checkout.
 Get-ChildItem -LiteralPath $systemDir -Directory -Recurse -Force | Where-Object {
