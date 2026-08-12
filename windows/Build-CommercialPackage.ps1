@@ -58,10 +58,11 @@ Copy-RequiredFile (Join-Path $templatesDir 'start-server.bat') (Join-Path $Outpu
 Copy-RequiredFile (Join-Path $templatesDir 'stop-server.bat') (Join-Path $OutputDirectory '03 - STOP SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'server-status.bat') (Join-Path $OutputDirectory '04 - SERVER STATUS.bat')
 
-# The BAT-based client deployment is present in the commercial ZIP from the
-# beginning. Server installation only injects the customer-specific server IP
-# and public CA certificate; it does not build or create a client EXE.
+# CLIENT DEPLOYMENT is visibly complete in the downloaded ZIP. The install and
+# uninstall controls are already present. Server installation finalises only the
+# customer-specific SERVER_IP and public CA certificate in this same folder.
 Copy-RequiredFile (Join-Path $RepositoryRoot 'ESC_CLIENT_SETUP_WINDOWS.bat') (Join-Path $clientDir '01 - INSTALL CLIENT.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'client-uninstall.bat') (Join-Path $clientDir '02 - UNINSTALL CLIENT.bat')
 Copy-RequiredFile (Join-Path $RepositoryRoot 'windows\Configure-Hosts.ps1') (Join-Path $clientDir 'Configure-Hosts.ps1')
 Copy-RequiredFile (Join-Path $templatesDir 'client-deployment-readme.txt') (Join-Path $clientDir 'README.txt')
 Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding ascii -Value @(
@@ -71,8 +72,8 @@ Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding as
 )
 
 # Administration is deliberately one level down so destructive/recovery tools
-# are not presented alongside routine start/stop controls. There is exactly one
-# uninstall BAT in the commercial package: 02 - COMPLETE UNINSTALL.bat.
+# are not presented alongside routine start/stop controls. This is the only
+# SERVER uninstall control in the package.
 Copy-RequiredFile (Join-Path $templatesDir 'backup-restore.bat') (Join-Path $adminDir '01 - BACKUP AND RESTORE.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'uninstall.bat') (Join-Path $adminDir '02 - COMPLETE UNINSTALL.bat')
 Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Value @(
@@ -80,7 +81,7 @@ Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Val
     '',
     'These controls are not required for routine operation.',
     'Backup/restore should be used only by authorised administrators.',
-    '02 - COMPLETE UNINSTALL.bat is the only supported uninstall control.',
+    '02 - COMPLETE UNINSTALL.bat is the only supported SERVER uninstall control.',
     'Complete uninstall is destructive and requires explicit confirmation.'
 )
 
@@ -98,9 +99,8 @@ foreach ($directory in $runtimeDirectories) {
     Copy-Item -LiteralPath $source -Destination $systemDir -Recurse -Force
 }
 
-# Copy only the root BAT files that are actually required by the installed
-# server runtime. Client setup and uninstall are intentionally excluded so the
-# customer package does not contain duplicate controls in System.
+# Copy only root BAT files required by the installed server runtime. Client
+# setup/uninstall and server uninstall are intentionally excluded from System.
 $runtimeBatFiles = @(
     'ESC_SERVER_SETUP_WINDOWS.bat',
     'ESC_BACKUP_RESTORE_WINDOWS.bat',
@@ -130,9 +130,8 @@ Get-ChildItem -LiteralPath $systemDir -Directory -Recurse -Force | Where-Object 
     $_.Name -in @('node_modules', '__pycache__', '.pytest_cache', 'dist')
 } | Sort-Object FullName -Descending | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-# The commercial package is assembled on Windows, but Docker executes *.sh
-# files inside Linux containers. Normalize them explicitly so a Windows checkout
-# can never introduce CRLF characters that make bash fail.
+# Docker executes *.sh files inside Linux containers. Normalize them explicitly
+# so a Windows checkout can never introduce CRLF characters.
 Normalize-UnixShellScripts -Root $systemDir
 
 # Validate that no executable wrapper has slipped into the release package.
@@ -156,6 +155,7 @@ foreach ($name in $requiredTopLevel) {
 
 $requiredClientFiles = @(
     '01 - INSTALL CLIENT.bat',
+    '02 - UNINSTALL CLIENT.bat',
     'Configure-Hosts.ps1',
     'client-config.ini',
     'README.txt'
@@ -181,15 +181,23 @@ foreach ($name in $requiredSystemFiles) {
     }
 }
 
-foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WINDOWS.bat')) {
+foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WINDOWS.bat', '02 - UNINSTALL CLIENT.bat')) {
     if (Test-Path -LiteralPath (Join-Path $systemDir $forbiddenSystemFile)) {
         throw "Duplicate customer control must not be present in System: $forbiddenSystemFile"
     }
 }
 
-$uninstallFiles = @(Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -Filter '*UNINSTALL*.bat')
-if ($uninstallFiles.Count -ne 1 -or $uninstallFiles[0].Name -ne '02 - COMPLETE UNINSTALL.bat') {
-    throw "Commercial package must contain exactly one uninstall BAT: Administration & Recovery\02 - COMPLETE UNINSTALL.bat"
+$serverUninstall = Join-Path $adminDir '02 - COMPLETE UNINSTALL.bat'
+$clientUninstall = Join-Path $clientDir '02 - UNINSTALL CLIENT.bat'
+if (-not (Test-Path -LiteralPath $serverUninstall -PathType Leaf)) {
+    throw 'Server complete uninstall is missing.'
+}
+if (-not (Test-Path -LiteralPath $clientUninstall -PathType Leaf)) {
+    throw 'Client uninstall is missing.'
+}
+$allUninstallBats = @(Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -Filter '*UNINSTALL*.bat')
+if ($allUninstallBats.Count -ne 2) {
+    throw "Commercial package must contain exactly two uninstall BATs: one server complete uninstall and one client uninstall. Found $($allUninstallBats.Count)."
 }
 
 $bootstrapPath = Join-Path $systemDir 'db\production-bootstrap.sh'
