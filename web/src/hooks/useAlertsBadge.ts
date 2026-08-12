@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LotBalance, Material } from "../types";
+import { fetchAlertActions } from "../utils/api";
+import { useBackgroundRefresh } from "./useBackgroundRefresh";
 
 // --- Alerts: localStorage-driven suppression (NOT_REQUIRED) -----------------
 type AlertState =
@@ -52,7 +54,7 @@ export function keyLowExpiry(materialCode: string, lotNumber: string) {
  * - listens to the custom window event "sc_alert_actions_changed" plus the
  *   native "storage" event for cross-tab updates.
  */
-export function useAlertsBadge(materials: Material[], lotBalances: LotBalance[]) {
+export function useAlertsBadge(materials: Material[], lotBalances: LotBalance[], enabled = true) {
   const [alertsTick, setAlertsTick] = useState(0);
 
   useEffect(() => {
@@ -70,6 +72,24 @@ export function useAlertsBadge(materials: Material[], lotBalances: LotBalance[])
       window.removeEventListener("storage", onStorage);
     };
   }, []);
+
+  useBackgroundRefresh(
+    async () => {
+      const rows = await fetchAlertActions({ include_not_required: true });
+      const next: Record<string, AlertAction> = {};
+      for (const row of rows) {
+        next[row.alert_key] = {
+          state: row.state,
+          eta_text: row.eta_text ?? undefined,
+          updated_at: row.updated_at,
+          last_seen_available_qty: row.last_seen_available_qty ?? undefined,
+        };
+      }
+      localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent("sc_alert_actions_changed"));
+    },
+    { enabled, intervalMs: 5_000, label: "alert action refresh" }
+  );
 
   const alertsCounts = useMemo(() => {
     void alertsTick;

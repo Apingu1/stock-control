@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovedManufacturer, Material, Receipt } from "../../../types";
 import { calcUnitCost } from "./receiptHelpers";
 
@@ -11,6 +11,8 @@ export function useReceiptForm(args: {
 }) {
   const { open, mode, initial, materials, canSuperEditLockedFields } = args;
   const isEdit = mode === "edit" && !!initial;
+  const materialsRef = useRef(materials);
+  materialsRef.current = materials;
 
   const [materialSearch, setMaterialSearch] = useState("");
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
@@ -36,7 +38,7 @@ export function useReceiptForm(args: {
 
     if (isEdit && initial) {
       setMaterialSearch(`${initial.material_name} (${initial.material_code})`);
-      const mat = materials.find((m) => m.material_code === initial.material_code) || null;
+      const mat = materialsRef.current.find((m) => m.material_code === initial.material_code) || null;
       setSelectedMaterial(mat);
 
       setLotNumber(initial.lot_number || "");
@@ -65,7 +67,13 @@ export function useReceiptForm(args: {
     setManufacturer("");
     setCompliesEs(false);
     setEditReason("");
-  }, [open, isEdit, initial, materials]);
+  }, [open, isEdit, initial]);
+
+  useEffect(() => {
+    if (!open || !selectedMaterial) return;
+    const fresh = materials.find((m) => m.material_code === selectedMaterial.material_code);
+    if (fresh && fresh !== selectedMaterial) setSelectedMaterial(fresh);
+  }, [open, materials, selectedMaterial]);
 
   const filteredMaterials = useMemo(() => {
     const q = materialSearch.trim().toLowerCase();

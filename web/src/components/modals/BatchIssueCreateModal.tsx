@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { LotBalance, Product, ProductMaterial } from "../../types";
 import { CONSUMPTION_TYPES } from "../../constants";
 import { apiFetch } from "../../utils/api";
+import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
 import type { ConsumptionTypeCode } from "./issues/issueHelpers";
 import { formatDateShort, rankLotStatus } from "./issues/issueHelpers";
 
@@ -158,6 +159,39 @@ export default function BatchIssueCreateModal({
       }
     })();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const freshById = new Map(lotBalances.map((lot) => [lot.material_lot_id, lot]));
+    setLines((current) => {
+      let changed = false;
+      const next = current.map((line) => {
+        if (!line.selectedLot) return line;
+        const fresh = freshById.get(line.selectedLot.material_lot_id);
+        if (fresh) {
+          if (fresh === line.selectedLot) return line;
+          changed = true;
+          return { ...line, selectedLot: fresh };
+        }
+        if (Number(line.selectedLot.balance_qty) === 0) return line;
+        changed = true;
+        return {
+          ...line,
+          selectedLot: { ...line.selectedLot, balance_qty: 0 },
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [open, lotBalances]);
+
+  useBackgroundRefresh(
+    async () => {
+      const response = await apiFetch("/quarantine/policy");
+      const policy = (await response.json()) as { allow_issue_from_quarantine: boolean };
+      setAllowQuarantine(Boolean(policy.allow_issue_from_quarantine));
+    },
+    { enabled: open, intervalMs: 5_000, label: "consumption quarantine policy refresh" }
+  );
 
   if (!open) return null;
 

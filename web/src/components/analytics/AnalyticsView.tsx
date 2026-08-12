@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
+import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
 import { SearchModal } from "./SearchModal";
 import type { SearchResult } from "./SearchModal";
 import { firstDayOfMonth, todayYmd } from "./csv";
@@ -125,16 +126,16 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
     return `date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`;
   }
 
-  async function loadDashboard() {
-    setErrorMsg(null);
+  async function loadDashboard(silent = false) {
+    if (!silent) setErrorMsg(null);
     const res = await apiFetch(`/analytics/dashboard?${rangeQuery()}`);
     if (res.status === 403) return setPage({ kind: "permission_error" });
     if (!res.ok) return setErrorMsg(`Dashboard failed: HTTP ${res.status} — ${await res.text()}`);
     setDash((await res.json()) as DashboardResp);
   }
 
-  async function loadProduct(productCode: string) {
-    setErrorMsg(null);
+  async function loadProduct(productCode: string, silent = false) {
+    if (!silent) setErrorMsg(null);
     const qp = rangeQuery();
     const [sRes, bRes] = await Promise.all([
       apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/summary?${qp}`),
@@ -147,17 +148,17 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
     setProductBatches((await bRes.json()) as ProductBatchRow[]);
   }
 
-  async function loadBatch(batchNo: string) {
+  async function loadBatch(batchNo: string, silent = false) {
     // Batch analytics is NOT date-filtered by design
-    setErrorMsg(null);
+    if (!silent) setErrorMsg(null);
     const res = await apiFetch(`/analytics/batches/${encodeURIComponent(batchNo)}`);
     if (res.status === 403) return setPage({ kind: "permission_error" });
     if (!res.ok) return setErrorMsg(`Batch failed: ${await res.text()}`);
     setBatch((await res.json()) as BatchAnalyticsResp);
   }
 
-  async function loadMaterial(materialCode: string) {
-    setErrorMsg(null);
+  async function loadMaterial(materialCode: string, silent = false) {
+    if (!silent) setErrorMsg(null);
     const qp = rangeQuery();
 
     const lotQ = materialLotFilter?.trim()
@@ -221,6 +222,20 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
     })().catch((e) => setErrorMsg(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materialLotFilter]);
+
+  useBackgroundRefresh(
+    async () => {
+      if (page.kind === "dashboard") await loadDashboard(true);
+      if (page.kind === "product") await loadProduct(page.productCode, true);
+      if (page.kind === "batch") await loadBatch(page.batchNo, true);
+      if (page.kind === "material") await loadMaterial(page.materialCode, true);
+    },
+    {
+      enabled: page.kind !== "permission_error",
+      intervalMs: 20_000,
+      label: "analytics refresh",
+    }
+  );
 
   function pickSearch(r: SearchResult) {
     if (r.entity_type === "product") {

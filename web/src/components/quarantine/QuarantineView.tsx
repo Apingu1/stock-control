@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
+import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
 import { formatDate } from "../../utils/format";
 
 type TabKey = "thresholds" | "log";
@@ -403,19 +404,21 @@ function LogTab(props: { canView: boolean }) {
     return params;
   }
 
-  async function load() {
+  async function load(silent = false) {
     if (!canView) return;
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const params = buildParams();
       const res = await apiFetch(`/quarantine/log?${params.toString()}`);
       const data = (await res.json()) as QuarantineLogRow[];
       setRows(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      setError(e?.message || "Failed to load quarantine log");
+      if (!silent) setError(e?.message || "Failed to load quarantine log");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -459,6 +462,11 @@ function LogTab(props: { canView: boolean }) {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canView, limit, typeFilter]);
+
+  useBackgroundRefresh(
+    () => load(true),
+    { enabled: canView, intervalMs: 2_500, label: "quarantine log refresh" }
+  );
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();

@@ -1,11 +1,12 @@
 // web/src/App.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Issue, Material, Receipt, UserMe, ViewMode } from "./types";
 import { clearToken, fetchMe, getToken } from "./utils/api";
 
 import { useAuth } from "./hooks/useAuth";
 import { usePermissions } from "./hooks/usePermissions";
 import { useStockData } from "./hooks/useStockData";
+import { useBackgroundRefresh } from "./hooks/useBackgroundRefresh";
 import { useAlertsBadge } from "./hooks/useAlertsBadge";
 
 import Sidebar from "./components/layout/Sidebar";
@@ -74,7 +75,74 @@ const App: React.FC = () => {
   // Deep-link support: Dashboard → Analytics batch page
   const [analyticsInitialBatchNo, setAnalyticsInitialBatchNo] = useState<string | null>(null);
 
-  const { alertsCounts } = useAlertsBadge(stock.materials, stock.lotBalances);
+  const { alertsCounts } = useAlertsBadge(stock.materials, stock.lotBalances, !!auth.me);
+
+  const operationalPollingEnabled =
+    !!auth.me &&
+    (showReceiptModal ||
+      showIssueModal ||
+      view === "dashboard" ||
+      view === "alerts" ||
+      view === "lots" ||
+      view === "receipts" ||
+      view === "consumption" ||
+      view === "quarantine");
+
+  const operationalIntervalMs =
+    showReceiptModal || showIssueModal
+      ? 2_500
+      : view === "dashboard" || view === "alerts"
+        ? 5_000
+        : 2_500;
+
+  const refreshOperationalData = useCallback(async () => {
+    const jobs: Promise<void>[] = [];
+    const needsLots =
+      showReceiptModal ||
+      showIssueModal ||
+      view === "dashboard" ||
+      view === "alerts" ||
+      view === "lots" ||
+      view === "receipts" ||
+      view === "consumption" ||
+      view === "quarantine";
+
+    if (needsLots) jobs.push(stock.loadLotBalances({ silent: true }));
+    if (showReceiptModal || view === "receipts") {
+      jobs.push(stock.loadReceipts({ silent: true }));
+    }
+    if (showIssueModal || view === "consumption") {
+      jobs.push(stock.loadIssues({ silent: true }));
+    }
+    await Promise.all(jobs);
+  }, [
+    showIssueModal,
+    showReceiptModal,
+    stock.loadIssues,
+    stock.loadLotBalances,
+    stock.loadReceipts,
+    view,
+  ]);
+
+  useBackgroundRefresh(refreshOperationalData, {
+    enabled: operationalPollingEnabled,
+    intervalMs: operationalIntervalMs,
+    label: "operational stock refresh",
+  });
+
+  const refreshReferenceData = useCallback(async () => {
+    await Promise.all([
+      stock.loadMaterials({ silent: true }),
+      stock.loadProducts({ silent: true }),
+      stock.loadExpiryThresholds({ silent: true }),
+    ]);
+  }, [stock.loadExpiryThresholds, stock.loadMaterials, stock.loadProducts]);
+
+  useBackgroundRefresh(refreshReferenceData, {
+    enabled: !!auth.me,
+    intervalMs: 10_000,
+    label: "reference data refresh",
+  });
 
   // --- Auth bootstrap -------------------------------------------------------
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Issue, LotBalance, Material } from "../../../types";
 import type { ConsumptionTypeCode } from "./issueHelpers";
 import { rankLotStatus } from "./issueHelpers";
@@ -13,6 +13,10 @@ export function useIssueForm(args: {
 }) {
   const { open, mode, initial, materials, lotBalances, canSuperEditLockedFields } = args;
   const isEdit = mode === "edit" && !!initial;
+  const materialsRef = useRef(materials);
+  const lotBalancesRef = useRef(lotBalances);
+  materialsRef.current = materials;
+  lotBalancesRef.current = lotBalances;
 
   const [consumptionType, setConsumptionType] = useState<ConsumptionTypeCode>("USAGE");
   const [materialSearch, setMaterialSearch] = useState("");
@@ -39,10 +43,10 @@ export function useIssueForm(args: {
       setConsumptionType((initial.consumption_type as ConsumptionTypeCode) || "USAGE");
       setMaterialSearch(`${initial.material_name} (${initial.material_code})`);
       setSelectedMaterial(
-        materials.find((material) => material.material_code === initial.material_code) || null
+        materialsRef.current.find((material) => material.material_code === initial.material_code) || null
       );
       setSelectedLot(
-        lotBalances.find(
+        lotBalancesRef.current.find(
           (lot) =>
             lot.material_code === initial.material_code &&
             lot.lot_number === initial.lot_number
@@ -89,7 +93,29 @@ export function useIssueForm(args: {
     setComment("");
     setManufacturer("");
     setEditReason("");
-  }, [open, isEdit, initial, materials, lotBalances]);
+  }, [open, isEdit, initial]);
+
+  useEffect(() => {
+    if (!open || !selectedMaterial) return;
+    const fresh = materials.find(
+      (material) => material.material_code === selectedMaterial.material_code
+    );
+    if (fresh && fresh !== selectedMaterial) setSelectedMaterial(fresh);
+  }, [open, materials, selectedMaterial]);
+
+  useEffect(() => {
+    if (!open || !selectedLot) return;
+    const fresh = lotBalances.find(
+      (lot) => lot.material_lot_id === selectedLot.material_lot_id
+    );
+    if (fresh) {
+      if (fresh !== selectedLot) setSelectedLot(fresh);
+      return;
+    }
+    if (Number(selectedLot.balance_qty) !== 0) {
+      setSelectedLot({ ...selectedLot, balance_qty: 0 });
+    }
+  }, [open, lotBalances, selectedLot]);
 
   const filteredMaterials = useMemo(() => {
     const query = materialSearch.trim().toLowerCase();

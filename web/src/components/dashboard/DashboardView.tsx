@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { DashboardSummary, LotBalance, Material } from "../../types";
 import { apiFetch, fetchAlertActions } from "../../utils/api";
+import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
 import { formatGBP } from "../../utils/format";
 
 import type { AlertAction, AlertState } from "../alerts/alertsTypes";
@@ -163,6 +164,38 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     })();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useBackgroundRefresh(
+    async () => {
+      const [summaryRes, latestRes] = await Promise.all([
+        apiFetch("/summary/dashboard"),
+        apiFetch("/analytics/latest-batches?limit=8"),
+      ]);
+      const [nextSummary, latestPayload] = await Promise.all([
+        summaryRes.json() as Promise<DashboardSummary>,
+        latestRes.json() as Promise<any>,
+      ]);
+      setSummary(nextSummary);
+      setLatestBatches((latestPayload?.rows ?? []) as LatestBatchRow[]);
+    },
+    { intervalMs: 5_000, label: "dashboard refresh" }
+  );
+
+  useEffect(() => {
+    const syncActions = () => {
+      setActions(loadActions());
+      setActionsLoaded(true);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "sc_alert_actions_v1") syncActions();
+    };
+    window.addEventListener("sc_alert_actions_changed", syncActions as EventListener);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("sc_alert_actions_changed", syncActions as EventListener);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 

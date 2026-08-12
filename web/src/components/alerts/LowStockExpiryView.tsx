@@ -28,6 +28,7 @@ import {
 } from "./alertsTypes";
 
 import {
+  ALERT_STORAGE_KEY,
   computeDaysToAQ,
   keyLowExpiry,
   keyLowStock,
@@ -105,6 +106,22 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
         }
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    const syncActions = () => {
+      setActions(loadActions());
+      setActionsLoaded(true);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === ALERT_STORAGE_KEY) syncActions();
+    };
+    window.addEventListener("sc_alert_actions_changed", syncActions as EventListener);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("sc_alert_actions_changed", syncActions as EventListener);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   const upsertAction = async (key: string, patch: Partial<AlertAction>, meta: UpsertMeta) => {
