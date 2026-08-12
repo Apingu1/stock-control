@@ -6,6 +6,22 @@ Publisher / Supplier: Pharmagrowth Consulting Ltd
 1. PACKAGE CONTENTS
 ============================================================
 
+IMPORTANT DISTRIBUTION NOTE
+
+Do NOT use GitHub's Code > Download ZIP as the installation package. That downloads the developer/source repository and will contain api, db, infra, web, windows and other source folders at the root.
+
+Use the validated GitHub Actions artifact named:
+
+Pharmagrowth-Stock-Control-Commercial-Package
+
+or the locally generated:
+
+release\Pharmagrowth-Stock-Control-Commercial-Package.zip
+
+The GitHub Actions artifact is deliberately staged so it only needs to be extracted once. After extraction, the user should see a single folder named:
+
+Pharmagrowth Stock Control
+
 The commercial package is intentionally simplified. At the top level IT should see:
 
 00 - START HERE - INSTALLATION GUIDE.txt
