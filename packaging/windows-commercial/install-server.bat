@@ -11,11 +11,24 @@ if errorlevel 1 (
 
 set "PACKAGE_ROOT=%~dp0"
 set "SOURCE_ROOT=%PACKAGE_ROOT%System"
+set "CLIENT_SOURCE=%PACKAGE_ROOT%CLIENT DEPLOYMENT"
 set "INSTALL_ROOT=%ProgramData%\Eaststone\StockControl"
 
 if not exist "%SOURCE_ROOT%\ESC_SERVER_SETUP_WINDOWS.bat" (
   echo ERROR: The System folder is incomplete.
   echo Re-extract the complete Pharmagrowth Stock Control package and retry.
+  pause
+  exit /b 1
+)
+if not exist "%CLIENT_SOURCE%\01 - INSTALL CLIENT.bat" (
+  echo ERROR: CLIENT DEPLOYMENT is incomplete.
+  echo The commercial package must already contain 01 - INSTALL CLIENT.bat.
+  echo Re-download the latest validated commercial package and retry.
+  pause
+  exit /b 1
+)
+if not exist "%CLIENT_SOURCE%\Configure-Hosts.ps1" (
+  echo ERROR: CLIENT DEPLOYMENT is missing Configure-Hosts.ps1.
   pause
   exit /b 1
 )
@@ -39,15 +52,30 @@ if %ROBOCOPY_RC% GEQ 8 (
   exit /b 1
 )
 
-rem Remove obsolete unsigned/self-extracting installer tooling that may remain
-rem from an earlier test installation. Runtime/database/configuration data are
-rem deliberately not touched here.
+rem Remove obsolete duplicate installer/uninstaller files that may remain from
+rem an older test installation. Runtime/database/configuration data are not
+rem touched here.
 del /f /q "%INSTALL_ROOT%\BUILD_WINDOWS_INSTALLERS.bat" >nul 2>&1
+del /f /q "%INSTALL_ROOT%\ESC_CLIENT_SETUP_WINDOWS.bat" >nul 2>&1
+del /f /q "%INSTALL_ROOT%\UNINSTALL_WINDOWS.bat" >nul 2>&1
 del /f /q "%INSTALL_ROOT%\windows\Build-Installers.ps1" >nul 2>&1
 del /f /q "%INSTALL_ROOT%\windows\Build-ClientInstaller.ps1" >nul 2>&1
 del /f /q "%INSTALL_ROOT%\windows\Self-Extracting-Package.ps1" >nul 2>&1
 if exist "%INSTALL_ROOT%\dist" rmdir /s /q "%INSTALL_ROOT%\dist" >nul 2>&1
-if exist "%INSTALL_ROOT%\client-deployment\ESC Client Setup.exe" del /f /q "%INSTALL_ROOT%\client-deployment\ESC Client Setup.exe" >nul 2>&1
+
+echo Preparing the BAT-based client deployment files...
+if exist "%INSTALL_ROOT%\client-deployment" rmdir /s /q "%INSTALL_ROOT%\client-deployment"
+mkdir "%INSTALL_ROOT%\client-deployment"
+robocopy "%CLIENT_SOURCE%" "%INSTALL_ROOT%\client-deployment" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP >nul
+set "CLIENT_SEED_RC=%ERRORLEVEL%"
+if %CLIENT_SEED_RC% GEQ 8 (
+  echo ERROR: Client deployment files could not be staged into the installed application.
+  pause
+  exit /b 1
+)
+del /f /q "%INSTALL_ROOT%\client-deployment\stock-control-ca.crt" >nul 2>&1
+del /f /q "%INSTALL_ROOT%\client-deployment\ESC Client Setup.exe" >nul 2>&1
+del /f /q "%INSTALL_ROOT%\client-deployment\ESC_CLIENT_SETUP_WINDOWS.bat" >nul 2>&1
 
 echo Starting the server setup...
 pushd "%INSTALL_ROOT%"
@@ -62,7 +90,7 @@ if not "%SETUP_RC%"=="0" (
   exit /b %SETUP_RC%
 )
 
-echo Refreshing the distributable CLIENT DEPLOYMENT folder...
+echo Refreshing the distributable CLIENT DEPLOYMENT folder with server-specific settings...
 if exist "%INSTALL_ROOT%\client-deployment" (
   if exist "%PACKAGE_ROOT%CLIENT DEPLOYMENT" rmdir /s /q "%PACKAGE_ROOT%CLIENT DEPLOYMENT"
   mkdir "%PACKAGE_ROOT%CLIENT DEPLOYMENT"
@@ -81,7 +109,10 @@ echo   Server installation completed
 echo ============================================================
 echo Application: https://stock-control.test:8443/
 echo Installed files: %INSTALL_ROOT%
-echo Client deployment: %PACKAGE_ROOT%CLIENT DEPLOYMENT
+echo Client deployment ready to copy: %PACKAGE_ROOT%CLIENT DEPLOYMENT
+echo.
+echo No client EXE has been created. Copy the complete CLIENT DEPLOYMENT folder
+echo to each Windows client and run 01 - INSTALL CLIENT.bat as Administrator.
 echo.
 echo Change the initial administrator password immediately after first login.
 echo Review the generated IQ report before approving the installation.
