@@ -61,8 +61,8 @@ jobs:
             }
           }
 
-          $unexpectedExe = Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.exe'
-          if ($unexpectedExe) {
+          $unexpectedExe = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.exe')
+          if ($unexpectedExe.Count -gt 0) {
             throw "Unexpected EXE in commercial package: $($unexpectedExe.FullName -join ', ')"
           }
 
@@ -77,14 +77,56 @@ jobs:
             if ($found) { throw "Obsolete installer tooling leaked into package: $name" }
           }
 
-          $serverSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_SERVER_SETUP_WINDOWS.bat') -Raw
-          if ($serverSetup -match 'Build-ClientInstaller') {
-            throw 'Server setup still invokes the obsolete client EXE builder.'
+          $clientRoot = Join-Path $root 'CLIENT DEPLOYMENT'
+          $clientRequired = @(
+            '01 - INSTALL CLIENT.bat',
+            'Configure-Hosts.ps1',
+            'client-config.ini',
+            'README.txt'
+          )
+          foreach ($name in $clientRequired) {
+            if (-not (Test-Path -LiteralPath (Join-Path $clientRoot $name) -PathType Leaf)) {
+              throw "Pre-supplied CLIENT DEPLOYMENT is missing: $name"
+            }
           }
-
-          $clientSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_CLIENT_SETUP_WINDOWS.bat') -Raw
+          $clientSetup = Get-Content -LiteralPath (Join-Path $clientRoot '01 - INSTALL CLIENT.bat') -Raw
           if ($clientSetup -notmatch '--ssl-revoke-best-effort') {
             throw 'Client setup is missing the validated Schannel revocation fallback.'
+          }
+          $clientConfig = Get-Content -LiteralPath (Join-Path $clientRoot 'client-config.ini') -Raw
+          if ($clientConfig -notmatch '(?m)^SERVER_IP=$') {
+            throw 'Fresh commercial artifact must ship with an unpopulated SERVER_IP before server installation.'
+          }
+          if (Test-Path -LiteralPath (Join-Path $clientRoot 'stock-control-ca.crt')) {
+            throw 'Fresh commercial artifact must not contain a server-specific CA certificate before installation.'
+          }
+
+          foreach ($duplicate in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WINDOWS.bat')) {
+            if (Test-Path -LiteralPath (Join-Path $root "System\$duplicate")) {
+              throw "Duplicate customer control leaked into System: $duplicate"
+            }
+          }
+
+          $uninstallFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*UNINSTALL*.bat')
+          if ($uninstallFiles.Count -ne 1) {
+            throw "Expected exactly one uninstall BAT in the entire commercial package; found $($uninstallFiles.Count)."
+          }
+          $expectedUninstall = Join-Path $root 'Administration & Recovery\02 - COMPLETE UNINSTALL.bat'
+          if ($uninstallFiles[0].FullName -ne $expectedUninstall) {
+            throw "Unexpected uninstall BAT location: $($uninstallFiles[0].FullName)"
+          }
+
+          $serverSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_SERVER_SETUP_WINDOWS.bat') -Raw
+          if ($serverSetup -match 'Build-ClientInstaller|ESC Client Setup\.exe') {
+            throw 'Server setup still references obsolete client EXE creation.'
+          }
+          if ($serverSetup -notmatch '01 - INSTALL CLIENT\.bat') {
+            throw 'Server setup is not validating the pre-supplied BAT-based client deployment.'
+          }
+
+          $commercialInstaller = Get-Content -LiteralPath (Join-Path $root '01 - INSTALL SERVER.bat') -Raw
+          if ($commercialInstaller -notmatch 'CLIENT DEPLOYMENT') {
+            throw 'Commercial server installer is not staging the pre-supplied CLIENT DEPLOYMENT folder.'
           }
 
           $badShellScripts = @()
@@ -119,6 +161,9 @@ jobs:
           $stagedRoot = Join-Path $staging 'Pharmagrowth Stock Control'
           if (-not (Test-Path -LiteralPath (Join-Path $stagedRoot '01 - INSTALL SERVER.bat'))) {
             throw 'Single-extract artifact staging is missing the clean package root.'
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $stagedRoot 'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat'))) {
+            throw 'Single-extract artifact is missing the pre-supplied client installer.'
           }
           if (Get-ChildItem -LiteralPath $staging -File -Filter '*.zip') {
             throw 'Nested ZIP detected in artifact staging.'
