@@ -94,7 +94,7 @@ jobs:
             throw 'Client setup is missing the validated Schannel revocation fallback.'
           }
           $clientConfig = Get-Content -LiteralPath (Join-Path $clientRoot 'client-config.ini') -Raw
-          if ($clientConfig -notmatch '(?m)^SERVER_IP=$') {
+          if ($clientConfig -notmatch '(?m)^SERVER_IP=\r?$') {
             throw 'Fresh commercial artifact must ship with an unpopulated SERVER_IP before server installation.'
           }
           if (Test-Path -LiteralPath (Join-Path $clientRoot 'stock-control-ca.crt')) {
