@@ -69,6 +69,7 @@ if not exist "deployment" mkdir "deployment"
 if not exist "deployment-records" mkdir "deployment-records"
 if not exist "logs" mkdir "logs"
 if not exist "client-deployment" mkdir "client-deployment"
+if exist "client-deployment\ESC Client Setup.exe" del /f /q "client-deployment\ESC Client Setup.exe" >nul 2>&1
 
 echo Running controlled application and database installation...
 call "INSTALL_WINDOWS.bat" --quiet
@@ -105,7 +106,7 @@ echo Registering automatic certificate renewal, health monitoring and daily back
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Register-MaintenanceTasks.ps1" -InstallRoot "%INSTALL_ROOT%"
 if errorlevel 1 goto :tasks_failed
 
-echo Creating the customer-specific client deployment package...
+echo Creating the customer-specific client deployment folder...
 copy /Y "infra\certs\stock-control-ca.crt" "client-deployment\stock-control-ca.crt" >nul
 copy /Y "ESC_CLIENT_SETUP_WINDOWS.bat" "client-deployment\ESC_CLIENT_SETUP_WINDOWS.bat" >nul
 copy /Y "windows\Configure-Hosts.ps1" "client-deployment\Configure-Hosts.ps1" >nul
@@ -114,9 +115,6 @@ copy /Y "windows\Configure-Hosts.ps1" "client-deployment\Configure-Hosts.ps1" >n
   echo SERVER_IP=%SERVER_IP%
   echo APP_HTTPS_PORT=8443
 ) > "client-deployment\client-config.ini"
-if exist "windows\Build-ClientInstaller.ps1" (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Build-ClientInstaller.ps1" -ClientPackageDirectory "%INSTALL_ROOT%\client-deployment"
-)
 
 echo Creating server shortcuts...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$url='https://%TLS_HOSTNAME%:8443/';$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($spec in @(@('Eaststone Stock Control',$url),@('ESC Backup and Restore','%INSTALL_ROOT%\ESC_BACKUP_RESTORE_WINDOWS.bat'),@('ESC Status','%INSTALL_ROOT%\STATUS_WINDOWS.bat'))){foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir ($spec[0]+'.lnk')));if($spec[1] -like 'https:*'){$s.TargetPath=$edge;$s.Arguments='--app='+$spec[1]}else{$s.TargetPath=$spec[1]};$s.WorkingDirectory='%INSTALL_ROOT%';$s.Description=$spec[0];$s.Save()}}}"
@@ -139,7 +137,7 @@ echo ============================================================
 echo   Server setup completed
 echo ============================================================
 echo Application: https://%TLS_HOSTNAME%:8443/
-echo Client package: %INSTALL_ROOT%\client-deployment
+echo Client deployment folder: %INSTALL_ROOT%\client-deployment
 echo Client package server IP: %SERVER_IP%
 echo Initial login: admin / Admin123!
 echo Change the administrator password immediately.
