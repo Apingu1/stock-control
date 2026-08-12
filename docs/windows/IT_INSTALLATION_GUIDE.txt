@@ -8,33 +8,28 @@ Publisher / Supplier: Pharmagrowth Consulting Ltd
 
 IMPORTANT DISTRIBUTION NOTE
 
-Do NOT use GitHub's Code > Download ZIP as the installation package. That downloads the developer/source repository and will contain api, db, infra, web, windows and other source folders at the root.
+Do NOT use GitHub's Code > Download ZIP as the installation package. That downloads the developer/source repository.
 
 Use the validated GitHub Actions artifact named:
 
 Pharmagrowth-Stock-Control-Commercial-Package
 
-or the locally generated:
+The artifact only needs to be extracted once. It may be placed in an approved Windows shared folder so the server computer and authorised client computers can access the same commercial package.
 
-release\Pharmagrowth-Stock-Control-Commercial-Package.zip
+After extraction the top level is:
 
-The GitHub Actions artifact only needs to be extracted once. After extraction, the user should see a single folder named:
+Pharmagrowth Stock Control\
+  00 - START HERE - INSTALLATION GUIDE.txt
+  01 - INSTALL SERVER.bat
+  02 - START SERVER.bat
+  03 - STOP SERVER.bat
+  04 - SERVER STATUS.bat
+  CLIENT DEPLOYMENT\
+  Administration & Recovery\
+  Documentation\
+  System\
 
-Pharmagrowth Stock Control
-
-At the top level IT should see:
-
-00 - START HERE - INSTALLATION GUIDE.txt
-01 - INSTALL SERVER.bat
-02 - START SERVER.bat
-03 - STOP SERVER.bat
-04 - SERVER STATUS.bat
-CLIENT DEPLOYMENT\
-Administration & Recovery\
-Documentation\
-System\
-
-The System folder contains controlled server runtime files. IT should not run files directly from System during a normal installation.
+The System folder contains controlled server runtime files. IT should not run files directly from System during normal installation.
 
 No self-extracting server or client EXE is required or created.
 
@@ -50,28 +45,32 @@ No self-extracting server or client EXE is required or created.
 - TCP 8443 permitted between client computers and the server.
 - TCP 8088 may be retained for local diagnostics if approved.
 
-Do not run the live database/application from a mapped network drive. The commercial launcher copies the controlled application files to:
+The commercial package itself may be stored in a Windows shared folder. The LIVE application and database are not run from the share. "01 - INSTALL SERVER.bat" copies the controlled server runtime to:
 
 C:\ProgramData\Eaststone\StockControl
 
-before starting the server installation.
+The PostgreSQL database remains in its controlled local Docker volume.
 
 ============================================================
 3. INSTALL THE SERVER
 ============================================================
 
-1. Extract the complete Pharmagrowth Stock Control package to a local folder.
-2. Start Docker Desktop and wait until Docker is running.
-3. Right-click "01 - INSTALL SERVER.bat" and select "Run as administrator".
+1. Extract the complete Pharmagrowth Stock Control package. It may be stored in the approved shared folder used for client distribution.
+2. On the server computer, start Docker Desktop and wait until Docker is running.
+3. Run "01 - INSTALL SERVER.bat" as Administrator.
 4. Accept the Windows UAC prompt.
 5. The installer copies the controlled server files to C:\ProgramData\Eaststone\StockControl.
 6. Confirm the server's private LAN IPv4 address if automatic detection cannot determine it.
    Typical private addresses begin 10.x.x.x, 172.16-31.x.x or 192.168.x.x.
-7. Leave the installer window open until "Server setup completed" is displayed.
+7. Leave the installer window open until both of these are confirmed:
+
+   Server installation completed
+   Client deployment verified for server IP: <server IP>
+
 8. Open https://stock-control.test:8443/.
 9. Initial login: admin / Admin123!
 10. Change the administrator password immediately.
-11. Review the generated IQ report before approving the installation:
+11. Review the generated IQ report:
 
 C:\ProgramData\Eaststone\StockControl\deployment-records\ESC-IQ-Execution-Latest.html
 
@@ -81,25 +80,28 @@ The server setup configures the database, application, HTTPS certificate, truste
 4. CLIENT DEPLOYMENT
 ============================================================
 
-The BAT-based client setup is already included in CLIENT DEPLOYMENT when the commercial package is downloaded.
+CLIENT DEPLOYMENT is a complete BAT-based client package from the moment the commercial ZIP is extracted.
 
-Before server installation the folder contains:
+Before server installation it contains:
 
 01 - INSTALL CLIENT.bat
+02 - UNINSTALL CLIENT.bat
 Configure-Hosts.ps1
 client-config.ini
 README.txt
 
-Do not distribute or run the client setup before the server installation completes. At that stage the client-config.ini does not yet contain the server IP and the public Stock Control CA certificate does not yet exist.
+Before server installation, SERVER_IP is intentionally blank and stock-control-ca.crt does not yet exist. Do not install clients until the server installer has finalised the folder.
 
-During server installation, "01 - INSTALL SERVER.bat" does NOT build or create a client installer or EXE. It only updates the existing CLIENT DEPLOYMENT folder by:
+During server installation, "01 - INSTALL SERVER.bat" does NOT build or create a client installer or EXE. It finalises the SAME CLIENT DEPLOYMENT folder by:
 
 - writing the actual server hostname/IP into client-config.ini
 - adding stock-control-ca.crt, the public Stock Control CA certificate
+- verifying the published shared client package before reporting success
 
-After successful server installation the folder should contain:
+After successful server installation the SAME shared folder must contain:
 
 01 - INSTALL CLIENT.bat
+02 - UNINSTALL CLIENT.bat
 Configure-Hosts.ps1
 client-config.ini
 stock-control-ca.crt
@@ -107,15 +109,24 @@ README.txt
 
 To configure another Windows computer:
 
-1. Copy the COMPLETE CLIENT DEPLOYMENT folder to the client computer.
-2. Confirm the client computer can reach the server on the company network.
-3. Right-click "01 - INSTALL CLIENT.bat" and select "Run as administrator".
-4. Accept UAC.
-5. Client setup imports the public Stock Control CA, maps stock-control.test to the server LAN IP, creates the application shortcut and verifies HTTPS access.
-6. Open the Eaststone Stock Control shortcut.
-7. Log in using that user's individual Stock Control account.
+1. On the client computer, browse to the same approved shared/network CLIENT DEPLOYMENT folder. You may also copy the complete folder locally if preferred.
+2. Right-click "01 - INSTALL CLIENT.bat" and select "Run as administrator".
+3. Accept UAC.
+4. The installer stages the required client files into a local temporary folder before elevation, then imports the public Stock Control CA, maps stock-control.test to the server LAN IP, creates the application shortcut and verifies HTTPS access.
+5. Open the Eaststone Stock Control shortcut.
+6. Log in using that user's individual Stock Control account.
+
+This reproduces the client deployment behaviour proven in the previous working Windows deployment checkpoint.
 
 Never copy server private keys to a client. Only stock-control-ca.crt is distributed.
+
+CLIENT UNINSTALL
+
+To remove Stock Control client configuration from a client computer, run:
+
+02 - UNINSTALL CLIENT.bat
+
+as Administrator. It removes only that computer's Stock Control shortcut, hosts mapping, trusted client CA and HKLM\SOFTWARE\Eaststone\StockControlClient registration. It does NOT remove the server, database, stock data or shared CLIENT DEPLOYMENT folder.
 
 ============================================================
 5. NORMAL SERVER CONTROLS
@@ -130,7 +141,7 @@ Use only the top-level controls during routine operation:
 The controlled stop preserves the PostgreSQL data volume. Do not use "docker compose down -v" during routine operation because -v destroys the database volume.
 
 ============================================================
-6. ADMINISTRATION, RECOVERY AND COMPLETE UNINSTALL
+6. ADMINISTRATION, RECOVERY AND SERVER COMPLETE UNINSTALL
 ============================================================
 
 Administration & Recovery contains:
@@ -139,17 +150,15 @@ Administration & Recovery contains:
 02 - COMPLETE UNINSTALL.bat
 README.txt
 
-"02 - COMPLETE UNINSTALL.bat" is the ONE supported uninstall control in the commercial package. There is no second UNINSTALL_WINDOWS.bat under System and there is no uninstall EXE.
+"02 - COMPLETE UNINSTALL.bat" is the one supported SERVER uninstall control. There is no duplicate UNINSTALL_WINDOWS.bat under System and there is no uninstall EXE.
 
-Complete uninstall requires explicit confirmations before destroying the PostgreSQL data volume and generated application data. It can also remove:
+This is separate from "CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat", which only removes one client's local configuration.
 
-Installed application:
+Server complete uninstall requires explicit confirmations before destroying the PostgreSQL data volume and generated application data. It can also remove:
+
 C:\ProgramData\Eaststone\StockControl
 
-and, separately when explicitly confirmed, the local extracted:
-Pharmagrowth Stock Control\
-
-If the commercial package is being run from a UNC path or mapped/shared drive, the distribution copy is retained automatically and must be removed manually by authorised IT if required.
+and, when explicitly confirmed and the package is local, the extracted Pharmagrowth Stock Control folder. If the commercial package is on a UNC or mapped/shared location, the distribution copy is retained automatically.
 
 ============================================================
 7. VALIDATION / RELEASE
