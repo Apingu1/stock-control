@@ -1,0 +1,18 @@
+# Keep Linux/container scripts Unix-safe even when checked out or packaged on Windows.
+*.sh text eol=lf
+
+# Keep native Windows launchers in Windows format.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Normal text files may use Git's normal text handling.
+*.py text
+*.ts text
+*.tsx text
+*.js text
+*.json text
+*.yml text
+*.yaml text
+*.sql text
+*.md text
