@@ -1,0 +1,100 @@
+name: Validate Clean Commercial Package
+
+on:
+  push:
+    branches:
+      - feature/commercial-installation-package-cleanup
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  windows-commercial-package:
+    name: Build and validate clean Windows package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: powershell
+        run: |
+          $errors = @()
+          Get-ChildItem -Path windows -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) {
+              $errors += $parseErrors | ForEach-Object { "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)" }
+            }
+          }
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+
+      - name: Build clean commercial package
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\Build-CommercialPackage.ps1 -RepositoryRoot $PWD
+
+      - name: Validate package structure and exclusions
+        shell: powershell
+        run: |
+          $root = Join-Path $PWD 'release\Pharmagrowth Stock Control'
+          $required = @(
+            '00 - START HERE - INSTALLATION GUIDE.txt',
+            '01 - INSTALL SERVER.bat',
+            '02 - START SERVER.bat',
+            '03 - STOP SERVER.bat',
+            '04 - SERVER STATUS.bat',
+            'CLIENT DEPLOYMENT',
+            'Administration & Recovery',
+            'Documentation',
+            'System'
+          )
+          foreach ($item in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root $item))) {
+              throw "Missing package item: $item"
+            }
+          }
+
+          $unexpectedExe = Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.exe'
+          if ($unexpectedExe) {
+            throw "Unexpected EXE in commercial package: $($unexpectedExe.FullName -join ', ')"
+          }
+
+          $forbidden = @(
+            'BUILD_WINDOWS_INSTALLERS.bat',
+            'Build-Installers.ps1',
+            'Build-ClientInstaller.ps1',
+            'Self-Extracting-Package.ps1'
+          )
+          foreach ($name in $forbidden) {
+            $found = Get-ChildItem -LiteralPath $root -Recurse -File -Filter $name
+            if ($found) { throw "Obsolete installer tooling leaked into package: $name" }
+          }
+
+          $serverSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_SERVER_SETUP_WINDOWS.bat') -Raw
+          if ($serverSetup -match 'Build-ClientInstaller|ESC Client Setup\.exe') {
+            throw 'Server setup still references client EXE creation.'
+          }
+
+          $clientSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_CLIENT_SETUP_WINDOWS.bat') -Raw
+          if ($clientSetup -notmatch '--ssl-revoke-best-effort') {
+            throw 'Client setup is missing the validated Schannel revocation fallback.'
+          }
+
+          $zip = Join-Path $PWD 'release\Pharmagrowth-Stock-Control-Commercial-Package.zip'
+          if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) { throw 'Commercial ZIP was not created.' }
+          Get-Item -LiteralPath $zip | Select-Object Name, Length
+
+      - name: Upload commercial package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pharmagrowth-stock-control-commercial-package
+          path: release/Pharmagrowth-Stock-Control-Commercial-Package.zip
+          if-no-files-found: error
+          retention-days: 14
