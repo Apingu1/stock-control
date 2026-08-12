@@ -16,7 +16,9 @@ Documentation\
 System\
 ```
 
-`System` contains the controlled application/runtime files. IT should use the numbered top-level launchers for normal installation and operation rather than running files directly from `System`.
+`System` contains the controlled server runtime. IT should use the numbered top-level launchers rather than running files directly from `System`.
+
+The commercial package may be stored in an approved Windows shared folder. The live application/database are still installed locally under `C:\ProgramData\Eaststone\StockControl` and the Docker/PostgreSQL volume; they do not run from the shared folder.
 
 The release package does **not** use or create self-extracting server/client EXEs.
 
@@ -33,11 +35,11 @@ The host should be an always-on Windows computer on the company network. It requ
 
 ## C. Install the server
 
-1. Extract the complete commercial package to a local folder.
-2. Start Docker Desktop and wait until the engine is running.
-3. Right-click `01 - INSTALL SERVER.bat` and select **Run as administrator**.
+1. Extract the complete commercial package. It may be placed in the approved shared folder used for client distribution.
+2. On the server computer, start Docker Desktop and wait until the engine is running.
+3. Run `01 - INSTALL SERVER.bat` as Administrator.
 4. Allow the Windows UAC prompt.
-5. Leave the installation window open until completion.
+5. Leave the installation window open until the server completes **and** the client deployment is verified.
 
 The launcher copies the controlled server files into:
 
@@ -45,17 +47,18 @@ The launcher copies the controlled server files into:
 C:\ProgramData\Eaststone\StockControl
 ```
 
-and then runs the tested server setup from that local installation path.
+The setup validates Docker, starts the PostgreSQL/FastAPI/Nginx stack, applies the database schema, configures HTTPS, installs the server trusted CA, configures hostname/firewall, registers maintenance tasks, creates shortcuts, creates the initial backup and executes IQ checks.
 
-The setup automatically validates Docker, creates or retains secure configuration, starts the PostgreSQL/FastAPI/Nginx stack, applies the database schema, configures HTTPS, installs the trusted public CA on the server, configures the hostname and firewall, registers maintenance tasks, creates shortcuts, creates the initial backup and executes IQ checks.
+The installer then publishes the completed client configuration back into the same package-level `CLIENT DEPLOYMENT` folder. It does not delete/recreate that shared folder.
 
 ## D. Client deployment
 
-The commercial ZIP already contains the BAT-based client setup:
+The commercial ZIP already contains the complete BAT-based client controls:
 
 ```text
 CLIENT DEPLOYMENT\
     01 - INSTALL CLIENT.bat
+    02 - UNINSTALL CLIENT.bat
     Configure-Hosts.ps1
     client-config.ini
     README.txt
@@ -63,23 +66,27 @@ CLIENT DEPLOYMENT\
 
 Before server installation, `SERVER_IP` is intentionally blank and `stock-control-ca.crt` is not present yet.
 
-Server installation does **not** build a client EXE or create a second installer. It only finalises this existing folder by:
+Server installation does **not** build a client EXE. It finalises the same folder by:
 
 1. writing the actual server hostname/IP into `client-config.ini`;
-2. copying the generated public CA certificate into `stock-control-ca.crt`.
+2. copying the generated public CA certificate into `stock-control-ca.crt`;
+3. verifying that the published `SERVER_IP` is populated and that all required client files exist.
 
 After successful server installation:
 
 ```text
 CLIENT DEPLOYMENT\
     01 - INSTALL CLIENT.bat
+    02 - UNINSTALL CLIENT.bat
     Configure-Hosts.ps1
     client-config.ini
     stock-control-ca.crt
     README.txt
 ```
 
-Copy the complete folder to each client computer and run `01 - INSTALL CLIENT.bat` as Administrator.
+On each client computer, browse directly to this same approved shared/network folder and run `01 - INSTALL CLIENT.bat` as Administrator. Copying the folder locally is optional rather than required. The client installer stages the required files into `%TEMP%` before UAC elevation, matching the previous proven working deployment behaviour.
+
+To remove a client computer's Stock Control configuration, run `02 - UNINSTALL CLIENT.bat` as Administrator. It removes only that client's shortcut, hosts mapping, trusted client CA and `HKLM\SOFTWARE\Eaststone\StockControlClient` registration. It does not remove the server, database, stock data or shared package.
 
 ## E. Initial login and IQ
 
@@ -118,13 +125,22 @@ Do not use `docker compose down -v` during routine operation because `-v` destro
 
 ## G. Administration and uninstall
 
-`Administration & Recovery` contains the administrator-only controls. The commercial package contains exactly one supported uninstall BAT:
+`Administration & Recovery` contains the server administrator controls:
 
 ```text
+01 - BACKUP AND RESTORE.bat
 02 - COMPLETE UNINSTALL.bat
 ```
 
-There is no second `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
+`02 - COMPLETE UNINSTALL.bat` is the one supported **server** uninstall control. There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
+
+This is intentionally separate from:
+
+```text
+CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat
+```
+
+which removes only one client computer's local configuration.
 
 ## H. Building the commercial release package
 
