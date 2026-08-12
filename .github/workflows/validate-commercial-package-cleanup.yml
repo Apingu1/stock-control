@@ -80,6 +80,7 @@ jobs:
           $clientRoot = Join-Path $root 'CLIENT DEPLOYMENT'
           $clientRequired = @(
             '01 - INSTALL CLIENT.bat',
+            '02 - UNINSTALL CLIENT.bat',
             'Configure-Hosts.ps1',
             'client-config.ini',
             'README.txt'
@@ -89,10 +90,23 @@ jobs:
               throw "Pre-supplied CLIENT DEPLOYMENT is missing: $name"
             }
           }
+
           $clientSetup = Get-Content -LiteralPath (Join-Path $clientRoot '01 - INSTALL CLIENT.bat') -Raw
           if ($clientSetup -notmatch '--ssl-revoke-best-effort') {
             throw 'Client setup is missing the validated Schannel revocation fallback.'
           }
+          if ($clientSetup -notmatch 'SELF_NAME') {
+            throw 'Client setup must support its commercial renamed filename during UAC staging.'
+          }
+
+          $clientUninstall = Get-Content -LiteralPath (Join-Path $clientRoot '02 - UNINSTALL CLIENT.bat') -Raw
+          if ($clientUninstall -notmatch 'StockControlClient') {
+            throw 'Client uninstall is not removing the client registration.'
+          }
+          if ($clientUninstall -match 'docker compose|stock-control-prodtest-db-data') {
+            throw 'Client uninstall must never contain server/database removal logic.'
+          }
+
           $clientConfig = Get-Content -LiteralPath (Join-Path $clientRoot 'client-config.ini') -Raw
           if ($clientConfig -notmatch '(?m)^SERVER_IP=\r?$') {
             throw 'Fresh commercial artifact must ship with an unpopulated SERVER_IP before server installation.'
@@ -101,32 +115,45 @@ jobs:
             throw 'Fresh commercial artifact must not contain a server-specific CA certificate before installation.'
           }
 
-          foreach ($duplicate in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WINDOWS.bat')) {
+          foreach ($duplicate in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WINDOWS.bat', '02 - UNINSTALL CLIENT.bat')) {
             if (Test-Path -LiteralPath (Join-Path $root "System\$duplicate")) {
               throw "Duplicate customer control leaked into System: $duplicate"
             }
           }
 
           $uninstallFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*UNINSTALL*.bat')
-          if ($uninstallFiles.Count -ne 1) {
-            throw "Expected exactly one uninstall BAT in the entire commercial package; found $($uninstallFiles.Count)."
+          if ($uninstallFiles.Count -ne 2) {
+            throw "Expected exactly two uninstall BATs: one server complete uninstall and one client uninstall; found $($uninstallFiles.Count)."
           }
-          $expectedUninstall = Join-Path $root 'Administration & Recovery\02 - COMPLETE UNINSTALL.bat'
-          if ($uninstallFiles[0].FullName -ne $expectedUninstall) {
-            throw "Unexpected uninstall BAT location: $($uninstallFiles[0].FullName)"
+          $expectedServerUninstall = Join-Path $root 'Administration & Recovery\02 - COMPLETE UNINSTALL.bat'
+          $expectedClientUninstall = Join-Path $root 'CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat'
+          if (-not (Test-Path -LiteralPath $expectedServerUninstall -PathType Leaf)) {
+            throw 'Server complete uninstall is missing.'
+          }
+          if (-not (Test-Path -LiteralPath $expectedClientUninstall -PathType Leaf)) {
+            throw 'Client uninstall is missing.'
           }
 
           $serverSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_SERVER_SETUP_WINDOWS.bat') -Raw
           if ($serverSetup -match 'Build-ClientInstaller|ESC Client Setup\.exe') {
             throw 'Server setup still references obsolete client EXE creation.'
           }
-          if ($serverSetup -notmatch '01 - INSTALL CLIENT\.bat') {
-            throw 'Server setup is not validating the pre-supplied BAT-based client deployment.'
+          if ($serverSetup -notmatch '01 - INSTALL CLIENT\.bat' -or $serverSetup -notmatch '02 - UNINSTALL CLIENT\.bat') {
+            throw 'Server setup is not validating the complete BAT-based client deployment.'
+          }
+          if ($serverSetup -notmatch 'stock-control-ca\.crt' -or $serverSetup -notmatch 'SERVER_IP=') {
+            throw 'Server setup is not finalising the client CA and server address.'
           }
 
           $commercialInstaller = Get-Content -LiteralPath (Join-Path $root '01 - INSTALL SERVER.bat') -Raw
           if ($commercialInstaller -notmatch 'CLIENT DEPLOYMENT') {
-            throw 'Commercial server installer is not staging the pre-supplied CLIENT DEPLOYMENT folder.'
+            throw 'Commercial server installer is not using the shared CLIENT DEPLOYMENT folder.'
+          }
+          if ($commercialInstaller -notmatch 'PUBLISHED_SERVER_IP') {
+            throw 'Commercial server installer is not verifying the published shared client configuration.'
+          }
+          if ($commercialInstaller -match 'rmdir /s /q "%PACKAGE_ROOT%CLIENT DEPLOYMENT"') {
+            throw 'Commercial installer must not delete/recreate the shared CLIENT DEPLOYMENT folder.'
           }
 
           $badShellScripts = @()
@@ -162,8 +189,10 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $stagedRoot '01 - INSTALL SERVER.bat'))) {
             throw 'Single-extract artifact staging is missing the clean package root.'
           }
-          if (-not (Test-Path -LiteralPath (Join-Path $stagedRoot 'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat'))) {
-            throw 'Single-extract artifact is missing the pre-supplied client installer.'
+          foreach ($clientFile in @('01 - INSTALL CLIENT.bat','02 - UNINSTALL CLIENT.bat','Configure-Hosts.ps1','client-config.ini','README.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $stagedRoot "CLIENT DEPLOYMENT\$clientFile"))) {
+              throw "Single-extract artifact is missing CLIENT DEPLOYMENT\$clientFile"
+            }
           }
           if (Get-ChildItem -LiteralPath $staging -File -Filter '*.zip') {
             throw 'Nested ZIP detected in artifact staging.'
