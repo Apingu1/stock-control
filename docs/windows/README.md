@@ -1,12 +1,46 @@
 # Eaststone Stock Control — Windows Deployment Documents
 
-Use this index for the commercial Windows server/client deployment.
+Use this index for the commercial Windows server/client deployment supplied by **Pharmagrowth Consulting Ltd**.
 
 ## Start here
 
-1. [Deployment Overview](DEPLOYMENT_OVERVIEW.md)
+1. [IT Installation Guide](IT_INSTALLATION_GUIDE.txt)
 2. [Automatic Installation — Recommended](AUTOMATIC_INSTALLATION.md)
-3. [Installation Qualification Protocol and Report](INSTALLATION_QUALIFICATION_REPORT.md)
+3. [Deployment Overview](DEPLOYMENT_OVERVIEW.md)
+4. [Installation Qualification Protocol and Report](INSTALLATION_QUALIFICATION_REPORT.md)
+
+## Commercial package layout
+
+The customer-facing release package is intentionally simplified:
+
+```text
+00 - START HERE - INSTALLATION GUIDE.txt
+01 - INSTALL SERVER.bat
+02 - START SERVER.bat
+03 - STOP SERVER.bat
+04 - SERVER STATUS.bat
+CLIENT DEPLOYMENT\
+Administration & Recovery\
+Documentation\
+System\
+```
+
+The `System` folder contains the controlled technical runtime. IT should normally use only the numbered top-level launchers.
+
+The supported package no longer builds or distributes unsigned self-extracting installer EXEs. The working deployment method is the server BAT launcher plus the generated `CLIENT DEPLOYMENT` folder.
+
+## Client deployment
+
+A successful server installation creates:
+
+```text
+ESC_CLIENT_SETUP_WINDOWS.bat
+Configure-Hosts.ps1
+client-config.ini
+stock-control-ca.crt
+```
+
+These files are copied into the release package's `CLIENT DEPLOYMENT` folder. Copy the whole folder to each client computer and run `ESC_CLIENT_SETUP_WINDOWS.bat` as Administrator.
 
 ## Manual fallback
 
@@ -20,36 +54,30 @@ Use this index for the commercial Windows server/client deployment.
 - [Backup and Restore Operating Guide](BACKUP_AND_RESTORE.md)
 - [Certificate Lifecycle and Renewal](CERTIFICATE_LIFECYCLE.md)
 
-## Supplied Windows controls
+## Internal Windows controls
+
+The installed runtime under `C:\ProgramData\Eaststone\StockControl` retains the internal controls required by the numbered release launchers and maintenance tasks, including:
 
 ```text
-ESC_SERVER_SETUP_WINDOWS.bat      recommended elevated server setup source launcher
-ESC_CLIENT_SETUP_WINDOWS.bat      elevated client setup source launcher
-ESC_BACKUP_RESTORE_WINDOWS.bat    backup/restore launcher
-INSTALL_WINDOWS.bat               base application/database installer
-ENABLE_HTTPS_WINDOWS.bat          HTTPS setup/renewal helper
-START_WINDOWS.bat                 start and automatic recovery
-STOP_WINDOWS.bat                  controlled stop preserving data
-STATUS_WINDOWS.bat                operational status and diagnostics
-RESET_ADMIN_PASSWORD_WINDOWS.bat  controlled bootstrap password reset
-UNINSTALL_WINDOWS.bat             complete destructive uninstall
-BUILD_WINDOWS_INSTALLERS.bat      builds distributable Windows executables
+ESC_SERVER_SETUP_WINDOWS.bat
+ESC_CLIENT_SETUP_WINDOWS.bat
+ESC_BACKUP_RESTORE_WINDOWS.bat
+INSTALL_WINDOWS.bat
+ENABLE_HTTPS_WINDOWS.bat
+START_WINDOWS.bat
+STOP_WINDOWS.bat
+STATUS_WINDOWS.bat
+UNINSTALL_WINDOWS.bat
 ```
 
-Built release executables:
+Release personnel can generate the clean customer-facing ZIP with:
 
 ```text
-ESC Server Setup.exe
-ESC Uninstall.exe
-ESC Backup and Restore Tool.exe
+BUILD_COMMERCIAL_PACKAGE.bat
 ```
 
-The installed server generates its own customer-specific:
-
-```text
-ESC Client Setup.exe
-```
+This packaging step copies controlled files only and does not compile executable installer wrappers.
 
 ## Validation note
 
-The installer-generated IQ report is objective installation evidence. It does not replace the organisation’s full validation lifecycle, including approved URS, risk assessment, configuration specification, OQ/PQ/UAT, backup/restore challenge, security assessment, SOPs, training and change control.
+The installer-generated IQ report is objective installation evidence. It does not replace the organisation's full validation lifecycle, including approved URS, risk assessment, configuration specification, OQ/PQ/UAT, backup/restore challenge, security assessment, SOPs, training and change control.
