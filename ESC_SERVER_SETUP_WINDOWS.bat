@@ -68,8 +68,12 @@ if errorlevel 1 (
 if not exist "deployment" mkdir "deployment"
 if not exist "deployment-records" mkdir "deployment-records"
 if not exist "logs" mkdir "logs"
-if not exist "client-deployment" mkdir "client-deployment"
-if exist "client-deployment\ESC Client Setup.exe" del /f /q "client-deployment\ESC Client Setup.exe" >nul 2>&1
+if not exist "client-deployment" goto :client_template_failed
+if not exist "client-deployment\01 - INSTALL CLIENT.bat" goto :client_template_failed
+if not exist "client-deployment\Configure-Hosts.ps1" goto :client_template_failed
+if not exist "client-deployment\client-config.ini" goto :client_template_failed
+del /f /q "client-deployment\ESC Client Setup.exe" >nul 2>&1
+del /f /q "client-deployment\ESC_CLIENT_SETUP_WINDOWS.bat" >nul 2>&1
 
 echo Running controlled application and database installation...
 call "INSTALL_WINDOWS.bat" --quiet
@@ -106,10 +110,9 @@ echo Registering automatic certificate renewal, health monitoring and daily back
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Register-MaintenanceTasks.ps1" -InstallRoot "%INSTALL_ROOT%"
 if errorlevel 1 goto :tasks_failed
 
-echo Creating the customer-specific client deployment folder...
+echo Finalising the pre-supplied client deployment folder...
 copy /Y "infra\certs\stock-control-ca.crt" "client-deployment\stock-control-ca.crt" >nul
-copy /Y "ESC_CLIENT_SETUP_WINDOWS.bat" "client-deployment\ESC_CLIENT_SETUP_WINDOWS.bat" >nul
-copy /Y "windows\Configure-Hosts.ps1" "client-deployment\Configure-Hosts.ps1" >nul
+if errorlevel 1 goto :client_template_failed
 (
   echo TLS_HOSTNAME=%TLS_HOSTNAME%
   echo SERVER_IP=%SERVER_IP%
@@ -155,6 +158,10 @@ echo ERROR: Docker Desktop did not become ready.
 goto :failed
 :configuration_failed
 echo ERROR: Server address configuration is incomplete or invalid.
+goto :failed
+:client_template_failed
+echo ERROR: The pre-supplied CLIENT DEPLOYMENT files are missing or incomplete.
+echo Re-run the commercial 01 - INSTALL SERVER.bat from the complete package.
 goto :failed
 :base_install_failed
 echo ERROR: Base Stock Control installation failed.
