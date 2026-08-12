@@ -1,0 +1,117 @@
+PHARMAGROWTH STOCK CONTROL
+COMMERCIAL WINDOWS INSTALLATION GUIDE
+Publisher / Supplier: Pharmagrowth Consulting Ltd
+
+============================================================
+1. PACKAGE CONTENTS
+============================================================
+
+The commercial package is intentionally simplified. At the top level IT should see:
+
+00 - START HERE - INSTALLATION GUIDE.txt
+01 - INSTALL SERVER.bat
+02 - START SERVER.bat
+03 - STOP SERVER.bat
+04 - SERVER STATUS.bat
+CLIENT DEPLOYMENT\
+Administration & Recovery\
+Documentation\
+System\
+
+The System folder contains the application files required by the installer. IT should not run files directly from System during a normal installation.
+
+No self-extracting server or client EXE is required. The validated installation path uses the supplied BAT launchers. This avoids the unsigned self-extracting executables that endpoint protection products may quarantine.
+
+============================================================
+2. SERVER PREREQUISITES
+============================================================
+
+- Windows 10/11 Pro or another approved Windows host environment.
+- Docker Desktop installed and configured for Linux containers.
+- Docker Desktop running before installation.
+- Administrator access.
+- Stable private LAN IPv4 address or DHCP reservation.
+- TCP 8443 permitted between client computers and the server.
+- TCP 8088 may be retained for local diagnostics if approved.
+
+Do not run the live database/application from a mapped network drive. The commercial launcher copies the controlled application files to:
+
+C:\ProgramData\Eaststone\StockControl
+
+before starting the server installation.
+
+============================================================
+3. INSTALL THE SERVER
+============================================================
+
+1. Extract the complete Pharmagrowth Stock Control package to a local folder.
+2. Start Docker Desktop and wait until Docker is running.
+3. Right-click "01 - INSTALL SERVER.bat" and select "Run as administrator".
+4. Accept the Windows UAC prompt.
+5. The installer will copy the controlled application files to C:\ProgramData\Eaststone\StockControl.
+6. Confirm the server's private LAN IPv4 address if automatic detection cannot determine it.
+   Typical private addresses begin 10.x.x.x, 172.16-31.x.x or 192.168.x.x.
+7. Leave the installer window open until "Server setup completed" is displayed.
+8. Open https://stock-control.test:8443/.
+9. Initial login: admin / Admin123!
+10. Change the administrator password immediately.
+11. Review the generated IQ report before approving the installation:
+
+C:\ProgramData\Eaststone\StockControl\deployment-records\ESC-IQ-Execution-Latest.html
+
+The server setup configures the database, application, HTTPS certificate, trusted private CA, local hostname, firewall rules, scheduled health monitoring, certificate renewal, daily backup and application shortcuts.
+
+============================================================
+4. CLIENT DEPLOYMENT
+============================================================
+
+After a successful server installation, "01 - INSTALL SERVER.bat" refreshes the package's CLIENT DEPLOYMENT folder using the server-specific files created during installation.
+
+The generated CLIENT DEPLOYMENT folder contains:
+
+ESC_CLIENT_SETUP_WINDOWS.bat
+Configure-Hosts.ps1
+client-config.ini
+stock-control-ca.crt
+
+No client EXE is created or required.
+
+To configure another Windows computer:
+
+1. Copy the COMPLETE CLIENT DEPLOYMENT folder to the client computer.
+2. Confirm the client computer can reach the server on the company network.
+3. Right-click ESC_CLIENT_SETUP_WINDOWS.bat and select "Run as administrator".
+4. Accept UAC.
+5. The client setup imports the public Stock Control CA, maps stock-control.test to the server LAN IP, creates the application shortcut and verifies HTTPS access.
+6. Open the Eaststone Stock Control shortcut.
+7. Log in using that user's individual Stock Control account.
+
+Never copy server private keys to a client. Only stock-control-ca.crt is distributed.
+
+============================================================
+5. NORMAL SERVER CONTROLS
+============================================================
+
+Use only the top-level controls during routine operation:
+
+02 - START SERVER.bat
+03 - STOP SERVER.bat
+04 - SERVER STATUS.bat
+
+The controlled stop preserves the PostgreSQL data volume. Do not use "docker compose down -v" during routine operation because -v destroys the database volume.
+
+============================================================
+6. ADMINISTRATION AND RECOVERY
+============================================================
+
+Backup/restore and complete uninstall are intentionally one level down under:
+
+Administration & Recovery\
+
+These are administrator functions rather than routine operator controls. Complete uninstall is destructive and requires explicit confirmation before data removal.
+
+============================================================
+7. VALIDATION / RELEASE
+============================================================
+
+Before production use, review the IQ evidence and execute the approved release acceptance / validation activities. The automated IQ report supports installation evidence but does not replace URS, risk assessment, OQ/PQ/UAT, security review, backup/restore challenge, SOPs, training and change control.
