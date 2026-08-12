@@ -11,8 +11,6 @@ Use this index for the commercial Windows server/client deployment supplied by *
 
 ## Commercial package layout
 
-The customer-facing release package is intentionally simplified:
-
 ```text
 00 - START HERE - INSTALLATION GUIDE.txt
 01 - INSTALL SERVER.bat
@@ -25,22 +23,33 @@ Documentation\
 System\
 ```
 
-The `System` folder contains the controlled technical runtime. IT should normally use only the numbered top-level launchers.
-
-The supported package no longer builds or distributes unsigned self-extracting installer EXEs. The working deployment method is the server BAT launcher plus the generated `CLIENT DEPLOYMENT` folder.
+The supported package does not build or distribute unsigned self-extracting installer EXEs.
 
 ## Client deployment
 
-A successful server installation creates:
+The commercial ZIP already contains:
 
 ```text
-ESC_CLIENT_SETUP_WINDOWS.bat
-Configure-Hosts.ps1
-client-config.ini
-stock-control-ca.crt
+CLIENT DEPLOYMENT\
+    01 - INSTALL CLIENT.bat
+    Configure-Hosts.ps1
+    client-config.ini
+    README.txt
 ```
 
-These files are copied into the release package's `CLIENT DEPLOYMENT` folder. Copy the whole folder to each client computer and run `ESC_CLIENT_SETUP_WINDOWS.bat` as Administrator.
+Server installation only adds the server-specific public CA certificate and updates `client-config.ini` with the actual server address. It does not build or create a client EXE.
+
+After server installation, copy the whole `CLIENT DEPLOYMENT` folder to each client computer and run `01 - INSTALL CLIENT.bat` as Administrator.
+
+## Administration and recovery
+
+The commercial package contains one supported uninstall control only:
+
+```text
+Administration & Recovery\02 - COMPLETE UNINSTALL.bat
+```
+
+There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
 
 ## Manual fallback
 
@@ -54,20 +63,19 @@ These files are copied into the release package's `CLIENT DEPLOYMENT` folder. Co
 - [Backup and Restore Operating Guide](BACKUP_AND_RESTORE.md)
 - [Certificate Lifecycle and Renewal](CERTIFICATE_LIFECYCLE.md)
 
-## Internal Windows controls
+## Internal server controls
 
-The installed runtime under `C:\ProgramData\Eaststone\StockControl` retains the internal controls required by the numbered release launchers and maintenance tasks, including:
+The installed server runtime under `C:\ProgramData\Eaststone\StockControl` retains only the server controls required for installation, operation and maintenance, including:
 
 ```text
 ESC_SERVER_SETUP_WINDOWS.bat
-ESC_CLIENT_SETUP_WINDOWS.bat
 ESC_BACKUP_RESTORE_WINDOWS.bat
 INSTALL_WINDOWS.bat
 ENABLE_HTTPS_WINDOWS.bat
 START_WINDOWS.bat
 STOP_WINDOWS.bat
 STATUS_WINDOWS.bat
-UNINSTALL_WINDOWS.bat
+RESET_ADMIN_PASSWORD_WINDOWS.bat
 ```
 
 Release personnel can generate the clean customer-facing ZIP with:
@@ -75,8 +83,6 @@ Release personnel can generate the clean customer-facing ZIP with:
 ```text
 BUILD_COMMERCIAL_PACKAGE.bat
 ```
-
-This packaging step copies controlled files only and does not compile executable installer wrappers.
 
 ## Validation note
 
