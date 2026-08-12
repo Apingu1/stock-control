@@ -117,14 +117,30 @@ Use only the top-level controls during routine operation:
 The controlled stop preserves the PostgreSQL data volume. Do not use "docker compose down -v" during routine operation because -v destroys the database volume.
 
 ============================================================
-6. ADMINISTRATION AND RECOVERY
+6. ADMINISTRATION, RECOVERY AND COMPLETE UNINSTALL
 ============================================================
 
 Backup/restore and complete uninstall are intentionally one level down under:
 
 Administration & Recovery\
 
-These are administrator functions rather than routine operator controls. Complete uninstall is destructive and requires explicit confirmation before data removal.
+These are administrator functions rather than routine operator controls.
+
+A complete uninstall distinguishes between two separate folders:
+
+Installed application:
+C:\ProgramData\Eaststone\StockControl
+
+Extracted commercial installation package:
+The local "Pharmagrowth Stock Control" folder from which 01 - INSTALL SERVER.bat and the other top-level controls are run.
+
+During uninstall, the installed uninstaller requires explicit confirmations before destroying the PostgreSQL data volume and generated application data. Its DELETE FOLDER confirmation applies to the installed application folder under C:\ProgramData\Eaststone\StockControl.
+
+After the installed application uninstall completes, the commercial wrapper separately offers to remove the local extracted commercial package. To remove that local package the administrator must explicitly type:
+
+DELETE PACKAGE
+
+The package cleanup is intentionally separate so an IT distribution copy is not mistaken for the installed application. If the commercial package is being run from a UNC path or mapped/shared drive, it is retained automatically and must be removed manually by authorised IT if required.
 
 ============================================================
 7. VALIDATION / RELEASE
