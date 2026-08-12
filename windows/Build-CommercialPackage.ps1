@@ -57,10 +57,22 @@ Copy-RequiredFile (Join-Path $templatesDir 'install-server.bat') (Join-Path $Out
 Copy-RequiredFile (Join-Path $templatesDir 'start-server.bat') (Join-Path $OutputDirectory '02 - START SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'stop-server.bat') (Join-Path $OutputDirectory '03 - STOP SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'server-status.bat') (Join-Path $OutputDirectory '04 - SERVER STATUS.bat')
-Copy-RequiredFile (Join-Path $templatesDir 'client-deployment-readme.txt') (Join-Path $clientDir 'README - GENERATED AFTER SERVER INSTALL.txt')
+
+# The BAT-based client deployment is present in the commercial ZIP from the
+# beginning. Server installation only injects the customer-specific server IP
+# and public CA certificate; it does not build or create a client EXE.
+Copy-RequiredFile (Join-Path $RepositoryRoot 'ESC_CLIENT_SETUP_WINDOWS.bat') (Join-Path $clientDir '01 - INSTALL CLIENT.bat')
+Copy-RequiredFile (Join-Path $RepositoryRoot 'windows\Configure-Hosts.ps1') (Join-Path $clientDir 'Configure-Hosts.ps1')
+Copy-RequiredFile (Join-Path $templatesDir 'client-deployment-readme.txt') (Join-Path $clientDir 'README.txt')
+Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding ascii -Value @(
+    'TLS_HOSTNAME=stock-control.test',
+    'SERVER_IP=',
+    'APP_HTTPS_PORT=8443'
+)
 
 # Administration is deliberately one level down so destructive/recovery tools
-# are not presented alongside routine start/stop controls.
+# are not presented alongside routine start/stop controls. There is exactly one
+# uninstall BAT in the commercial package: 02 - COMPLETE UNINSTALL.bat.
 Copy-RequiredFile (Join-Path $templatesDir 'backup-restore.bat') (Join-Path $adminDir '01 - BACKUP AND RESTORE.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'uninstall.bat') (Join-Path $adminDir '02 - COMPLETE UNINSTALL.bat')
 Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Value @(
@@ -68,6 +80,7 @@ Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Val
     '',
     'These controls are not required for routine operation.',
     'Backup/restore should be used only by authorised administrators.',
+    '02 - COMPLETE UNINSTALL.bat is the only supported uninstall control.',
     'Complete uninstall is destructive and requires explicit confirmation.'
 )
 
@@ -85,12 +98,21 @@ foreach ($directory in $runtimeDirectories) {
     Copy-Item -LiteralPath $source -Destination $systemDir -Recurse -Force
 }
 
-# Copy runtime BAT launchers/helpers from repository root, but never copy build
-# tooling into the customer-facing runtime.
-Get-ChildItem -LiteralPath $RepositoryRoot -File -Filter '*.bat' | Where-Object {
-    $_.Name -notlike 'BUILD_*'
-} | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $systemDir -Force
+# Copy only the root BAT files that are actually required by the installed
+# server runtime. Client setup and uninstall are intentionally excluded so the
+# customer package does not contain duplicate controls in System.
+$runtimeBatFiles = @(
+    'ESC_SERVER_SETUP_WINDOWS.bat',
+    'ESC_BACKUP_RESTORE_WINDOWS.bat',
+    'INSTALL_WINDOWS.bat',
+    'ENABLE_HTTPS_WINDOWS.bat',
+    'START_WINDOWS.bat',
+    'STOP_WINDOWS.bat',
+    'STATUS_WINDOWS.bat',
+    'RESET_ADMIN_PASSWORD_WINDOWS.bat'
+)
+foreach ($name in $runtimeBatFiles) {
+    Copy-RequiredFile (Join-Path $RepositoryRoot $name) (Join-Path $systemDir $name)
 }
 
 # Commercial packaging/build utilities are developer tooling, not runtime.
@@ -110,8 +132,7 @@ Get-ChildItem -LiteralPath $systemDir -Directory -Recurse -Force | Where-Object 
 
 # The commercial package is assembled on Windows, but Docker executes *.sh
 # files inside Linux containers. Normalize them explicitly so a Windows checkout
-# can never introduce CRLF characters that make bash fail (for example at
-# `set -euo pipefail`).
+# can never introduce CRLF characters that make bash fail.
 Normalize-UnixShellScripts -Root $systemDir
 
 # Validate that no executable wrapper has slipped into the release package.
@@ -133,21 +154,42 @@ foreach ($name in $requiredTopLevel) {
     }
 }
 
+$requiredClientFiles = @(
+    '01 - INSTALL CLIENT.bat',
+    'Configure-Hosts.ps1',
+    'client-config.ini',
+    'README.txt'
+)
+foreach ($name in $requiredClientFiles) {
+    if (-not (Test-Path -LiteralPath (Join-Path $clientDir $name) -PathType Leaf)) {
+        throw "CLIENT DEPLOYMENT is missing required file: $name"
+    }
+}
+
 $requiredSystemFiles = @(
     'ESC_SERVER_SETUP_WINDOWS.bat',
-    'ESC_CLIENT_SETUP_WINDOWS.bat',
     'INSTALL_WINDOWS.bat',
     'ENABLE_HTTPS_WINDOWS.bat',
     'START_WINDOWS.bat',
     'STOP_WINDOWS.bat',
     'STATUS_WINDOWS.bat',
-    'UNINSTALL_WINDOWS.bat',
     'ESC_BACKUP_RESTORE_WINDOWS.bat'
 )
 foreach ($name in $requiredSystemFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $systemDir $name) -PathType Leaf)) {
         throw "Commercial System folder is missing required runtime file: $name"
     }
+}
+
+foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WINDOWS.bat')) {
+    if (Test-Path -LiteralPath (Join-Path $systemDir $forbiddenSystemFile)) {
+        throw "Duplicate customer control must not be present in System: $forbiddenSystemFile"
+    }
+}
+
+$uninstallFiles = @(Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -Filter '*UNINSTALL*.bat')
+if ($uninstallFiles.Count -ne 1 -or $uninstallFiles[0].Name -ne '02 - COMPLETE UNINSTALL.bat') {
+    throw "Commercial package must contain exactly one uninstall BAT: Administration & Recovery\02 - COMPLETE UNINSTALL.bat"
 }
 
 $bootstrapPath = Join-Path $systemDir 'db\production-bootstrap.sh'
