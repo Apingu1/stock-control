@@ -72,8 +72,6 @@ if not exist "client-deployment" goto :client_template_failed
 if not exist "client-deployment\01 - INSTALL CLIENT.bat" goto :client_template_failed
 if not exist "client-deployment\Configure-Hosts.ps1" goto :client_template_failed
 if not exist "client-deployment\client-config.ini" goto :client_template_failed
-del /f /q "client-deployment\ESC Client Setup.exe" >nul 2>&1
-del /f /q "client-deployment\ESC_CLIENT_SETUP_WINDOWS.bat" >nul 2>&1
 
 echo Running controlled application and database installation...
 call "INSTALL_WINDOWS.bat" --quiet
