@@ -70,8 +70,10 @@ if not exist "deployment-records" mkdir "deployment-records"
 if not exist "logs" mkdir "logs"
 if not exist "client-deployment" goto :client_template_failed
 if not exist "client-deployment\01 - INSTALL CLIENT.bat" goto :client_template_failed
+if not exist "client-deployment\02 - UNINSTALL CLIENT.bat" goto :client_template_failed
 if not exist "client-deployment\Configure-Hosts.ps1" goto :client_template_failed
 if not exist "client-deployment\client-config.ini" goto :client_template_failed
+if not exist "client-deployment\README.txt" goto :client_template_failed
 
 echo Running controlled application and database installation...
 call "INSTALL_WINDOWS.bat" --quiet
@@ -108,7 +110,10 @@ echo Registering automatic certificate renewal, health monitoring and daily back
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Register-MaintenanceTasks.ps1" -InstallRoot "%INSTALL_ROOT%"
 if errorlevel 1 goto :tasks_failed
 
-echo Finalising the pre-supplied client deployment folder...
+rem Match the proven working client deployment behaviour: the server setup
+rem finalises one complete BAT-based client folder with the real public CA and
+rem the real server address. No client EXE is generated.
+echo Finalising the client deployment package...
 copy /Y "infra\certs\stock-control-ca.crt" "client-deployment\stock-control-ca.crt" >nul
 if errorlevel 1 goto :client_template_failed
 (
@@ -116,6 +121,7 @@ if errorlevel 1 goto :client_template_failed
   echo SERVER_IP=%SERVER_IP%
   echo APP_HTTPS_PORT=8443
 ) > "client-deployment\client-config.ini"
+if not exist "client-deployment\stock-control-ca.crt" goto :client_template_failed
 
 echo Creating server shortcuts...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$url='https://%TLS_HOSTNAME%:8443/';$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($spec in @(@('Eaststone Stock Control',$url),@('ESC Backup and Restore','%INSTALL_ROOT%\ESC_BACKUP_RESTORE_WINDOWS.bat'),@('ESC Status','%INSTALL_ROOT%\STATUS_WINDOWS.bat'))){foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir ($spec[0]+'.lnk')));if($spec[1] -like 'https:*'){$s.TargetPath=$edge;$s.Arguments='--app='+$spec[1]}else{$s.TargetPath=$spec[1]};$s.WorkingDirectory='%INSTALL_ROOT%';$s.Description=$spec[0];$s.Save()}}}"
@@ -158,8 +164,8 @@ goto :failed
 echo ERROR: Server address configuration is incomplete or invalid.
 goto :failed
 :client_template_failed
-echo ERROR: The pre-supplied CLIENT DEPLOYMENT files are missing or incomplete.
-echo Re-run the commercial 01 - INSTALL SERVER.bat from the complete package.
+echo ERROR: The client deployment package is missing or incomplete.
+echo Re-run 01 - INSTALL SERVER.bat from the complete commercial package.
 goto :failed
 :base_install_failed
 echo ERROR: Base Stock Control installation failed.
