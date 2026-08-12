@@ -20,17 +20,14 @@ if not exist "%SOURCE_ROOT%\ESC_SERVER_SETUP_WINDOWS.bat" (
   pause
   exit /b 1
 )
-if not exist "%CLIENT_SOURCE%\01 - INSTALL CLIENT.bat" (
-  echo ERROR: CLIENT DEPLOYMENT is incomplete.
-  echo The commercial package must already contain 01 - INSTALL CLIENT.bat.
-  echo Re-download the latest validated commercial package and retry.
-  pause
-  exit /b 1
-)
-if not exist "%CLIENT_SOURCE%\Configure-Hosts.ps1" (
-  echo ERROR: CLIENT DEPLOYMENT is missing Configure-Hosts.ps1.
-  pause
-  exit /b 1
+for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "README.txt") do (
+  if not exist "%CLIENT_SOURCE%\%%~F" (
+    echo ERROR: CLIENT DEPLOYMENT is incomplete.
+    echo Missing: %%~F
+    echo Re-download the latest validated commercial package and retry.
+    pause
+    exit /b 1
+  )
 )
 
 echo ============================================================
@@ -39,21 +36,22 @@ echo ============================================================
 echo.
 echo Source package: %PACKAGE_ROOT%
 echo Install folder: %INSTALL_ROOT%
+echo Client package: %CLIENT_SOURCE%
 echo.
 
 if not exist "%INSTALL_ROOT%" mkdir "%INSTALL_ROOT%"
 
 echo Copying controlled application files to the local server...
 robocopy "%SOURCE_ROOT%" "%INSTALL_ROOT%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP >nul
-set "ROBOCOPY_RC=%ERRORLEVEL%"
-if %ROBOCOPY_RC% GEQ 8 (
+set "ROBOCOPY_RC=!ERRORLEVEL!"
+if !ROBOCOPY_RC! GEQ 8 (
   echo ERROR: Application files could not be copied to %INSTALL_ROOT%.
   pause
   exit /b 1
 )
 
-rem Remove obsolete duplicate installer/uninstaller files that may remain from
-rem an older test installation. Runtime/database/configuration data are not
+rem Remove obsolete duplicate installer/uninstaller/build files that may remain
+rem from an older test installation. Runtime/database/configuration data are not
 rem touched here.
 del /f /q "%INSTALL_ROOT%\BUILD_WINDOWS_INSTALLERS.bat" >nul 2>&1
 del /f /q "%INSTALL_ROOT%\ESC_CLIENT_SETUP_WINDOWS.bat" >nul 2>&1
@@ -63,45 +61,57 @@ del /f /q "%INSTALL_ROOT%\windows\Build-ClientInstaller.ps1" >nul 2>&1
 del /f /q "%INSTALL_ROOT%\windows\Self-Extracting-Package.ps1" >nul 2>&1
 if exist "%INSTALL_ROOT%\dist" rmdir /s /q "%INSTALL_ROOT%\dist" >nul 2>&1
 
-echo Preparing the BAT-based client deployment files...
+rem Seed the installed runtime with the exact BAT-based client package supplied
+rem in the commercial folder. The server setup then adds only the server-specific
+rem CA certificate and network settings, matching the proven working deployment.
+echo Preparing the client deployment package...
 if exist "%INSTALL_ROOT%\client-deployment" rmdir /s /q "%INSTALL_ROOT%\client-deployment"
 mkdir "%INSTALL_ROOT%\client-deployment"
-robocopy "%CLIENT_SOURCE%" "%INSTALL_ROOT%\client-deployment" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP >nul
-set "CLIENT_SEED_RC=%ERRORLEVEL%"
-if %CLIENT_SEED_RC% GEQ 8 (
-  echo ERROR: Client deployment files could not be staged into the installed application.
-  pause
-  exit /b 1
+for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "README.txt") do (
+  copy /Y "%CLIENT_SOURCE%\%%~F" "%INSTALL_ROOT%\client-deployment\%%~F" >nul
+  if errorlevel 1 (
+    echo ERROR: Could not stage client file: %%~F
+    pause
+    exit /b 1
+  )
 )
 del /f /q "%INSTALL_ROOT%\client-deployment\stock-control-ca.crt" >nul 2>&1
-del /f /q "%INSTALL_ROOT%\client-deployment\ESC Client Setup.exe" >nul 2>&1
-del /f /q "%INSTALL_ROOT%\client-deployment\ESC_CLIENT_SETUP_WINDOWS.bat" >nul 2>&1
 
 echo Starting the server setup...
 pushd "%INSTALL_ROOT%"
 call "ESC_SERVER_SETUP_WINDOWS.bat"
-set "SETUP_RC=%ERRORLEVEL%"
+set "SETUP_RC=!ERRORLEVEL!"
 popd
-if not "%SETUP_RC%"=="0" (
+if not "!SETUP_RC!"=="0" (
   echo.
   echo ERROR: Server setup did not complete successfully.
   echo Review the visible setup error and the troubleshooting documentation.
   pause
-  exit /b %SETUP_RC%
+  exit /b !SETUP_RC!
 )
 
-echo Refreshing the distributable CLIENT DEPLOYMENT folder with server-specific settings...
-if exist "%INSTALL_ROOT%\client-deployment" (
-  if exist "%PACKAGE_ROOT%CLIENT DEPLOYMENT" rmdir /s /q "%PACKAGE_ROOT%CLIENT DEPLOYMENT"
-  mkdir "%PACKAGE_ROOT%CLIENT DEPLOYMENT"
-  robocopy "%INSTALL_ROOT%\client-deployment" "%PACKAGE_ROOT%CLIENT DEPLOYMENT" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP >nul
-  set "CLIENT_COPY_RC=!ERRORLEVEL!"
-  if !CLIENT_COPY_RC! GEQ 8 (
-    echo WARNING: The client deployment folder could not be copied back into the release package.
-    echo It is still available at:
-    echo   %INSTALL_ROOT%\client-deployment
-  )
+rem Publish the completed client package back into the SAME commercial folder.
+rem Do not delete/recreate the shared folder: update the six controlled files in
+rem place so a package stored in a Windows shared folder remains stable for all
+rem client computers already browsing that share.
+echo Publishing the completed CLIENT DEPLOYMENT package...
+for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "stock-control-ca.crt" "README.txt") do (
+  if not exist "%INSTALL_ROOT%\client-deployment\%%~F" goto :client_publish_failed
+  copy /Y "%INSTALL_ROOT%\client-deployment\%%~F" "%CLIENT_SOURCE%\%%~F" >nul
+  if errorlevel 1 goto :client_publish_failed
 )
+
+set "PUBLISHED_SERVER_IP="
+for /f "usebackq tokens=1,* delims==" %%A in ("%CLIENT_SOURCE%\client-config.ini") do (
+  if /I "%%A"=="SERVER_IP" set "PUBLISHED_SERVER_IP=%%B"
+)
+if not defined PUBLISHED_SERVER_IP goto :client_publish_failed
+if not exist "%CLIENT_SOURCE%\stock-control-ca.crt" goto :client_publish_failed
+if not exist "%CLIENT_SOURCE%\01 - INSTALL CLIENT.bat" goto :client_publish_failed
+if not exist "%CLIENT_SOURCE%\02 - UNINSTALL CLIENT.bat" goto :client_publish_failed
+if not exist "%CLIENT_SOURCE%\Configure-Hosts.ps1" goto :client_publish_failed
+
+echo Client deployment verified for server IP: !PUBLISHED_SERVER_IP!
 
 echo.
 echo ============================================================
@@ -109,13 +119,36 @@ echo   Server installation completed
 echo ============================================================
 echo Application: https://stock-control.test:8443/
 echo Installed files: %INSTALL_ROOT%
-echo Client deployment ready to copy: %PACKAGE_ROOT%CLIENT DEPLOYMENT
+echo Client deployment READY: %CLIENT_SOURCE%
 echo.
-echo No client EXE has been created. Copy the complete CLIENT DEPLOYMENT folder
-echo to each Windows client and run 01 - INSTALL CLIENT.bat as Administrator.
+echo The same CLIENT DEPLOYMENT folder can now be opened from each Windows
+echo client computer on the shared network folder.
+echo Run 01 - INSTALL CLIENT.bat as Administrator on each client.
+echo No client EXE is created or required.
 echo.
 echo Change the initial administrator password immediately after first login.
 echo Review the generated IQ report before approving the installation.
 echo.
 pause
 exit /b 0
+
+:client_publish_failed
+echo.
+echo ============================================================
+echo   CLIENT DEPLOYMENT PUBLISH FAILED
+echo ============================================================
+echo The Stock Control server is installed, but the shared client package was
+echo not updated successfully. Do NOT distribute the CLIENT DEPLOYMENT folder
+echo until this is corrected.
+echo.
+echo Installed completed client package:
+echo   %INSTALL_ROOT%\client-deployment
+echo.
+echo Shared package that could not be verified:
+echo   %CLIENT_SOURCE%
+echo.
+echo Check write permission to the shared package folder and retry
+echo 01 - INSTALL SERVER.bat from this same commercial package.
+echo.
+pause
+exit /b 1
