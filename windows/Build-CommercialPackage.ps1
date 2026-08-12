@@ -30,6 +30,25 @@ function Copy-RequiredFile {
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
+function Normalize-UnixShellScripts {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $shellScripts = Get-ChildItem -LiteralPath $Root -Recurse -File -Filter '*.sh'
+    foreach ($script in $shellScripts) {
+        $text = [System.IO.File]::ReadAllText($script.FullName)
+        $normalized = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+        [System.IO.File]::WriteAllText($script.FullName, $normalized, $utf8NoBom)
+
+        $bytes = [System.IO.File]::ReadAllBytes($script.FullName)
+        if ($bytes -contains 13) {
+            throw "Unix shell script still contains CR characters after normalization: $($script.FullName)"
+        }
+    }
+
+    Write-Host "Normalized $($shellScripts.Count) Unix shell script(s) to LF line endings."
+}
+
 Write-Host 'Creating clean Pharmagrowth Stock Control commercial package...'
 
 # Customer-facing top level.
@@ -89,6 +108,12 @@ Get-ChildItem -LiteralPath $systemDir -Directory -Recurse -Force | Where-Object 
     $_.Name -in @('node_modules', '__pycache__', '.pytest_cache', 'dist')
 } | Sort-Object FullName -Descending | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
+# The commercial package is assembled on Windows, but Docker executes *.sh
+# files inside Linux containers. Normalize them explicitly so a Windows checkout
+# can never introduce CRLF characters that make bash fail (for example at
+# `set -euo pipefail`).
+Normalize-UnixShellScripts -Root $systemDir
+
 # Validate that no executable wrapper has slipped into the release package.
 $executables = Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -Filter '*.exe'
 if ($executables) {
@@ -123,6 +148,15 @@ foreach ($name in $requiredSystemFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $systemDir $name) -PathType Leaf)) {
         throw "Commercial System folder is missing required runtime file: $name"
     }
+}
+
+$bootstrapPath = Join-Path $systemDir 'db\production-bootstrap.sh'
+if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) {
+    throw 'Commercial package is missing db\production-bootstrap.sh.'
+}
+$bootstrapBytes = [System.IO.File]::ReadAllBytes($bootstrapPath)
+if ($bootstrapBytes -contains 13) {
+    throw 'db\production-bootstrap.sh contains CR characters; Linux bootstrap would fail.'
 }
 
 $zipPath = Join-Path $outputParent 'Pharmagrowth-Stock-Control-Commercial-Package.zip'
