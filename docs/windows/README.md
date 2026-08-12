@@ -25,31 +25,38 @@ System\
 
 The supported package does not build or distribute unsigned self-extracting installer EXEs.
 
+The extracted commercial package may be kept in an approved Windows shared folder. The live server runtime is still copied locally to `C:\ProgramData\Eaststone\StockControl` and the PostgreSQL database remains in its local Docker volume.
+
 ## Client deployment
 
-The commercial ZIP already contains:
+The commercial ZIP already contains the complete client controls:
 
 ```text
 CLIENT DEPLOYMENT\
     01 - INSTALL CLIENT.bat
+    02 - UNINSTALL CLIENT.bat
     Configure-Hosts.ps1
     client-config.ini
     README.txt
 ```
 
-Server installation only adds the server-specific public CA certificate and updates `client-config.ini` with the actual server address. It does not build or create a client EXE.
+Before server installation, `SERVER_IP` is blank and no server-specific CA certificate is present.
 
-After server installation, copy the whole `CLIENT DEPLOYMENT` folder to each client computer and run `01 - INSTALL CLIENT.bat` as Administrator.
+Server installation finalises the same folder by adding the real server address and `stock-control-ca.crt`. The server installer verifies the published shared client package before reporting it ready. It does not build or create a client EXE.
+
+After successful server installation, client computers may browse directly to the approved shared `CLIENT DEPLOYMENT` folder and run `01 - INSTALL CLIENT.bat` as Administrator. The installer stages the required files locally before UAC elevation, matching the previous working Windows deployment behaviour.
+
+`02 - UNINSTALL CLIENT.bat` removes only the selected client computer's local Stock Control configuration. It does not affect the server, database, stock data or shared package.
 
 ## Administration and recovery
 
-The commercial package contains one supported uninstall control only:
+The one supported **server** uninstall control is:
 
 ```text
 Administration & Recovery\02 - COMPLETE UNINSTALL.bat
 ```
 
-There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
+This is separate from the client-only uninstall under `CLIENT DEPLOYMENT`. There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
 
 ## Manual fallback
 
