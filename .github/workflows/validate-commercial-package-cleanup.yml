@@ -87,6 +87,21 @@ jobs:
             throw 'Client setup is missing the validated Schannel revocation fallback.'
           }
 
+          $badShellScripts = @()
+          Get-ChildItem -LiteralPath (Join-Path $root 'System') -Recurse -File -Filter '*.sh' | ForEach-Object {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            if ($bytes -contains 13) { $badShellScripts += $_.FullName }
+          }
+          if ($badShellScripts.Count -gt 0) {
+            throw "Linux shell scripts contain CR characters: $($badShellScripts -join ', ')"
+          }
+
+          $bootstrap = Join-Path $root 'System\db\production-bootstrap.sh'
+          $bootstrapLines = [System.IO.File]::ReadAllLines($bootstrap)
+          if ($bootstrapLines.Count -lt 2 -or $bootstrapLines[1] -ne 'set -euo pipefail') {
+            throw 'production-bootstrap.sh did not retain the expected Unix-safe bootstrap header.'
+          }
+
           $zip = Join-Path $PWD 'release\Pharmagrowth-Stock-Control-Commercial-Package.zip'
           if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) { throw 'Commercial ZIP was not created.' }
           Get-Item -LiteralPath $zip | Select-Object Name, Length
