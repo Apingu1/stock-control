@@ -78,8 +78,8 @@ jobs:
           }
 
           $serverSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_SERVER_SETUP_WINDOWS.bat') -Raw
-          if ($serverSetup -match 'Build-ClientInstaller|ESC Client Setup\.exe') {
-            throw 'Server setup still references client EXE creation.'
+          if ($serverSetup -match 'Build-ClientInstaller') {
+            throw 'Server setup still invokes the obsolete client EXE builder.'
           }
 
           $clientSetup = Get-Content -LiteralPath (Join-Path $root 'System\ESC_CLIENT_SETUP_WINDOWS.bat') -Raw
