@@ -9,7 +9,7 @@ function normalizeBase(base: string): string {
 
 function getApiBase(): string {
   // Prefer explicit override if provided
-  const envBase = (import.meta as any).env?.VITE_API_BASE as string | undefined;
+  const envBase = import.meta.env?.VITE_API_BASE as string | undefined;
   if (envBase && envBase.trim().length > 0) {
     return normalizeBase(envBase.trim());
   }
@@ -47,7 +47,7 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers || {});
 
   // Only set JSON content-type if we’re sending a body and caller didn’t already set one.
-  if (!headers.has("Content-Type") && init.body !== undefined) {
+  if (!headers.has("Content-Type") && init.body !== undefined && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -55,15 +55,24 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   const res = await fetch(url, { ...init, headers });
 
   if (!res.ok) {
-    let detail = "";
+    let message = `HTTP ${res.status} ${res.statusText}`;
     try {
       const txt = await res.text();
-      detail = txt ? ` — ${txt}` : "";
+      if (txt) {
+        try {
+          const parsed = JSON.parse(txt) as { detail?: unknown; message?: unknown };
+          const detail = typeof parsed?.detail === "string" ? parsed.detail : undefined;
+          const responseMessage = typeof parsed?.message === "string" ? parsed.message : undefined;
+          message = detail || responseMessage || message;
+        } catch {
+          message = txt;
+        }
+      }
     } catch {
       // ignore
     }
-    const err = new Error(`HTTP ${res.status} ${res.statusText}${detail}`);
-    (err as any).status = res.status;
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
     throw err;
   }
 

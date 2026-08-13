@@ -65,7 +65,7 @@ Confirm before execution:
 
 ## 5. Automated IQ evidence
 
-`ESC Server Setup.exe` executes:
+`01 - INSTALL SERVER.bat` executes:
 
 ```text
 windows\Generate-IQReport.ps1
@@ -269,17 +269,17 @@ Test-NetConnection stock-control.test -Port 8443
 
 ### IQ-12 — Automatic maintenance tasks
 
-**Objective:** Verify scheduled tasks exist and are enabled.
+**Objective:** Verify Windows maintenance tasks and the configurable backup scheduler exist and are enabled.
 
 **Procedure:** Review Task Scheduler entries:
 
 ```text
 Eaststone Stock Control - Health Monitor
 Eaststone Stock Control - Certificate Renewal
-Eaststone Stock Control - Daily Backup
+Docker service: backup-scheduler
 ```
 
-**Acceptance:** Tasks exist, use approved paths/account and have expected triggers.
+**Acceptance:** Windows tasks exist and use approved paths/account/triggers. The `backup-scheduler` container is running, its state file is readable, and the configured enabled state/time/retention match the approved configuration.
 
 **Evidence/result:**  
 **Result:** PASS / FAIL  

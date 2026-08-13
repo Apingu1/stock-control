@@ -33,9 +33,15 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:-change_me}
       BACKUP_DIR: ${BACKUP_DIR:-/backups}
+      APP_STATE_DIR: /app-state
+      TZ: ${TZ:-Europe/London}
     volumes:
-      # ADDITIVE: host backups folder -> container backups folder
-      - ./../backups:/backups
+      - type: bind
+        source: ${BACKUP_HOST_PATH:-../backups}
+        target: /backups
+      - ./../runtime-state:/app-state
+      - ./../db/init:/schema/sql:ro
+      - ./../db/production-bootstrap.sh:/schema/production-bootstrap.sh:ro
     ports:
       - "8000:8000"
     healthcheck:
@@ -51,6 +57,29 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  backup-scheduler:
+    build:
+      context: ../api
+    env_file: ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      BACKUP_DIR: ${BACKUP_DIR:-/backups}
+      APP_STATE_DIR: /app-state
+      TZ: ${TZ:-Europe/London}
+    command: ["python", "-m", "app.backup_scheduler"]
+    volumes:
+      - type: bind
+        source: ${BACKUP_HOST_PATH:-../backups}
+        target: /backups
+      - ./../runtime-state:/app-state
 
   nginx:
     image: nginx:1.27-alpine

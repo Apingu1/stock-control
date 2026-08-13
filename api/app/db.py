@@ -3,38 +3,34 @@
 Phase 2 (DB Tools): dynamic dataset switching.
 
 Instead of binding SQLAlchemy to a single DB_NAME at import time, we select the
-globally active dataset per request using /backups/active_dataset.json.
+globally active dataset per request using persistent application state. Runtime
+state is separate from the adjustable backup destination so changing folders
+cannot silently switch the application back to the default database.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import threading
-from pathlib import Path
 from typing import Dict
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from .db_tool_state import safe_env, state_path
 
-DB_HOST = os.getenv("DB_HOST", "db")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_USER = os.getenv("DB_USER", "bmr")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "bmrpass")
+
+DB_HOST = safe_env("DB_HOST", "db")
+DB_PORT = safe_env("DB_PORT", "5432")
+DB_USER = safe_env("DB_USER", "bmr")
+DB_PASSWORD = safe_env("DB_PASSWORD", "bmrpass")
 
 # Default dataset if active_dataset.json is missing/invalid.
-DEFAULT_DB_NAME = os.getenv("DB_NAME", "bmr")
+DEFAULT_DB_NAME = safe_env("DB_NAME", "bmr")
 
 
-def _backup_dir_container() -> Path:
-    p = Path(os.getenv("BACKUP_DIR", "/backups")).resolve()
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def _active_dataset_path() -> Path:
-    return _backup_dir_container() / "active_dataset.json"
+def _active_dataset_path():
+    return state_path("active_dataset.json")
 
 
 def get_active_db_name() -> str:

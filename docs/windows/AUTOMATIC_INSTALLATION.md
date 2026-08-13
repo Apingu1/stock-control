@@ -47,7 +47,9 @@ The launcher copies the controlled server files into:
 C:\ProgramData\Eaststone\StockControl
 ```
 
-The setup validates Docker, starts the PostgreSQL/FastAPI/Nginx stack, applies the database schema, configures HTTPS, installs the server trusted CA, configures hostname/firewall, registers maintenance tasks, creates shortcuts, creates the initial backup and executes IQ checks.
+The setup validates Docker, starts the PostgreSQL/FastAPI/Nginx and backup-scheduler stack, applies the database schema, configures HTTPS, installs the server trusted CA, configures hostname/firewall, registers maintenance tasks, creates shortcuts, creates the initial backup and executes IQ checks.
+
+After installation, use the **ESC Backup Settings** shortcut to browse to an approved local/server/network backup folder and to set the daily backup time and retention. These settings can be changed later without reinstalling.
 
 The installer then publishes the completed client configuration back into the same package-level `CLIENT DEPLOYMENT` folder. It does not delete/recreate that shared folder.
 
@@ -128,11 +130,12 @@ Do not use `docker compose down -v` during routine operation because `-v` destro
 `Administration & Recovery` contains the server administrator controls:
 
 ```text
-01 - BACKUP AND RESTORE.bat
-02 - COMPLETE UNINSTALL.bat
+01 - BACKUP SETTINGS.bat
+02 - BACKUP AND RESTORE.bat
+03 - COMPLETE UNINSTALL.bat
 ```
 
-`02 - COMPLETE UNINSTALL.bat` is the one supported **server** uninstall control. There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
+`03 - COMPLETE UNINSTALL.bat` is the one supported **server** uninstall control. There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
 
 This is intentionally separate from:
 

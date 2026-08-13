@@ -1,6 +1,6 @@
 # Manual Server Installation — Fallback Procedure
 
-Use this procedure when `ESC Server Setup.exe` cannot complete automatically. The automatic route remains recommended because it performs the same steps consistently and records installation evidence.
+Use this procedure when `01 - INSTALL SERVER.bat` cannot complete automatically. The automatic route remains recommended because it performs the same steps consistently and records installation evidence.
 
 ## 1. Confirm prerequisites
 
@@ -224,8 +224,9 @@ Confirm in Windows Task Scheduler:
 ```text
 Eaststone Stock Control - Health Monitor
 Eaststone Stock Control - Certificate Renewal
-Eaststone Stock Control - Daily Backup
 ```
+
+Automatic database backups are provided by the always-on `backup-scheduler` Docker service rather than an interactive Windows scheduled task. Open `ESC_BACKUP_SETTINGS_WINDOWS.bat` to browse to the physical backup folder and set/change the enabled state, daily time and retention.
 
 ## 11. Create the client deployment folder
 

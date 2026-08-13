@@ -11,25 +11,22 @@ checkpoint/windows-pwa-working-2026-08-04
 Implementation/test branch:
 
 ```text
-feature/windows-commercial-deployment-and-data-enhancements
+feature/backup-restore-simplification
 ```
 
 Do not merge the implementation branch into `main` or use it on the live server until this plan has been executed, deviations resolved and approval recorded.
 
 ## 1. Source and build verification
 
-- [ ] GitHub Actions workflow `Validate Commercial Deployment` passes all jobs.
+- [ ] GitHub Actions workflow `Validate Clean Commercial Package` passes all jobs.
 - [ ] Python API compiles and imports.
 - [ ] React/TypeScript production build succeeds.
 - [ ] Shell scripts pass syntax validation.
 - [ ] Every PowerShell file passes parser validation.
 - [ ] Production Compose base and TLS configuration validate.
-- [ ] Windows packaging creates non-zero:
-  - [ ] `ESC Server Setup.exe`
-  - [ ] `ESC Uninstall.exe`
-  - [ ] `ESC Backup and Restore Tool.exe`
-- [ ] Executables are scanned by approved endpoint protection.
-- [ ] Production distribution executables are digitally signed with the supplier’s code-signing certificate. Unsigned IExpress packages are for testing only.
+- [ ] Windows packaging creates the clean `Pharmagrowth-Stock-Control-Commercial-Package.zip` artifact.
+- [ ] The package contains no unexpected EXE or obsolete installer-builder tooling.
+- [ ] PowerShell parsing, API tests/import, frontend build and Compose validation pass.
 
 ## 2. Clean local server installation
 
@@ -37,7 +34,7 @@ Use a non-production Windows computer.
 
 - [ ] Remove the previous test installation using its matching uninstaller after preserving any needed test evidence.
 - [ ] Start Docker Desktop.
-- [ ] Run `ESC Server Setup.exe` as administrator.
+- [ ] Run `01 - INSTALL SERVER.bat` as administrator.
 - [ ] Confirm installation path is `C:\ProgramData\Eaststone\StockControl`.
 - [ ] Confirm installer detects/records the correct company-network IPv4 address.
 - [ ] Confirm database initialiser completes.
@@ -55,11 +52,14 @@ Use a non-production Windows computer.
 - [ ] Task Scheduler contains:
   - [ ] Health Monitor
   - [ ] Certificate Renewal
-  - [ ] Daily Backup
-- [ ] Run each scheduled task manually once.
+- [ ] `backup-scheduler` container is running and has written its status JSON.
+- [ ] Run each Windows scheduled task manually once.
 - [ ] Review each log for successful completion.
 - [ ] Confirm health status JSON contains current HTTP/HTTPS/certificate/disk/backup data.
 - [ ] Confirm the health task repetition has no end date.
+- [ ] In the web Admin screen, change the automatic backup time, save it, refresh and confirm it persists.
+- [ ] In **ESC Backup Settings**, browse to another approved local test folder, save, and confirm manual/automatic backups use it outside the container.
+- [ ] Change the time/folder back and confirm existing backups were not deleted.
 
 ## 4. Start, stop and recovery
 
@@ -117,7 +117,8 @@ Use a non-production Windows computer.
 
 Use a second Windows test computer on the same network.
 
-- [ ] Confirm server generated `client-deployment\ESC Client Setup.exe`.
+- [ ] Confirm the package-level `CLIENT DEPLOYMENT` folder was finalised with the server IP and public CA certificate.
+- [ ] Confirm `01 - INSTALL CLIENT.bat` and `02 - UNINSTALL CLIENT.bat` remain present.
 - [ ] Confirm client package contains public CA but no `.key` files.
 - [ ] Run client setup as administrator.
 - [ ] Confirm Local Computer Trusted Root contains the Stock Control CA.
@@ -148,11 +149,15 @@ Use only a segregated test installation.
 
 - [ ] Create identifiable test data.
 - [ ] Create verified manual backup.
+- [ ] Confirm the simplified `StockControl_Manual_<date>_<time>.dump` naming does not expose/require the internal database name.
 - [ ] Confirm manifest SHA-256 matches.
 - [ ] Create additional records after backup.
-- [ ] Restore the selected backup.
+- [ ] Use the browser file selector to restore the selected physical `.dump` file.
+- [ ] Confirm only one restore confirmation is presented and no typed phrase/database name is required.
 - [ ] Confirm pre-restore safety backup is created.
-- [ ] Confirm current schema migration runs after restore.
+- [ ] Confirm restore uses a new internal recovery database and leaves the previous database available for rollback.
+- [ ] Confirm the current controlled schema bootstrap runs before the recovery database is activated.
+- [ ] Confirm an invalid/corrupt dump does not change the active database.
 - [ ] Confirm records return to the selected backup state.
 - [ ] Confirm login, permissions, audit, material numbering and customer analytics function after restore.
 - [ ] Confirm a new post-restore backup can be created.
@@ -163,13 +168,14 @@ Use only a segregated test installation.
 Use a disposable test installation.
 
 - [ ] Create test data and certificate/client setup.
-- [ ] Run `ESC Uninstall.exe`.
+- [ ] Run `Administration & Recovery\03 - COMPLETE UNINSTALL.bat`.
 - [ ] Confirm both exact destructive confirmations are required.
 - [ ] Confirm project containers, network, images and DB volume are removed.
 - [ ] Confirm scheduled tasks are removed.
 - [ ] Confirm firewall rules are removed.
 - [ ] Confirm server hosts entry and server trusted root are removed.
-- [ ] Confirm registry/shortcuts/config/backups/logs are removed as selected.
+- [ ] Confirm registry/shortcuts/config/local default backups/logs are removed as selected.
+- [ ] Confirm a configured external/network backup folder is retained.
 - [ ] Confirm Docker Desktop and unrelated Docker projects are not removed.
 
 ## 12. Regression test

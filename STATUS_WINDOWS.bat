@@ -53,11 +53,16 @@ if exist "logs\health-status.json" (
   type "logs\health-status.json"
 )
 
+if exist "runtime-state\backup_scheduler_status.json" (
+  echo.
+  echo Automatic backup scheduler:
+  type "runtime-state\backup_scheduler_status.json"
+)
+
 echo.
 echo Scheduled maintenance tasks:
 schtasks /Query /TN "Eaststone Stock Control - Health Monitor" /FO LIST 2>nul | findstr /I "TaskName Status Next Run"
 schtasks /Query /TN "Eaststone Stock Control - Certificate Renewal" /FO LIST 2>nul | findstr /I "TaskName Status Next Run"
-schtasks /Query /TN "Eaststone Stock Control - Daily Backup" /FO LIST 2>nul | findstr /I "TaskName Status Next Run"
 
 echo.
 pause

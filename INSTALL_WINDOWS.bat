@@ -44,7 +44,9 @@ if not exist ".env" (
     echo FEATURE_REQUIRE_SECOND_CHECK=false
     echo FEATURE_REQUIRE_SCAN=false
     echo BACKUP_DIR=/backups
-    echo BACKUP_DIR_LABEL=%CD%\backups-production-test
+    echo BACKUP_HOST_PATH=%CD:\=/%/Backups
+    echo APP_STATE_DIR=/app-state
+    echo BACKUP_DIR_LABEL=%CD%\Backups
     echo APP_HTTP_PORT=8088
     echo APP_HTTPS_PORT=8443
   ) > ".env"
@@ -53,7 +55,25 @@ if not exist ".env" (
   echo Existing .env file found. It will not be overwritten.
 )
 
-if not exist "backups-production-test" mkdir "backups-production-test"
+set "BACKUP_HOST_PATH="
+for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"BACKUP_HOST_PATH=" ".env" 2^>nul') do set "BACKUP_HOST_PATH=%%B"
+if not defined BACKUP_HOST_PATH (
+  if exist "backups-production-test" (
+    set "BACKUP_HOST_PATH=%CD%\backups-production-test"
+  ) else (
+    set "BACKUP_HOST_PATH=%CD%\Backups"
+  )
+  >> ".env" echo BACKUP_HOST_PATH=!BACKUP_HOST_PATH:\=/!
+)
+findstr /B /C:"APP_STATE_DIR=" ".env" >nul 2>&1 || >> ".env" echo APP_STATE_DIR=/app-state
+set "ESC_BACKUP_PATH=!BACKUP_HOST_PATH!"
+set "BACKUP_HOST_WINDOWS_PATH="
+for /f "usebackq delims=" %%P in (`powershell.exe -NoProfile -Command "$p=[Environment]::ExpandEnvironmentVariables(($env:ESC_BACKUP_PATH).Trim().Trim([char]34)); if([IO.Path]::IsPathRooted($p)){[IO.Path]::GetFullPath($p)}else{[IO.Path]::GetFullPath((Join-Path '%CD%\infra' $p))}"`) do set "BACKUP_HOST_WINDOWS_PATH=%%P"
+set "ESC_BACKUP_PATH="
+if not defined BACKUP_HOST_WINDOWS_PATH goto :backup_path_failed
+if not exist "!BACKUP_HOST_WINDOWS_PATH!" mkdir "!BACKUP_HOST_WINDOWS_PATH!"
+if not exist "!BACKUP_HOST_WINDOWS_PATH!" goto :backup_path_failed
+if not exist "runtime-state" mkdir "runtime-state"
 set "APP_HTTP_PORT=8088"
 for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"APP_HTTP_PORT=" ".env" 2^>nul') do set "APP_HTTP_PORT=%%B"
 
@@ -130,6 +150,10 @@ echo Start Docker Desktop and wait until it reports that Docker is running.
 goto :failed
 :secret_failed
 echo ERROR: Secure secrets could not be generated through Docker.
+goto :failed
+:backup_path_failed
+echo ERROR: The configured backup folder could not be resolved or created.
+echo Review BACKUP_HOST_PATH in .env, then retry.
 goto :failed
 :config_failed
 echo ERROR: Docker Compose configuration validation failed.

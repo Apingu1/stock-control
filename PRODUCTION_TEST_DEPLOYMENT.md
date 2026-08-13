@@ -19,7 +19,8 @@ The production test uses:
 
 - Compose project: `stock-control-prodtest`
 - Database volume: `stock-control-prodtest-db-data`
-- Backups folder: `backups-production-test`
+- Backups folder: configurable `BACKUP_HOST_PATH` (`Backups` by default)
+- Runtime state folder: `runtime-state`
 - HTTP port: `8088` by default
 - HTTPS port: `8443` by default
 

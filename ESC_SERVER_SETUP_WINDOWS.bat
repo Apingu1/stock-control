@@ -106,7 +106,7 @@ netsh advfirewall firewall add rule name="Eaststone Stock Control HTTP" dir=in a
 netsh advfirewall firewall add rule name="Eaststone Stock Control HTTPS" dir=in action=allow protocol=TCP localport=8443 profile=domain,private >nul
 if errorlevel 1 goto :firewall_failed
 
-echo Registering automatic certificate renewal, health monitoring and daily backups...
+echo Registering certificate renewal and health monitoring...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Register-MaintenanceTasks.ps1" -InstallRoot "%INSTALL_ROOT%"
 if errorlevel 1 goto :tasks_failed
 
@@ -124,7 +124,7 @@ if errorlevel 1 goto :client_template_failed
 if not exist "client-deployment\stock-control-ca.crt" goto :client_template_failed
 
 echo Creating server shortcuts...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$url='https://%TLS_HOSTNAME%:8443/';$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($spec in @(@('Eaststone Stock Control',$url),@('ESC Backup and Restore','%INSTALL_ROOT%\ESC_BACKUP_RESTORE_WINDOWS.bat'),@('ESC Status','%INSTALL_ROOT%\STATUS_WINDOWS.bat'))){foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir ($spec[0]+'.lnk')));if($spec[1] -like 'https:*'){$s.TargetPath=$edge;$s.Arguments='--app='+$spec[1]}else{$s.TargetPath=$spec[1]};$s.WorkingDirectory='%INSTALL_ROOT%';$s.Description=$spec[0];$s.Save()}}}"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$url='https://%TLS_HOSTNAME%:8443/';$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($spec in @(@('Eaststone Stock Control',$url),@('ESC Backup Settings','%INSTALL_ROOT%\ESC_BACKUP_SETTINGS_WINDOWS.bat'),@('ESC Backup and Restore','%INSTALL_ROOT%\ESC_BACKUP_RESTORE_WINDOWS.bat'),@('ESC Status','%INSTALL_ROOT%\STATUS_WINDOWS.bat'))){foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir ($spec[0]+'.lnk')));if($spec[1] -like 'https:*'){$s.TargetPath=$edge;$s.Arguments='--app='+$spec[1]}else{$s.TargetPath=$spec[1]};$s.WorkingDirectory='%INSTALL_ROOT%';$s.Description=$spec[0];$s.Save()}}}"
 
 reg add "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath /t REG_SZ /d "%INSTALL_ROOT%" /f >nul
 reg add "HKLM\SOFTWARE\Eaststone\StockControl" /v ServerUrl /t REG_SZ /d "https://%TLS_HOSTNAME%:8443/" /f >nul
@@ -132,7 +132,7 @@ reg add "HKLM\SOFTWARE\Eaststone\StockControl" /v ServerIP /t REG_SZ /d "%SERVER
 reg add "HKLM\SOFTWARE\Eaststone\StockControl" /v InstalledOn /t REG_SZ /d "%DATE% %TIME%" /f >nul
 
 echo Creating the first verified database backup...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Automatic-Backup.ps1" -InstallRoot "%INSTALL_ROOT%" -Reason "Initial post-installation backup"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Automatic-Backup.ps1" -InstallRoot "%INSTALL_ROOT%" -BackupType "INITIAL" -Reason "Initial post-installation backup"
 if errorlevel 1 echo WARNING: Initial backup failed. Review logs\backup.log.
 
 echo Executing installation qualification checks...

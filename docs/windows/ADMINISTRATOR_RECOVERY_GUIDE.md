@@ -136,7 +136,7 @@ Never send `.env` in ordinary support emails or tickets.
 Use:
 
 ```text
-ESC Backup and Restore Tool.exe
+Administration & Recovery\02 - BACKUP AND RESTORE.bat
 ```
 
 or:
@@ -148,12 +148,13 @@ ESC_BACKUP_RESTORE_WINDOWS.bat
 The restore tool:
 
 1. verifies the selected backup manifest where available;
-2. requires exact destructive confirmation;
+2. uses a native file browser and one Yes/No confirmation;
 3. creates a pre-restore safety backup;
 4. stops API and web services;
-5. replaces the active database;
-6. restarts services;
-7. runs a health verification.
+5. restores into a new recovery database without overwriting the current database;
+6. validates required tables and activates only after validation;
+7. retains the previous database for rollback;
+8. restarts services and runs a health verification.
 
 After restore, execute the approved post-restore verification checklist, including:
 
@@ -266,13 +267,7 @@ Hosts-file deployment:
 Use:
 
 ```text
-ESC Uninstall.exe
-```
-
-or:
-
-```text
-UNINSTALL_WINDOWS.bat
+Administration & Recovery\03 - COMPLETE UNINSTALL.bat
 ```
 
 The uninstaller permanently removes the PostgreSQL volume and all Stock Control data after two exact confirmations. Before uninstalling a live or validated system:

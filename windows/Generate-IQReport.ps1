@@ -98,8 +98,18 @@ Add-Check 'IQ-10' 'Automatic certificate renewal task exists' {
 Add-Check 'IQ-11' 'Automatic health-monitor task exists' {
     (Get-ScheduledTask -TaskName 'Eaststone Stock Control - Health Monitor' -ErrorAction Stop).State
 }
-Add-Check 'IQ-12' 'Automatic database-backup task exists' {
-    (Get-ScheduledTask -TaskName 'Eaststone Stock Control - Daily Backup' -ErrorAction Stop).State
+Add-Check 'IQ-12' 'Configurable automatic database-backup scheduler is running' {
+    $base = Join-Path $InstallRoot 'infra\docker-compose.production.yml'
+    $containerId = (& docker compose -f $base --env-file $envPath ps -q backup-scheduler | Select-Object -First 1)
+    if (-not $containerId) { throw 'Backup scheduler container is not running.' }
+    $state = (& docker inspect -f '{{.State.Status}}' $containerId 2>&1)
+    if ($LASTEXITCODE -ne 0 -or $state -ne 'running') { throw "Backup scheduler state is $state." }
+    $statusPath = Join-Path $InstallRoot 'runtime-state\backup_scheduler_status.json'
+    if (-not (Test-Path -LiteralPath $statusPath -PathType Leaf)) { throw 'Backup scheduler status file is missing.' }
+    $scheduler = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+    if ($scheduler.time_local -notmatch '^(?:[01]\d|2[0-3]):[0-5]\d$') { throw 'Backup scheduler time is invalid.' }
+    if ([int]$scheduler.retention_days -lt 1) { throw 'Backup scheduler retention is invalid.' }
+    "Container=$containerId; State=$state; Enabled=$($scheduler.enabled); Time=$($scheduler.time_local); RetentionDays=$($scheduler.retention_days)"
 }
 Add-Check 'IQ-13' 'Initial administrator login is operational' {
     if ([string]::IsNullOrWhiteSpace($AdminPassword)) {

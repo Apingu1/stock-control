@@ -74,7 +74,9 @@ The PostgreSQL database remains in its controlled local Docker volume.
 
 C:\ProgramData\Eaststone\StockControl\deployment-records\ESC-IQ-Execution-Latest.html
 
-The server setup configures the database, application, HTTPS certificate, trusted private CA, local hostname, firewall rules, scheduled health monitoring, certificate renewal, daily backup and application shortcuts.
+The server setup configures the database, application, HTTPS certificate, trusted private CA, local hostname, firewall rules, scheduled health monitoring, certificate renewal, the always-on configurable daily backup service and application shortcuts.
+
+After installation, open the ESC Backup Settings shortcut on the server to browse to the required backup folder and set the automatic daily time/retention. The settings can be changed again later without reinstalling.
 
 ============================================================
 4. CLIENT DEPLOYMENT
@@ -146,11 +148,14 @@ The controlled stop preserves the PostgreSQL data volume. Do not use "docker com
 
 Administration & Recovery contains:
 
-01 - BACKUP AND RESTORE.bat
-02 - COMPLETE UNINSTALL.bat
+01 - BACKUP SETTINGS.bat
+02 - BACKUP AND RESTORE.bat
+03 - COMPLETE UNINSTALL.bat
 README.txt
 
-"02 - COMPLETE UNINSTALL.bat" is the one supported SERVER uninstall control. There is no duplicate UNINSTALL_WINDOWS.bat under System and there is no uninstall EXE.
+"01 - BACKUP SETTINGS.bat" browses to the physical server backup folder and changes the daily schedule/retention. "02 - BACKUP AND RESTORE.bat" creates manual backups and browses for a restore file.
+
+"03 - COMPLETE UNINSTALL.bat" is the one supported SERVER uninstall control. There is no duplicate UNINSTALL_WINDOWS.bat under System and there is no uninstall EXE.
 
 This is separate from "CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat", which only removes one client's local configuration.
 

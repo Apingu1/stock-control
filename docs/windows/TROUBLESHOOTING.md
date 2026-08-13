@@ -241,7 +241,7 @@ Identify the process before changing application ports. If ports are changed in 
 4. Confirm the hostname resolves to the host IP.
 5. Confirm the CA is trusted on that client.
 
-## Backup task failed
+## Automatic backup failed
 
 Review:
 
@@ -249,16 +249,16 @@ Review:
 logs\backup.log
 ```
 
-Confirm:
+Also review `runtime-state\backup_scheduler_status.json`, then confirm:
 
-- Docker is running at 02:30;
+- Docker and the `backup-scheduler` container are running at the configured time;
 - PostgreSQL container is healthy;
-- backup directory is writable;
+- the folder selected in **ESC Backup Settings** is accessible to Windows and Docker;
 - host disk has sufficient space;
 - antivirus did not quarantine the dump;
-- Task Scheduler shows a recent successful result.
+- the scheduler status shows a recent successful result.
 
-Run a manual backup through `ESC Backup and Restore Tool.exe` and investigate before assuming backups are available.
+Run a manual backup through the Admin screen or `Administration & Recovery\02 - BACKUP AND RESTORE.bat` and investigate before assuming backups are available.
 
 ## Restore failed
 
@@ -269,7 +269,7 @@ logs\backup-restore-tool.log
 logs\backup.log
 ```
 
-The restore tool creates a pre-restore safety backup before replacing the database. Preserve both the selected backup and pre-restore backup. Escalate with the exact `pg_restore` error.
+The restore tool creates a pre-restore safety backup and leaves the original active database untouched until a new recovery database has passed validation. Preserve the selected and pre-restore backups and escalate with the exact `pg_restore` error.
 
 ## Certificate renewal task failed
 

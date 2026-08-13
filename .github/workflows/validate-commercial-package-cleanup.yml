@@ -1,9 +1,11 @@
 name: Validate Clean Commercial Package
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feature/commercial-installation-package-cleanup
+      - feature/backup-restore-simplification
   pull_request:
     branches:
       - main
@@ -12,9 +14,287 @@ permissions:
   contents: read
 
 jobs:
+  source-validation:
+    name: Validate backup runtime and frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install and test API
+        env:
+          PYTHONPATH: api
+          DB_HOST: db
+          DB_PORT: "5432"
+          DB_NAME: stock
+          DB_USER: stock
+          DB_PASSWORD: ci-password
+          JWT_SECRET: ci-secret
+          BACKUP_DIR: /tmp/stock-control-backups
+          APP_STATE_DIR: /tmp/stock-control-state
+          TZ: Europe/London
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.txt
+          python -m compileall -q api/app
+          python -m unittest discover -s api/tests -v
+          python - <<'PY'
+          from app.main import app
+          paths = {route.path for route in app.routes}
+          required = {
+              "/admin/db-tools/backup-settings",
+              "/admin/db-tools/backup/upload",
+              "/admin/db-tools/restore",
+          }
+          missing = sorted(required - paths)
+          if missing:
+              raise SystemExit(f"Missing backup routes: {missing}")
+          print(f"API imported with {len(paths)} registered paths")
+          PY
+
+      - name: Validate Linux shell scripts
+        run: find scripts db -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build production frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Validate production Compose configuration
+        run: |
+          cat > .env <<'EOF'
+          DB_HOST=db
+          DB_PORT=5432
+          DB_NAME=stock
+          DB_USER=stock
+          DB_PASSWORD=ci-password
+          JWT_SECRET=ci-secret
+          TZ=Europe/London
+          FEATURE_STOCK_CONTROL=true
+          FEATURE_REQUIRE_SECOND_CHECK=false
+          FEATURE_REQUIRE_SCAN=false
+          BACKUP_DIR=/backups
+          BACKUP_HOST_PATH=../Backups
+          APP_STATE_DIR=/app-state
+          BACKUP_DIR_LABEL=CI Backups
+          APP_HTTP_PORT=8088
+          APP_HTTPS_PORT=8443
+          EOF
+          mkdir -p Backups runtime-state
+          docker compose -f infra/docker-compose.production.yml --env-file .env config --quiet
+          docker compose -f infra/docker-compose.production.yml -f infra/docker-compose.production.tls.yml --env-file .env config --quiet
+
+  backup-integration:
+    name: Exercise backup and safe restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create isolated backup test configuration
+        run: |
+          cat > .env <<'EOF'
+          DB_HOST=db
+          DB_PORT=5432
+          DB_NAME=stock
+          DB_USER=stock
+          DB_PASSWORD=ci-integration-password
+          JWT_SECRET=ci-integration-secret
+          TZ=Europe/London
+          FEATURE_STOCK_CONTROL=true
+          FEATURE_REQUIRE_SECOND_CHECK=false
+          FEATURE_REQUIRE_SCAN=false
+          BACKUP_DIR=/backups
+          BACKUP_HOST_PATH=../Backups
+          APP_STATE_DIR=/app-state
+          BACKUP_DIR_LABEL=CI host backup folder
+          APP_HTTP_PORT=8088
+          APP_HTTPS_PORT=8443
+          EOF
+          mkdir -p Backups runtime-state
+          cat > runtime-state/backup_settings.json <<'EOF'
+          {
+            "enabled": false,
+            "time_local": "02:30",
+            "timezone": "Europe/London",
+            "retention_days": 30,
+            "updated_by": "CI",
+            "updated_at_utc": ""
+          }
+          EOF
+
+      - name: Build and start production stack
+        run: docker compose -f infra/docker-compose.production.yml --env-file .env up -d --build
+
+      - name: Wait for application and verify PostgreSQL client version
+        run: |
+          for attempt in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1:8088/api/health >/tmp/health.json; then
+              cat /tmp/health.json
+              break
+            fi
+            if [ "$attempt" = 120 ]; then exit 1; fi
+            sleep 2
+          done
+          docker compose -f infra/docker-compose.production.yml --env-file .env exec -T api pg_dump --version | grep '16\.'
+          test -s runtime-state/backup_scheduler_status.json
+
+      - name: Bootstrap administrator
+        run: |
+          docker compose -f infra/docker-compose.production.yml --env-file .env exec -T \
+            -e BOOTSTRAP_ADMIN_PASSWORD='Admin123!' \
+            api python -m app.bootstrap_admin
+
+      - name: Create, import, restore and activate a physical backup
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          import urllib.error
+          import urllib.request
+
+          BASE = "http://127.0.0.1:8088/api"
+
+          def request(path, *, method="GET", payload=None, token=None, timeout=60, raw=False):
+              headers = {"Accept": "application/json"}
+              data = None
+              if payload is not None:
+                  headers["Content-Type"] = "application/json"
+                  data = json.dumps(payload).encode("utf-8")
+              if token:
+                  headers["Authorization"] = f"Bearer {token}"
+              req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=timeout) as response:
+                      body = response.read()
+                      if raw:
+                          return body
+                      return json.loads(body.decode("utf-8")) if body else None
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(f"{method} {path} -> HTTP {exc.code}: {detail}") from exc
+
+          login = request(
+              "/auth/login/",
+              method="POST",
+              payload={"username": "admin", "password": "Admin123!"},
+          )
+          token = login["access_token"]
+
+          settings = request(
+              "/admin/db-tools/backup-settings",
+              method="POST",
+              token=token,
+              payload={"enabled": False, "time_local": "04:17", "retention_days": 45},
+          )
+          assert settings["time_local"] == "04:17" and settings["retention_days"] == 45
+          assert settings["backup_dir_label"] == "CI host backup folder"
+
+          created = request(
+              "/admin/db-tools/backup",
+              method="POST",
+              token=token,
+              payload={"reason": "CI verified manual backup"},
+              timeout=300,
+          )["backup"]
+          filename = created["filename"]
+          assert re.fullmatch(r"StockControl_Manual_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:_\d{2})?\.dump", filename), filename
+          assert created["backup_type"] == "MANUAL" and created["sha256"]
+
+          verified = request(
+              f"/admin/db-tools/backup/{filename}/verify",
+              token=token,
+              timeout=120,
+          )
+          assert verified["integrity"] == "VERIFIED"
+          dump = request(
+              f"/admin/db-tools/backup/{filename}/download",
+              token=token,
+              timeout=300,
+              raw=True,
+          )
+          assert dump.startswith(b"PGDMP")
+
+          upload_request = urllib.request.Request(
+              BASE + "/admin/db-tools/backup/upload",
+              data=dump,
+              headers={
+                  "Accept": "application/json",
+                  "Authorization": f"Bearer {token}",
+                  "Content-Type": "application/octet-stream",
+                  "X-Backup-Filename": "chosen-physical-backup.dump",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(upload_request, timeout=300) as response:
+              imported = json.loads(response.read().decode("utf-8"))["backup"]
+          assert imported["backup_type"] == "IMPORTED"
+          assert imported["original_filename"] == "chosen-physical-backup.dump"
+
+          restored = request(
+              "/admin/db-tools/restore",
+              method="POST",
+              token=token,
+              payload={
+                  "backup_filename": imported["filename"],
+                  "audit_note": "CI end-to-end restore verification",
+              },
+              timeout=600,
+          )
+          assert restored["ok"] is True
+          assert restored["previous_db"] == "stock"
+          assert restored["active_db"].startswith("stock_restore_")
+          assert restored["pre_restore_backup"].startswith("StockControl_PreRestore_")
+          assert restored["schema_bootstrap"]["result"] == "SUCCESS"
+          assert set(restored["sanity"]["required_tables"]) == {
+              "materials", "material_lots", "stock_transactions", "users"
+          }
+
+          datasets = request("/admin/db-tools/datasets", token=token)
+          assert datasets["active_db"] == restored["active_db"]
+          assert "stock" in datasets["datasets"]
+          print(json.dumps({
+              "manual_backup": filename,
+              "imported_backup": imported["filename"],
+              "active_database": restored["active_db"],
+              "retained_database": restored["previous_db"],
+          }, indent=2))
+          PY
+
+      - name: Verify backups are physical host files
+        run: |
+          test "$(find Backups -maxdepth 1 -type f -name '*.dump' | wc -l)" -ge 3
+          test "$(find Backups -maxdepth 1 -type f -name '*.dump.json' | wc -l)" -ge 3
+          test -s runtime-state/active_dataset.json
+
+      - name: Show integration logs on failure
+        if: failure()
+        run: |
+          docker compose -f infra/docker-compose.production.yml --env-file .env ps -a || true
+          docker compose -f infra/docker-compose.production.yml --env-file .env logs --tail=400 db db-init api backup-scheduler web || true
+
+      - name: Remove integration stack
+        if: always()
+        run: docker compose -f infra/docker-compose.production.yml --env-file .env down -v --remove-orphans || true
+
   windows-commercial-package:
     name: Build and validate clean Windows package
     runs-on: windows-latest
+    needs: [source-validation, backup-integration]
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +339,15 @@ jobs:
             if (-not (Test-Path -LiteralPath (Join-Path $root $item))) {
               throw "Missing package item: $item"
             }
+          }
+
+          foreach ($adminFile in @('01 - BACKUP SETTINGS.bat','02 - BACKUP AND RESTORE.bat','03 - COMPLETE UNINSTALL.bat')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root "Administration & Recovery\$adminFile") -PathType Leaf)) {
+              throw "Administration package is missing: $adminFile"
+            }
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $root 'System\ESC_BACKUP_SETTINGS_WINDOWS.bat') -PathType Leaf)) {
+            throw 'System backup-settings launcher is missing.'
           }
 
           $unexpectedExe = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.exe')
@@ -125,7 +414,7 @@ jobs:
           if ($uninstallFiles.Count -ne 2) {
             throw "Expected exactly two uninstall BATs: one server complete uninstall and one client uninstall; found $($uninstallFiles.Count)."
           }
-          $expectedServerUninstall = Join-Path $root 'Administration & Recovery\02 - COMPLETE UNINSTALL.bat'
+          $expectedServerUninstall = Join-Path $root 'Administration & Recovery\03 - COMPLETE UNINSTALL.bat'
           $expectedClientUninstall = Join-Path $root 'CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat'
           if (-not (Test-Path -LiteralPath $expectedServerUninstall -PathType Leaf)) {
             throw 'Server complete uninstall is missing.'
@@ -143,6 +432,16 @@ jobs:
           }
           if ($serverSetup -notmatch 'stock-control-ca\.crt' -or $serverSetup -notmatch 'SERVER_IP=') {
             throw 'Server setup is not finalising the client CA and server address.'
+          }
+
+          $compose = Get-Content -LiteralPath (Join-Path $root 'System\infra\docker-compose.production.yml') -Raw
+          if ($compose -notmatch 'backup-scheduler:' -or $compose -notmatch 'BACKUP_HOST_PATH') {
+            throw 'Production Compose is missing the configurable backup scheduler/mount.'
+          }
+
+          $backupSettings = Get-Content -LiteralPath (Join-Path $root 'System\windows\Backup-Settings.ps1') -Raw
+          if ($backupSettings -notmatch 'FolderBrowserDialog' -or $backupSettings -notmatch 'time_local') {
+            throw 'Backup Settings does not contain the folder browser and adjustable daily time.'
           }
 
           $commercialInstaller = Get-Content -LiteralPath (Join-Path $root '01 - INSTALL SERVER.bat') -Raw

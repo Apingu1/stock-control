@@ -11,7 +11,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-mkdir -p "$ROOT_DIR/backups-production-test"
+mkdir -p "$ROOT_DIR/Backups" "$ROOT_DIR/runtime-state"
 
 compose() {
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"

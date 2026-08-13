@@ -1,6 +1,6 @@
 # Manual Client Installation — Fallback Procedure
 
-Use `ESC Client Setup.exe` as the recommended client deployment. This manual procedure reproduces the same trust, hostname and shortcut steps when the client executable cannot be used.
+Use `CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat` as the recommended client deployment. This manual procedure reproduces the same trust, hostname and shortcut steps when the controlled client launcher cannot be used.
 
 ## Information required from the server
 

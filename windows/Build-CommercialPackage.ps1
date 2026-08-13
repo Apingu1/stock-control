@@ -74,14 +74,16 @@ Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding as
 # Administration is deliberately one level down so destructive/recovery tools
 # are not presented alongside routine start/stop controls. This is the only
 # SERVER uninstall control in the package.
-Copy-RequiredFile (Join-Path $templatesDir 'backup-restore.bat') (Join-Path $adminDir '01 - BACKUP AND RESTORE.bat')
-Copy-RequiredFile (Join-Path $templatesDir 'uninstall.bat') (Join-Path $adminDir '02 - COMPLETE UNINSTALL.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'backup-settings.bat') (Join-Path $adminDir '01 - BACKUP SETTINGS.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'backup-restore.bat') (Join-Path $adminDir '02 - BACKUP AND RESTORE.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'uninstall.bat') (Join-Path $adminDir '03 - COMPLETE UNINSTALL.bat')
 Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Value @(
     'ADMINISTRATION & RECOVERY',
     '',
     'These controls are not required for routine operation.',
+    '01 - BACKUP SETTINGS.bat changes the physical backup folder, daily time and retention.',
     'Backup/restore should be used only by authorised administrators.',
-    '02 - COMPLETE UNINSTALL.bat is the only supported SERVER uninstall control.',
+    '03 - COMPLETE UNINSTALL.bat is the only supported SERVER uninstall control.',
     'Complete uninstall is destructive and requires explicit confirmation.'
 )
 
@@ -103,6 +105,7 @@ foreach ($directory in $runtimeDirectories) {
 # setup/uninstall and server uninstall are intentionally excluded from System.
 $runtimeBatFiles = @(
     'ESC_SERVER_SETUP_WINDOWS.bat',
+    'ESC_BACKUP_SETTINGS_WINDOWS.bat',
     'ESC_BACKUP_RESTORE_WINDOWS.bat',
     'INSTALL_WINDOWS.bat',
     'ENABLE_HTTPS_WINDOWS.bat',
@@ -173,6 +176,7 @@ $requiredSystemFiles = @(
     'START_WINDOWS.bat',
     'STOP_WINDOWS.bat',
     'STATUS_WINDOWS.bat',
+    'ESC_BACKUP_SETTINGS_WINDOWS.bat',
     'ESC_BACKUP_RESTORE_WINDOWS.bat'
 )
 foreach ($name in $requiredSystemFiles) {
@@ -187,7 +191,7 @@ foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WI
     }
 }
 
-$serverUninstall = Join-Path $adminDir '02 - COMPLETE UNINSTALL.bat'
+$serverUninstall = Join-Path $adminDir '03 - COMPLETE UNINSTALL.bat'
 $clientUninstall = Join-Path $clientDir '02 - UNINSTALL CLIENT.bat'
 if (-not (Test-Path -LiteralPath $serverUninstall -PathType Leaf)) {
     throw 'Server complete uninstall is missing.'

@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../../utils/api";
+
 
 type MaintenanceState = {
   enabled: boolean;
-  reason: string;
-  set_by: string;
-  set_at_utc: string;
+  reason?: string;
+  set_by?: string;
+  set_at_utc?: string;
 };
 
 type DbSystemInfo = {
@@ -16,25 +17,27 @@ type DbSystemInfo = {
     name: string;
     user: string;
     postgres_version: string;
-    size_bytes: number | null;
+    size_bytes?: number | null;
   };
-  backups: {
-    backup_dir_container: string;
-    backup_dir_label: string;
-  };
+  backups: { backup_dir_container: string; backup_dir_label: string };
   maintenance: MaintenanceState;
-  security: { requested_by: string; requested_at_utc: string };
 };
 
 type BackupManifest = {
   filename?: string;
+  backup_type?: string;
+  reason?: string;
   created_at_utc?: string;
-  created_by?: string;
-  result?: string;
-  size_bytes?: number;
+  created_at_local?: string;
   completed_at_utc?: string;
-  error?: string;
+  created_by?: string;
+  database?: string;
   db?: { name?: string };
+  size_bytes?: number;
+  sha256?: string;
+  result?: string;
+  error?: string;
+  original_filename?: string;
 };
 
 type BackupItem = {
@@ -49,156 +52,153 @@ type BackupsList = {
   backup_dir_label?: string;
   count: number;
   items: BackupItem[];
-  requested_by: string;
-  requested_at_utc: string;
+};
+
+type SchedulerStatus = {
+  last_result?: string;
+  last_success_at_utc?: string;
+  last_filename?: string;
+  last_error?: string | null;
+  last_heartbeat_utc?: string;
+};
+
+type BackupSettings = {
+  enabled: boolean;
+  time_local: string;
+  timezone: string;
+  retention_days: number;
+  updated_by?: string;
+  updated_at_utc?: string;
+  backup_dir_label: string;
+  backup_dir_container: string;
+  next_run_at_local?: string | null;
+  scheduler?: SchedulerStatus;
 };
 
 type DatasetsResponse = {
   active_db: string;
   datasets: string[];
   pattern: string;
-  requested_by: string;
-  requested_at_utc: string;
 };
 
-function formatBytes(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
+
+function formatBytes(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  if (value === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  const dp = i === 0 ? 0 : i === 1 ? 0 : 1;
-  return `${v.toFixed(dp)} ${units[i]}`;
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const amount = value / 1024 ** index;
+  return `${amount.toFixed(index < 2 ? 0 : 1)} ${units[index]}`;
 }
 
-function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-GB", {
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
     year: "numeric",
     month: "short",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
   });
 }
 
-function mono(s: string) {
-  return <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>{s}</span>;
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
 }
 
-async function downloadAsFile(res: Response, filename: string) {
-  const blob = await res.blob();
+function mono(value: string) {
+  return <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{value}</span>;
+}
+
+async function downloadResponse(response: Response, filename: string) {
+  const blob = await response.blob();
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
   URL.revokeObjectURL(url);
 }
 
-const Card = ({ title, subtitle, right, children }: any) => (
-  <section
-    className="card"
-    style={{
-      marginTop: 16,
-      border: "1px solid rgba(255,255,255,0.08)",
-      background:
-        "radial-gradient(900px 460px at 0% 0%, rgba(59,130,246,0.12), transparent 60%), rgba(15, 23, 42, 0.55)",
-      boxShadow: "0 20px 60px rgba(0,0,0,0.30)",
-    }}
-  >
-    <div className="card-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-      <div>
-        <div className="card-title">{title}</div>
-        {subtitle ? (
-          <div className="card-subtitle" style={{ opacity: 0.9 }}>
-            {subtitle}
-          </div>
-        ) : null}
-      </div>
-      {right ? <div style={{ display: "flex", gap: 10, alignItems: "center" }}>{right}</div> : null}
-    </div>
-    {children}
-  </section>
-);
+const sectionStyle = {
+  marginTop: 12,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(2, 6, 23, 0.30)",
+  padding: 16,
+} as const;
 
-function looksLikeRestoreActuallySucceeded(errMsg: string): boolean {
-  // The user-reported case:
-  // pg_restore: ERROR: unrecognized configuration parameter "transaction_timeout"
-  // Command was: SET transaction_timeout = 0;
-  // pg_restore: warning: errors ignored on restore: 1
-  const s = (errMsg || "").toLowerCase();
-  return (
-    s.includes("pg_restore") &&
-    s.includes("transaction_timeout") &&
-    (s.includes("unrecognized configuration parameter") || s.includes("command was: set transaction_timeout")) &&
-    (s.includes("errors ignored on restore") || s.includes("warning"))
-  );
-}
+const fieldLabelStyle = {
+  fontSize: 12,
+  opacity: 0.72,
+  marginBottom: 6,
+  fontWeight: 700,
+} as const;
+
 
 export default function DbToolsPanel() {
   const [info, setInfo] = useState<DbSystemInfo | null>(null);
   const [backups, setBackups] = useState<BackupsList | null>(null);
+  const [settings, setSettings] = useState<BackupSettings | null>(null);
   const [datasets, setDatasets] = useState<DatasetsResponse | null>(null);
   const [maintenance, setMaintenance] = useState<MaintenanceState | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [creatingBackup, setCreatingBackup] = useState(false);
-  const [err, setErr] = useState<string>("");
-  const [warn, setWarn] = useState<string>("");
-  const [status, setStatus] = useState<string>("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(true);
+  const [scheduleTime, setScheduleTime] = useState("02:30");
+  const [retentionDays, setRetentionDays] = useState("30");
 
-  // Manifest modal
+  const [manualReason, setManualReason] = useState("");
+  const [restoreBackup, setRestoreBackup] = useState("");
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreReason, setRestoreReason] = useState("");
+  const restoreInput = useRef<HTMLInputElement | null>(null);
+
+  const [switchReason, setSwitchReason] = useState("");
+  const [maintReason, setMaintReason] = useState("");
   const [manifestOpen, setManifestOpen] = useState(false);
-  const [manifestJson, setManifestJson] = useState<any>(null);
-  const [manifestTitle, setManifestTitle] = useState<string>("");
+  const [manifestTitle, setManifestTitle] = useState("");
+  const [manifestJson, setManifestJson] = useState<unknown>(null);
 
-  // Restore form
-  const [restoreBackup, setRestoreBackup] = useState<string>("");
-  const [restoreDbName, setRestoreDbName] = useState<string>("");
-  const [restoreNote, setRestoreNote] = useState<string>("");
-  const [restoreConfirm, setRestoreConfirm] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [creatingBackup, setCreatingBackup] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [switchingTo, setSwitchingTo] = useState("");
+  const [togglingMaintenance, setTogglingMaintenance] = useState(false);
+  const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
+  const [status, setStatus] = useState("");
 
-  // Switch form
-  const [switchNote, setSwitchNote] = useState<string>("");
-  const [switchConfirm, setSwitchConfirm] = useState<string>("");
-  const [switchingTo, setSwitchingTo] = useState<string>("");
-
-  // Maintenance form
-  const [maintReason, setMaintReason] = useState<string>("");
-  const [togglingMaint, setTogglingMaint] = useState(false);
-
-  const refreshAll = async () => {
+  const refreshAll = async (keepMessage = false) => {
     setLoading(true);
-    setErr("");
-    setStatus("");
-    // NOTE: do not clear warn here — warnings should persist until user action or next success
+    setError("");
+    if (!keepMessage) setStatus("");
     try {
-      const [a, b, c, d] = await Promise.all([
-        apiFetch("/admin/db-tools/system-info").then((r) => r.json()),
-        apiFetch("/admin/db-tools/backups").then((r) => r.json()),
-        apiFetch("/admin/db-tools/datasets").then((r) => r.json()),
-        apiFetch("/admin/db-tools/maintenance").then((r) => r.json()),
-      ]);
-      setInfo(a as DbSystemInfo);
-      setBackups(b as BackupsList);
-      setDatasets(c as DatasetsResponse);
-      setMaintenance(d as MaintenanceState);
+      const [systemResponse, backupsResponse, settingsResponse, datasetsResponse, maintenanceResponse] =
+        await Promise.all([
+          apiFetch("/admin/db-tools/system-info").then((response) => response.json()),
+          apiFetch("/admin/db-tools/backups").then((response) => response.json()),
+          apiFetch("/admin/db-tools/backup-settings").then((response) => response.json()),
+          apiFetch("/admin/db-tools/datasets").then((response) => response.json()),
+          apiFetch("/admin/db-tools/maintenance").then((response) => response.json()),
+        ]);
 
-      // Default restore selection to latest backup
-      const first = (b as BackupsList)?.items?.[0]?.filename;
-      if (first && !restoreBackup) setRestoreBackup(first);
-    } catch (e: any) {
-      setErr(e?.message || String(e));
+      setInfo(systemResponse as DbSystemInfo);
+      setBackups(backupsResponse as BackupsList);
+      setSettings(settingsResponse as BackupSettings);
+      setDatasets(datasetsResponse as DatasetsResponse);
+      setMaintenance(maintenanceResponse as MaintenanceState);
+
+      const schedule = settingsResponse as BackupSettings;
+      setScheduleEnabled(schedule.enabled);
+      setScheduleTime(schedule.time_local);
+      setRetentionDays(String(schedule.retention_days));
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
     } finally {
       setLoading(false);
     }
@@ -206,532 +206,473 @@ export default function DbToolsPanel() {
 
   useEffect(() => {
     void refreshAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const backupRows = useMemo(() => {
-    const items = backups?.items ?? [];
-    return [...items].sort((a, b) => (a.modified_at_utc < b.modified_at_utc ? 1 : -1));
-  }, [backups]);
+  const backupRows = useMemo(
+    () => [...(backups?.items || [])].sort((a, b) => b.modified_at_utc.localeCompare(a.modified_at_utc)),
+    [backups]
+  );
 
-  const hostLabel = info?.backups?.backup_dir_label || backups?.backup_dir_label || "./backups (host bind mount)";
-  const containerPath = info?.backups?.backup_dir_container || backups?.backup_dir_container || "/backups";
+  const activeDb = datasets?.active_db || info?.database?.name || "—";
+  const hostLocation = settings?.backup_dir_label || backups?.backup_dir_label || "Configured server folder";
+
+  const saveSchedule = async () => {
+    const retention = Number(retentionDays);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) {
+      setError("Choose a valid daily backup time.");
+      return;
+    }
+    if (!Number.isInteger(retention) || retention < 1 || retention > 3650) {
+      setError("Automatic retention must be between 1 and 3650 days.");
+      return;
+    }
+    setSavingSettings(true);
+    setError("");
+    setWarning("");
+    try {
+      const response = await apiFetch("/admin/db-tools/backup-settings", {
+        method: "POST",
+        body: JSON.stringify({
+          enabled: scheduleEnabled,
+          time_local: scheduleTime,
+          retention_days: retention,
+        }),
+      });
+      const updated = (await response.json()) as BackupSettings;
+      setSettings(updated);
+      setStatus(
+        updated.enabled
+          ? `Automatic daily backup saved for ${updated.time_local} (${updated.timezone}).`
+          : "Automatic daily backups are disabled. Manual backups remain available."
+      );
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const createBackupNow = async () => {
-    const ok = confirm(
-      "Create a database backup now?\n\nThis generates a pg_dump file and a JSON manifest for GMP inspection evidence."
-    );
-    if (!ok) return;
-
     setCreatingBackup(true);
-    setErr("");
-    setWarn("");
+    setError("");
+    setWarning("");
     setStatus("");
     try {
-      const res = await apiFetch("/admin/db-tools/backup", { method: "POST" });
-      const data = await res.json();
-      await refreshAll();
-      setStatus(`Backup created: ${data?.backup?.filename || "OK"}`);
-    } catch (e: any) {
-      setErr(e?.message || String(e));
+      const response = await apiFetch("/admin/db-tools/backup", {
+        method: "POST",
+        body: JSON.stringify({ reason: manualReason.trim() || "Manual administrator backup" }),
+      });
+      const data = await response.json();
+      setManualReason("");
+      await refreshAll(true);
+      setStatus(`Manual backup created: ${data?.backup?.filename || "complete"}`);
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
     } finally {
       setCreatingBackup(false);
     }
   };
 
-  const doDownloadDump = async (filename: string) => {
-    setErr("");
+  const downloadDump = async (filename: string) => {
+    setError("");
     try {
-      const res = await apiFetch(`/admin/db-tools/backup/${encodeURIComponent(filename)}/download`);
-      await downloadAsFile(res, filename);
+      const response = await apiFetch(`/admin/db-tools/backup/${encodeURIComponent(filename)}/download`);
+      await downloadResponse(response, filename);
       setStatus(`Downloaded: ${filename}`);
-    } catch (e: any) {
-      setErr(e?.message || String(e));
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
     }
   };
 
-  const doDownloadManifest = async (filename: string) => {
-    setErr("");
+  const openManifest = async (filename: string) => {
+    setError("");
     try {
-      const res = await apiFetch(`/admin/db-tools/backup/${encodeURIComponent(filename)}/manifest`);
-      const data = await res.json();
-      // Also allow saving as file
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${filename}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setStatus(`Downloaded manifest: ${filename}.json`);
-    } catch (e: any) {
-      setErr(e?.message || String(e));
-    }
-  };
-
-  const openManifestModal = async (filename: string) => {
-    setErr("");
-    try {
-      const res = await apiFetch(`/admin/db-tools/backup/${encodeURIComponent(filename)}/manifest`);
-      const data = await res.json();
+      const response = await apiFetch(`/admin/db-tools/backup/${encodeURIComponent(filename)}/manifest`);
+      setManifestJson(await response.json());
       setManifestTitle(filename);
-      setManifestJson(data);
       setManifestOpen(true);
-    } catch (e: any) {
-      setErr(e?.message || String(e));
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
+    }
+  };
+
+  const verifyStoredBackup = async (filename: string) => {
+    setError("");
+    setWarning("");
+    setStatus(`Verifying SHA-256 for ${filename}…`);
+    try {
+      const response = await apiFetch(`/admin/db-tools/backup/${encodeURIComponent(filename)}/verify`);
+      const result = await response.json();
+      setStatus(
+        result.integrity === "VERIFIED"
+          ? `Backup integrity verified: ${filename}`
+          : `Custom-format backup is readable, but no SHA-256 manifest is available: ${filename}`
+      );
+    } catch (caught: unknown) {
+      setStatus("");
+      setError(errorMessage(caught));
     }
   };
 
   const runRestore = async () => {
-    if (!restoreBackup) {
-      setErr("Select a backup first.");
+    if (!restoreFile && !restoreBackup) {
+      setError("Choose a backup file or select one from the stored backups table.");
       return;
     }
-    if (restoreConfirm.trim() !== "RESTORE") {
-      setErr('Confirm phrase must be exactly "RESTORE".');
+    if (!restoreReason.trim()) {
+      setError("Enter the reason for the restore.");
       return;
     }
-    const ok = confirm(
-      "Restore this backup into a NEW dataset database?\n\nThe system will automatically enter maintenance mode during the restore."
+    const selectedName = restoreFile?.name || restoreBackup;
+    const confirmed = window.confirm(
+      `Restore and activate this backup?\n\n${selectedName}\n\nA pre-restore safety backup will be created automatically. The restored data will become active for all users after validation.`
     );
-    if (!ok) return;
+    if (!confirmed) return;
 
     setRestoring(true);
-    setErr("");
-    setWarn("");
-    setStatus("");
+    setError("");
+    setWarning("");
+    setStatus(restoreFile ? "Uploading and validating backup…" : "Validating backup…");
     try {
-      const res = await apiFetch("/admin/db-tools/restore", {
+      let storedFilename = restoreBackup;
+      if (restoreFile) {
+        const uploadResponse = await apiFetch("/admin/db-tools/backup/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Backup-Filename": encodeURIComponent(restoreFile.name),
+          },
+          body: restoreFile,
+        });
+        const uploadData = await uploadResponse.json();
+        storedFilename = uploadData?.backup?.filename;
+        if (!storedFilename) throw new Error("The uploaded backup did not return a stored filename.");
+      }
+
+      setStatus("Creating safety backup, restoring and validating data…");
+      const response = await apiFetch("/admin/db-tools/restore", {
         method: "POST",
         body: JSON.stringify({
-          backup_filename: restoreBackup,
-          new_db_name: restoreDbName || undefined,
-          audit_note: restoreNote || undefined,
-          confirm_phrase: restoreConfirm,
+          backup_filename: storedFilename,
+          audit_note: restoreReason.trim(),
         }),
       });
-      const data = await res.json();
-      await refreshAll();
-      setStatus(`Restore complete: ${data?.new_db || "OK"}`);
-      setRestoreConfirm("");
-
-      // Suggest switching confirmation to the new DB name
-      if (data?.new_db) setSwitchConfirm(data.new_db);
-    } catch (e: any) {
-      const msg = e?.message || String(e);
-
-      // Special case: pg_restore returned non-zero because it tried to SET transaction_timeout,
-      // but the restore still largely completed and the DB exists (user observed it).
-      if (looksLikeRestoreActuallySucceeded(msg)) {
-        setErr("");
-        setWarn(
-          "Restore completed with warnings.\n\nThis environment rejected a pg_restore setting (transaction_timeout), but the dataset is often still created successfully.\n\nNext: (1) Refresh (already done), (2) check the new dataset is listed below, and (3) disable Maintenance Mode if it is still ON."
-        );
-        try {
-          await refreshAll();
-          setStatus("Restore likely succeeded (with warnings). Please confirm dataset appears below.");
-        } catch {
-          // ignore secondary refresh failures
-        }
-        // keep confirm phrase blank after attempt
-        setRestoreConfirm("");
-      } else {
-        setErr(msg);
-      }
-
-      // Refresh maintenance state (restore may leave maintenance ON if failure/warnings)
-      try {
-        const m = await apiFetch("/admin/db-tools/maintenance").then((r) => r.json());
-        setMaintenance(m as MaintenanceState);
-      } catch {
-        // ignore
-      }
+      const data = await response.json();
+      setRestoreBackup("");
+      setRestoreFile(null);
+      setRestoreReason("");
+      if (restoreInput.current) restoreInput.current.value = "";
+      await refreshAll(true);
+      setStatus(
+        `Restore completed and activated for all users. Previous dataset: ${data.previous_db}. Safety backup: ${data.pre_restore_backup}.`
+      );
+      if (data.warnings) setWarning(`Restore completed with a database compatibility warning: ${data.warnings}`);
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
+      setStatus("");
     } finally {
       setRestoring(false);
     }
   };
 
-  const runSwitch = async (target: string) => {
-    if (!target) return;
-    if (switchConfirm.trim() !== target) {
-      setErr("Confirm phrase must exactly match the target dataset name.");
+  const switchDataset = async (target: string) => {
+    if (!switchReason.trim()) {
+      setError("Enter an audit reason before changing the active dataset.");
       return;
     }
-    const ok = confirm(
-      `Switch ACTIVE dataset globally to: ${target}?\n\nThis affects ALL users immediately (new requests use the new dataset).`
-    );
-    if (!ok) return;
-
+    if (!window.confirm(`Set ${target} as the active dataset for all users?`)) return;
     setSwitchingTo(target);
-    setErr("");
-    setWarn("");
-    setStatus("");
+    setError("");
     try {
-      const res = await apiFetch("/admin/db-tools/datasets/switch", {
+      await apiFetch("/admin/db-tools/datasets/switch", {
         method: "POST",
-        body: JSON.stringify({
-          db_name: target,
-          audit_note: switchNote || undefined,
-          confirm_phrase: switchConfirm,
-        }),
+        body: JSON.stringify({ db_name: target, audit_note: switchReason.trim() }),
       });
-      await res.json();
-      await refreshAll();
-      setStatus(`Active dataset switched to: ${target}`);
-      setSwitchConfirm("");
-    } catch (e: any) {
-      setErr(e?.message || String(e));
+      setSwitchReason("");
+      await refreshAll(true);
+      setStatus(`Active dataset changed to ${target}.`);
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
     } finally {
       setSwitchingTo("");
     }
   };
 
   const setMaintenanceMode = async (enabled: boolean) => {
-    setTogglingMaint(true);
-    setErr("");
-    setWarn("");
-    setStatus("");
+    setTogglingMaintenance(true);
+    setError("");
     try {
-      const res = await apiFetch("/admin/db-tools/maintenance", {
+      const response = await apiFetch("/admin/db-tools/maintenance", {
         method: "POST",
-        body: JSON.stringify({ enabled, reason: maintReason }),
+        body: JSON.stringify({ enabled, reason: maintReason.trim() }),
       });
-      const data = (await res.json()) as MaintenanceState;
-      setMaintenance(data);
-      setInfo((prev) => (prev ? { ...prev, maintenance: data } : prev));
-      setStatus(enabled ? "Maintenance enabled." : "Maintenance disabled.");
-    } catch (e: any) {
-      setErr(e?.message || String(e));
+      setMaintenance((await response.json()) as MaintenanceState);
+      setMaintReason("");
+      setStatus(enabled ? "Maintenance mode enabled." : "Maintenance mode disabled.");
+    } catch (caught: unknown) {
+      setError(errorMessage(caught));
     } finally {
-      setTogglingMaint(false);
+      setTogglingMaintenance(false);
     }
   };
 
-  const activeDb = datasets?.active_db || info?.database?.name || "—";
-  const allowlistPattern = datasets?.pattern || "^stock…$";
-
   return (
-    <Card
-      title="Database & Backups"
-      subtitle="GMP-critical dataset controls. Admin-only, confirmed, and audit-logged."
-      right={
-        <>
-          <button type="button" className="btn" onClick={() => void refreshAll()} disabled={loading || creatingBackup}>
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
-          <button type="button" className="btn primary" onClick={() => void createBackupNow()} disabled={creatingBackup}>
-            {creatingBackup ? "Creating backup…" : "Create Backup"}
-          </button>
-        </>
-      }
-    >
-      {err && (
-        <div
-          className="info-row"
-          style={{
-            marginTop: 8,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(239,68,68,0.35)",
-            background: "rgba(239,68,68,0.08)",
-            color: "#fecaca",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          <b>Error:</b> {err}
+    <div className="card">
+      <div
+        className="card-header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}
+      >
+        <div>
+          <div className="card-title">Database Backup & Recovery</div>
+          <div className="card-subtitle">Automatic protection, verified manual backups and guided recovery.</div>
         </div>
-      )}
+        <button type="button" className="btn" disabled={loading || restoring} onClick={() => void refreshAll()}>
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
 
-      {warn && (
-        <div
-          className="info-row"
-          style={{
-            marginTop: 8,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(234,179,8,0.35)",
-            background: "rgba(234,179,8,0.10)",
-            color: "rgba(255,255,255,0.92)",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          <b>Warning:</b> {warn}
+      {error ? (
+        <div className="info-row" style={{ marginTop: 10, color: "#fecaca", whiteSpace: "pre-wrap" }}>
+          <b>Error:</b> {error}
         </div>
-      )}
-
-      {status && (
-        <div
-          className="info-row"
-          style={{
-            marginTop: 8,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(16,185,129,0.28)",
-            background: "rgba(16,185,129,0.10)",
-            color: "rgba(255,255,255,0.92)",
-            whiteSpace: "pre-wrap",
-          }}
-        >
+      ) : null}
+      {warning ? (
+        <div className="info-row" style={{ marginTop: 10, color: "#fde68a", whiteSpace: "pre-wrap" }}>
+          <b>Warning:</b> {warning}
+        </div>
+      ) : null}
+      {status ? (
+        <div className="info-row" style={{ marginTop: 10, color: "#d1fae5", whiteSpace: "pre-wrap" }}>
           {status}
         </div>
-      )}
+      ) : null}
 
-      {/* GMP disclaimer */}
-      <div
-        className="info-row"
-        style={{
-          marginTop: 10,
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "rgba(2, 6, 23, 0.30)",
-          padding: 14,
-          fontSize: 13,
-          opacity: 0.92,
-          lineHeight: 1.5,
-        }}
-      >
-        <b>GMP note:</b> These controls are <b>global</b> (affect all users). High-impact actions require confirmations and
-        are recorded to an append-only audit log in {mono("/backups")}.
-      </div>
-
-      {/* Location banner */}
-      <div
-        className="info-row"
-        style={{
-          marginTop: 10,
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "rgba(2, 6, 23, 0.32)",
-          padding: 14,
-        }}
-      >
-        <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Backup location (host/server)</div>
-        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.2 }}>{mono(hostLabel)}</div>
-        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-          Container path: {mono(containerPath)} (bind-mounted to the host location above)
-        </div>
-      </div>
-
-      {/* Top stats */}
-      <div className="info-row" style={{ marginTop: 10 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-          <div
-            style={{
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(2, 6, 23, 0.38)",
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Active dataset</div>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>{mono(activeDb)}</div>
-          </div>
-          <div
-            style={{
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(2, 6, 23, 0.38)",
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>DB size</div>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>{formatBytes(info?.database?.size_bytes)}</div>
-          </div>
-          <div
-            style={{
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(2, 6, 23, 0.38)",
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Backups</div>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>{String(backups?.count ?? backupRows.length)}</div>
-          </div>
-          <div
-            style={{
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(2, 6, 23, 0.38)",
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Maintenance</div>
-            <div style={{ fontSize: 16, fontWeight: 900 }}>
-              {maintenance?.enabled ? (
-                <span style={{ color: "#fecaca" }}>ON</span>
-              ) : (
-                <span style={{ color: "rgba(255,255,255,0.90)" }}>OFF</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Maintenance controls */}
-      <div className="info-row" style={{ marginTop: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>Maintenance Mode</div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            When ON, mutating endpoints return 503 (read-only remains available).
-          </div>
+      <div style={sectionStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+          <div style={{ fontSize: 17, fontWeight: 900 }}>Automatic Daily Backup</div>
+          <div style={{ fontSize: 12, opacity: 0.72 }}>Times use {settings?.timezone || "Europe/London"}</div>
         </div>
 
         <div
           style={{
-            marginTop: 10,
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(2, 6, 23, 0.26)",
-            padding: 14,
             display: "grid",
-            gridTemplateColumns: "1fr auto auto",
-            gap: 10,
-            alignItems: "center",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 12,
+            alignItems: "end",
+            marginTop: 14,
           }}
         >
-          <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.5 }}>
-            <div>
-              <b>Status:</b> {maintenance?.enabled ? "ON" : "OFF"}
-              {maintenance?.set_at_utc ? ` • ${formatDateTime(maintenance.set_at_utc)}` : ""}
-              {maintenance?.set_by ? ` • by ${maintenance.set_by}` : ""}
+          <label style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 42, fontWeight: 800 }}>
+            <input
+              type="checkbox"
+              checked={scheduleEnabled}
+              onChange={(event) => setScheduleEnabled(event.target.checked)}
+            />
+            Automatic backups enabled
+          </label>
+          <label>
+            <div style={fieldLabelStyle}>Run every day at</div>
+            <input
+              type="time"
+              className="input"
+              value={scheduleTime}
+              onChange={(event) => setScheduleTime(event.target.value)}
+            />
+          </label>
+          <label>
+            <div style={fieldLabelStyle}>Keep automatic backups</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                className="input"
+                value={retentionDays}
+                onChange={(event) => setRetentionDays(event.target.value)}
+              />
+              <span style={{ opacity: 0.75 }}>days</span>
             </div>
-            {maintenance?.reason ? <div style={{ opacity: 0.9 }}>{maintenance.reason}</div> : null}
-          </div>
+          </label>
+          <button type="button" className="btn primary" disabled={savingSettings} onClick={() => void saveSchedule()}>
+            {savingSettings ? "Saving…" : "Save Settings"}
+          </button>
+        </div>
 
-          <input
-            className="input"
-            style={{ minWidth: 360 }}
-            placeholder="Reason / note (audit log)"
-            value={maintReason}
-            onChange={(e) => setMaintReason(e.target.value)}
-          />
-
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              type="button"
-              className="btn"
-              disabled={togglingMaint || maintenance?.enabled}
-              onClick={() => void setMaintenanceMode(true)}
-            >
-              Enable
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={togglingMaint || !maintenance?.enabled}
-              onClick={() => void setMaintenanceMode(false)}
-            >
-              Disable
-            </button>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+            gap: 10,
+            marginTop: 14,
+          }}
+        >
+          <div className="info-row">
+            <div style={fieldLabelStyle}>Next scheduled backup</div>
+            <b>{scheduleEnabled ? formatDateTime(settings?.next_run_at_local) : "Disabled"}</b>
           </div>
+          <div className="info-row">
+            <div style={fieldLabelStyle}>Last automatic result</div>
+            <b>{settings?.scheduler?.last_result || "Waiting for first run"}</b>
+          </div>
+          <div className="info-row">
+            <div style={fieldLabelStyle}>Last successful automatic backup</div>
+            <b>{formatDateTime(settings?.scheduler?.last_success_at_utc)}</b>
+          </div>
+        </div>
+        {settings?.scheduler?.last_error ? (
+          <div style={{ marginTop: 10, color: "#fecaca", fontSize: 13 }}>{settings.scheduler.last_error}</div>
+        ) : null}
+      </div>
+
+      <div style={sectionStyle}>
+        <div style={{ fontSize: 17, fontWeight: 900 }}>Backup Location</div>
+        <div style={{ marginTop: 9, fontSize: 16, fontWeight: 800 }}>{mono(hostLocation)}</div>
+        <div style={{ marginTop: 7, fontSize: 13, opacity: 0.78, lineHeight: 1.5 }}>
+          This is a physical folder on the Stock Control server, outside the Docker container. To browse to a different
+          local drive or approved network location, open <b>ESC Backup Settings</b> on the Windows server. The utility
+          validates the folder before applying it to both manual and automatic backups.
         </div>
       </div>
 
-      {/* Backups */}
-      <div className="info-row" style={{ marginTop: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>Backups</div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Each backup produces a <b>.dump</b> and a <b>.dump.json</b> manifest.
+      <div style={sectionStyle}>
+        <div style={{ fontSize: 17, fontWeight: 900 }}>Create a Manual Backup</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 12 }}>
+          <input
+            className="input"
+            value={manualReason}
+            onChange={(event) => setManualReason(event.target.value)}
+            placeholder="Optional note, e.g. Before software update"
+          />
+          <button
+            type="button"
+            className="btn primary"
+            disabled={creatingBackup || restoring}
+            onClick={() => void createBackupNow()}
+          >
+            {creatingBackup ? "Creating verified backup…" : "Back Up Now"}
+          </button>
+        </div>
+      </div>
+
+      <div style={sectionStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+          <div style={{ fontSize: 17, fontWeight: 900 }}>Restore a Backup</div>
+          <div style={{ fontSize: 12, opacity: 0.72 }}>One confirmation • automatic safety backup • automatic activation</div>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 14,
+            marginTop: 12,
+          }}
+        >
+          <div>
+            <div style={fieldLabelStyle}>Choose a physical backup file</div>
+            <input
+              ref={restoreInput}
+              type="file"
+              accept=".dump,application/octet-stream"
+              className="input"
+              onChange={(event) => {
+                const selected = event.target.files?.[0] || null;
+                setRestoreFile(selected);
+                if (selected) setRestoreBackup("");
+              }}
+            />
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+              Or select <b>Use for restore</b> beside a stored backup below.
+            </div>
+          </div>
+          <div>
+            <div style={fieldLabelStyle}>Selected backup</div>
+            <div className="info-row" style={{ minHeight: 42, display: "flex", alignItems: "center" }}>
+              {restoreFile?.name || restoreBackup || "No backup selected"}
+            </div>
           </div>
         </div>
-
-        <div style={{ overflowX: "auto", marginTop: 10 }}>
-          <table
-            className="table"
-            style={{
-              width: "100%",
-              borderCollapse: "separate",
-              borderSpacing: 0,
-              borderRadius: 14,
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(2, 6, 23, 0.22)",
-            }}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 12 }}>
+          <input
+            className="input"
+            value={restoreReason}
+            onChange={(event) => setRestoreReason(event.target.value)}
+            placeholder="Restore reason / change, deviation or incident reference (required)"
+          />
+          <button
+            type="button"
+            className="btn primary"
+            disabled={restoring || creatingBackup}
+            onClick={() => void runRestore()}
           >
+            {restoring ? "Restoring and validating…" : "Restore and Activate"}
+          </button>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.76, lineHeight: 1.5 }}>
+          The current dataset is not overwritten. A pre-restore backup is created, the selected backup is restored into
+          an internally named recovery database, required tables are checked, and it becomes active only after validation.
+        </div>
+      </div>
+
+      <div style={sectionStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+          <div style={{ fontSize: 17, fontWeight: 900 }}>Available Backups</div>
+          <div style={{ fontSize: 12, opacity: 0.72 }}>{backupRows.length} file(s) • active dataset {mono(activeDb)}</div>
+        </div>
+        <div style={{ overflowX: "auto", marginTop: 10 }}>
+          <table className="table" style={{ width: "100%" }}>
             <thead>
-              <tr style={{ background: "rgba(255,255,255,0.04)" }}>
-                <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 320 }}>Filename</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 90 }}>Size</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 190 }}>Created (UTC)</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 120 }}>Created by</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 110 }}>Result</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 190 }}>Modified (UTC)</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 260 }}>Actions</th>
+              <tr>
+                <th>Backup</th>
+                <th>Type</th>
+                <th>Created</th>
+                <th>Created by</th>
+                <th>Size</th>
+                <th>Integrity</th>
+                <th>Actions</th>
               </tr>
             </thead>
-
             <tbody>
               {backupRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: 14, opacity: 0.75 }}>
-                    {loading ? "Loading backups…" : "No backups found."}
-                  </td>
+                  <td colSpan={7}>{loading ? "Loading backups…" : "No backups found in the configured folder."}</td>
                 </tr>
               ) : (
-                backupRows.map((b, idx) => {
-                  const m = b.manifest || {};
-                  const createdAt = m.completed_at_utc || m.created_at_utc || "";
-                  const createdBy = m.created_by || "—";
-                  const result = m.result || "—";
-                  const rowBg = idx % 2 === 0 ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.00)";
-
-                  const pillStyle =
-                    result === "SUCCESS"
-                      ? { background: "rgba(16,185,129,0.14)", border: "1px solid rgba(16,185,129,0.35)" }
-                      : result === "FAILED"
-                      ? { background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)" }
-                      : { background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.35)" };
-
+                backupRows.map((backup) => {
+                  const manifest = backup.manifest || {};
+                  const created = manifest.completed_at_utc || manifest.created_at_utc || backup.modified_at_utc;
                   return (
-                    <tr key={b.filename} style={{ background: rowBg }}>
-                      <td style={{ padding: "10px 12px" }}>{mono(b.filename)}</td>
-                      <td style={{ padding: "10px 12px" }}>{formatBytes(b.size_bytes)}</td>
-                      <td style={{ padding: "10px 12px" }}>{formatDateTime(createdAt)}</td>
-                      <td style={{ padding: "10px 12px" }}>{createdBy}</td>
-                      <td style={{ padding: "10px 12px" }}>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            letterSpacing: 0.3,
-                            ...pillStyle,
-                          }}
-                        >
-                          {result}
-                        </span>
-                        {m.error ? (
-                          <div style={{ marginTop: 8, fontSize: 12, color: "#fecaca", opacity: 0.95, maxWidth: 560 }}>
-                            {m.error}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td style={{ padding: "10px 12px" }}>{formatDateTime(b.modified_at_utc)}</td>
-                      <td style={{ padding: "10px 12px" }}>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <button type="button" className="btn" onClick={() => void doDownloadDump(b.filename)}>
-                            Download .dump
+                    <tr key={backup.filename}>
+                      <td style={{ minWidth: 250 }}>{mono(backup.filename)}</td>
+                      <td>{manifest.backup_type || "Legacy"}</td>
+                      <td style={{ minWidth: 165 }}>{formatDateTime(created)}</td>
+                      <td>{manifest.created_by || "—"}</td>
+                      <td>{formatBytes(backup.size_bytes)}</td>
+                      <td>{manifest.sha256 ? "SHA-256 manifest" : "Legacy / unchecked"}</td>
+                      <td style={{ minWidth: 360 }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                          <button type="button" className="btn" onClick={() => void downloadDump(backup.filename)}>
+                            Download
                           </button>
-                          <button type="button" className="btn" onClick={() => void doDownloadManifest(b.filename)}>
-                            Download .json
-                          </button>
-                          <button type="button" className="btn" onClick={() => void openManifestModal(b.filename)}>
-                            View manifest
+                          {backup.manifest ? (
+                            <button type="button" className="btn" onClick={() => void openManifest(backup.filename)}>
+                              Details
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => void verifyStoredBackup(backup.filename)}
+                          >
+                            Verify
                           </button>
                           <button
                             type="button"
                             className="btn"
                             onClick={() => {
-                              setRestoreBackup(b.filename);
-                              setStatus(`Selected for restore: ${b.filename}`);
+                              setRestoreBackup(backup.filename);
+                              setRestoreFile(null);
+                              if (restoreInput.current) restoreInput.current.value = "";
+                              setStatus(`Selected for restore: ${backup.filename}`);
                             }}
                           >
                             Use for restore
@@ -747,265 +688,143 @@ export default function DbToolsPanel() {
         </div>
       </div>
 
-      {/* Restore */}
-      <div className="info-row" style={{ marginTop: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>Restore into a NEW dataset</div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Auto-enables maintenance mode during restore.</div>
+      <details style={sectionStyle}>
+        <summary style={{ cursor: "pointer", fontSize: 16, fontWeight: 900 }}>Advanced Recovery Controls</summary>
+        <div style={{ marginTop: 14, fontSize: 13, opacity: 0.8 }}>
+          These controls are retained for rollback and technical recovery. Normal restores activate the verified recovery
+          dataset automatically.
         </div>
 
-        <div
-          style={{
-            marginTop: 10,
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(2, 6, 23, 0.26)",
-            padding: 14,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Selected backup</div>
-            <div style={{ fontWeight: 900, marginBottom: 10 }}>{restoreBackup ? mono(restoreBackup) : "—"}</div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <input
-                className="input"
-                placeholder="New dataset DB name (optional — auto generated if blank)"
-                value={restoreDbName}
-                onChange={(e) => setRestoreDbName(e.target.value)}
-              />
-              <input
-                className="input"
-                placeholder="Audit note / reason (recommended)"
-                value={restoreNote}
-                onChange={(e) => setRestoreNote(e.target.value)}
-              />
-              <input
-                className="input"
-                placeholder='Confirm phrase: type RESTORE'
-                value={restoreConfirm}
-                onChange={(e) => setRestoreConfirm(e.target.value)}
-              />
-              <button type="button" className="btn primary" disabled={restoring} onClick={() => void runRestore()}>
-                {restoring ? "Restoring…" : "Restore backup into new dataset"}
-              </button>
-
-              <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.45 }}>
-                Restore is non-destructive to the current dataset (it creates a <b>new</b> DB). If the restore fails or
-                completes with warnings, the system may remain in maintenance mode until you disable it.
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Dataset name rules (allowlist)</div>
-
-            {/* This is the user-requested wording: */}
-            <div
-              style={{
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(2, 6, 23, 0.30)",
-                padding: 12,
-                fontSize: 13,
-                opacity: 0.95,
-                lineHeight: 1.55,
-              }}
-            >
-              <div style={{ marginBottom: 8 }}>
-                <b>Why this exists:</b> it’s a safety guard so dataset tools only ever touch databases intended for this
-                app (prevents accidental switching/restoring into system DBs like <b>postgres</b> / templates).
-              </div>
-
-              <div style={{ marginBottom: 6 }}>
-                <b>Pattern enforced by backend:</b> {mono(allowlistPattern)}
-              </div>
-
-              <div style={{ marginTop: 10, fontSize: 13 }}>
-                <b>Friendly rule:</b> Database names must start with <b>stock</b> and contain only letters, numbers, or
-                underscore (_). Example: {mono("stock_training_202602")}. Hyphens (-) and spaces are not allowed.
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12, fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Suggested workflow</div>
-            <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.55 }}>
-              <ol style={{ margin: 0, paddingLeft: 18 }}>
-                <li>Create or select a backup</li>
-                <li>
-                  Restore into a new dataset (e.g. {mono("stock_training_202602")} or {mono("stock_restore_YYYYMMDD_HHMM")})
-                </li>
-                <li>Check the new dataset appears in the Datasets list below</li>
-                <li>Disable Maintenance Mode (if still ON)</li>
-                <li>Switch the active dataset globally (affects all users)</li>
-              </ol>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Datasets */}
-      <div className="info-row" style={{ marginTop: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>Datasets (global)</div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Switching affects ALL users (new requests).</div>
-        </div>
-
-        <div
-          style={{
-            marginTop: 10,
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(2, 6, 23, 0.26)",
-            padding: 14,
-          }}
-        >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontWeight: 900 }}>Maintenance Mode</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, marginTop: 8 }}>
             <input
               className="input"
-              placeholder="Audit note / reason (recommended)"
-              value={switchNote}
-              onChange={(e) => setSwitchNote(e.target.value)}
+              value={maintReason}
+              onChange={(event) => setMaintReason(event.target.value)}
+              placeholder="Optional maintenance reason"
             />
-            <input
-              className="input"
-              placeholder="Confirm phrase (must match target dataset name)"
-              value={switchConfirm}
-              onChange={(e) => setSwitchConfirm(e.target.value)}
-            />
-          </div>
-
-          <div style={{ overflowX: "auto", marginTop: 10 }}>
-            <table
-              className="table"
-              style={{
-                width: "100%",
-                borderCollapse: "separate",
-                borderSpacing: 0,
-                borderRadius: 14,
-                overflow: "hidden",
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(2, 6, 23, 0.22)",
-              }}
+            <button
+              type="button"
+              className="btn"
+              disabled={togglingMaintenance || maintenance?.enabled}
+              onClick={() => void setMaintenanceMode(true)}
             >
+              Enable
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={togglingMaintenance || !maintenance?.enabled}
+              onClick={() => void setMaintenanceMode(false)}
+            >
+              Disable
+            </button>
+          </div>
+          <div style={{ marginTop: 7, fontSize: 12, opacity: 0.75 }}>
+            Current status: <b>{maintenance?.enabled ? "ON" : "OFF"}</b>
+            {maintenance?.reason ? ` • ${maintenance.reason}` : ""}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontWeight: 900 }}>Recovery Datasets</div>
+          <input
+            className="input"
+            style={{ marginTop: 8 }}
+            value={switchReason}
+            onChange={(event) => setSwitchReason(event.target.value)}
+            placeholder="Audit reason required before manually changing the active dataset"
+          />
+          <div style={{ overflowX: "auto", marginTop: 8 }}>
+            <table className="table" style={{ width: "100%" }}>
               <thead>
-                <tr style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 320 }}>DB name</th>
-                  <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 160 }}>Status</th>
-                  <th style={{ padding: "10px 12px", textAlign: "left", minWidth: 220 }}>Action</th>
+                <tr>
+                  <th>Internal database</th>
+                  <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {(datasets?.datasets || []).length === 0 ? (
-                  <tr>
-                    <td colSpan={3} style={{ padding: 14, opacity: 0.75 }}>
-                      No dataset DBs found matching allowlist.
-                    </td>
-                  </tr>
-                ) : (
-                  (datasets?.datasets || []).map((db) => {
-                    const isActive = db === activeDb;
-                    return (
-                      <tr key={db} style={{ background: "rgba(255,255,255,0.01)" }}>
-                        <td style={{ padding: "10px 12px" }}>{mono(db)}</td>
-                        <td style={{ padding: "10px 12px" }}>
-                          {isActive ? (
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                padding: "4px 10px",
-                                borderRadius: 999,
-                                fontSize: 12,
-                                fontWeight: 900,
-                                letterSpacing: 0.3,
-                                background: "rgba(16,185,129,0.14)",
-                                border: "1px solid rgba(16,185,129,0.35)",
-                              }}
-                            >
-                              ACTIVE
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 12, opacity: 0.75 }}>Available</span>
-                          )}
-                        </td>
-                        <td style={{ padding: "10px 12px" }}>
-                          {isActive ? null : (
-                            <button
-                              type="button"
-                              className="btn"
-                              disabled={!!switchingTo || maintenance?.enabled}
-                              onClick={() => void runSwitch(db)}
-                            >
-                              {switchingTo === db ? "Switching…" : maintenance?.enabled ? "Maintenance ON" : "Set active"}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                {(datasets?.datasets || []).map((database) => {
+                  const isActive = database === activeDb;
+                  return (
+                    <tr key={database}>
+                      <td>{mono(database)}</td>
+                      <td>{isActive ? <b>ACTIVE</b> : "Available for rollback"}</td>
+                      <td>
+                        {!isActive ? (
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!!switchingTo || maintenance?.enabled}
+                            onClick={() => void switchDataset(database)}
+                          >
+                            {switchingTo === database ? "Switching…" : "Set active"}
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-
-          {maintenance?.enabled ? (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85, color: "#fecaca" }}>
-              Dataset switching is disabled while maintenance mode is ON.
-            </div>
-          ) : null}
         </div>
-      </div>
 
-      {/* Manifest modal */}
-      {manifestOpen ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 60,
-            background: "rgba(0,0,0,0.65)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 18,
-          }}
-          onClick={() => setManifestOpen(false)}
-        >
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontWeight: 900 }}>System Information</div>
           <div
-            className="card"
             style={{
-              width: "min(980px, 100%)",
-              maxHeight: "85vh",
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(2, 6, 23, 0.86)",
-              boxShadow: "0 30px 90px rgba(0,0,0,0.55)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: 10,
+              marginTop: 8,
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <div className="card-header" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <div className="info-row">
+              <div style={fieldLabelStyle}>Application version</div>
+              <b>{info?.app?.version || "—"}</b>
+            </div>
+            <div className="info-row">
+              <div style={fieldLabelStyle}>Active database</div>
+              <b>{mono(activeDb)}</b>
+            </div>
+            <div className="info-row">
+              <div style={fieldLabelStyle}>Database size</div>
+              <b>{formatBytes(info?.database?.size_bytes)}</b>
+            </div>
+            <div className="info-row">
+              <div style={fieldLabelStyle}>PostgreSQL</div>
+              <b>{info?.database?.postgres_version || "—"}</b>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      {manifestOpen ? (
+        <div className="modal-overlay" onMouseDown={() => setManifestOpen(false)}>
+          <div className="modal" onMouseDown={(event) => event.stopPropagation()} style={{ maxWidth: 820 }}>
+            <div className="modal-header">
               <div>
-                <div className="card-title">Backup manifest</div>
-                <div className="card-subtitle" style={{ opacity: 0.9 }}>
-                  {mono(manifestTitle)}
-                </div>
+                <div className="modal-title">Backup Details</div>
+                <div className="modal-subtitle">{manifestTitle}</div>
               </div>
               <button type="button" className="btn" onClick={() => setManifestOpen(false)}>
                 Close
               </button>
             </div>
-            <div style={{ padding: 14, overflow: "auto", maxHeight: "calc(85vh - 80px)" }}>
+            <div className="modal-body">
               <pre
                 style={{
                   margin: 0,
-                  fontSize: 12,
-                  lineHeight: 1.5,
                   whiteSpace: "pre-wrap",
-                  color: "rgba(255,255,255,0.92)",
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  overflowWrap: "anywhere",
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "rgba(2, 6, 23, 0.58)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  fontSize: 12,
                 }}
               >
                 {JSON.stringify(manifestJson, null, 2)}
@@ -1014,6 +833,6 @@ export default function DbToolsPanel() {
           </div>
         </div>
       ) : null}
-    </Card>
+    </div>
   );
 }

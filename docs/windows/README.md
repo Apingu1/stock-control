@@ -53,10 +53,19 @@ After successful server installation, client computers may browse directly to th
 The one supported **server** uninstall control is:
 
 ```text
-Administration & Recovery\02 - COMPLETE UNINSTALL.bat
+Administration & Recovery\03 - COMPLETE UNINSTALL.bat
 ```
 
 This is separate from the client-only uninstall under `CLIENT DEPLOYMENT`. There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
+
+Backup administration is provided by:
+
+```text
+Administration & Recovery\01 - BACKUP SETTINGS.bat
+Administration & Recovery\02 - BACKUP AND RESTORE.bat
+```
+
+The first control provides the server-folder browser and adjustable automatic daily time/retention. The second provides manual backup and guided file-browser restore.
 
 ## Manual fallback
 
@@ -76,6 +85,7 @@ The installed server runtime under `C:\ProgramData\Eaststone\StockControl` retai
 
 ```text
 ESC_SERVER_SETUP_WINDOWS.bat
+ESC_BACKUP_SETTINGS_WINDOWS.bat
 ESC_BACKUP_RESTORE_WINDOWS.bat
 INSTALL_WINDOWS.bat
 ENABLE_HTTPS_WINDOWS.bat

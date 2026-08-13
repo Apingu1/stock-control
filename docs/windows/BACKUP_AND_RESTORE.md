@@ -2,261 +2,150 @@
 
 ## Scope
 
-This guide covers the Windows deployment backup and restore controls supplied with Eaststone Stock Control. It should be incorporated into the customer’s approved business-continuity, disaster-recovery and GMP computerised-system procedures.
+This guide covers the automatic, manual and restore controls supplied with Eaststone Stock Control. Incorporate it into the customer’s approved business-continuity, disaster-recovery and GMP computerised-system procedures.
 
-## Backup contents
+## How storage works
 
-The automatic database backup contains the active PostgreSQL database in custom `pg_dump` format. Each backup is accompanied by a JSON manifest containing:
+Backups are PostgreSQL custom-format `.dump` files. The selected Windows folder is bind-mounted into the API and backup-scheduler containers at `/backups`; the files therefore live on the Windows host or approved network share, not in a disposable Docker container layer.
 
-- creation date/time;
-- database name;
-- host computer;
-- Windows user;
-- reason;
-- file size;
-- SHA-256 hash.
-
-Default folder:
+The initial default is:
 
 ```text
-C:\ProgramData\Eaststone\StockControl\backups-production-test
+C:\ProgramData\Eaststone\StockControl\Backups
 ```
 
-The database backup does not include:
-
-- `.env`;
-- private CA/server keys;
-- approved installer/release package;
-- host configuration;
-- external validation documents.
-
-Those items require a protected configuration/disaster-recovery backup.
-
-## Scheduled backups
-
-The server setup registers:
+To change it on the server, open either:
 
 ```text
-Eaststone Stock Control - Daily Backup
+ESC Backup Settings
+Administration & Recovery\01 - BACKUP SETTINGS.bat
 ```
 
-Default execution time:
+The utility provides a real folder browser and accepts a local fixed drive or an approved UNC/network location accessible to Docker Desktop. It performs a Windows write test, reconnects the API and scheduler to the folder, and performs a container write test before accepting a changed location. If validation fails, the previous configuration is restored.
+
+Existing backups are not moved or deleted when the folder changes. Move or copy them separately if they must remain visible in the application.
+
+The web application shows the configured physical location. A normal browser cannot safely browse the server’s filesystem, so changing the server folder is deliberately performed by the Windows server utility.
+
+Runtime state is stored separately under:
 
 ```text
-02:30 every day
+C:\ProgramData\Eaststone\StockControl\runtime-state
 ```
 
-The task runs:
+Changing the backup folder therefore does not reset the active dataset, maintenance mode, schedule or audit trail.
+
+## Backup files and manifests
+
+Simple filenames identify the purpose and creation time:
 
 ```text
-windows\Automatic-Backup.ps1
+StockControl_Auto_2026-08-13_02-30-00.dump
+StockControl_Manual_2026-08-13_14-05-12.dump
+StockControl_PreRestore_2026-08-13_14-12-44.dump
+StockControl_Initial_2026-08-13_09-00-00.dump
+StockControl_Imported_2026-08-13_14-10-01.dump
 ```
 
-Default local retention is 30 days. Customer retention and off-host copying must be defined according to risk assessment and record-retention requirements.
+The internal PostgreSQL database name is recorded in the adjacent manifest and is no longer required in the user-facing filename. Each backup created by Stock Control has a `.dump.json` manifest containing its type, creation time, reason, creator, active database, file size and SHA-256 hash.
 
-## Manual backup
+Backups do not include `.env`, private certificates/keys, the approved release package, host configuration or validation documents. Protect those separately as controlled configuration and recovery records.
 
-Run:
+## Automatic daily backups
+
+The `backup-scheduler` Docker service runs continuously and does not depend on a Windows user being logged in. The initial setting is enabled at `02:30 Europe/London` with 30-day automatic-backup retention.
+
+An administrator can change the enabled state, daily time or retention later from either:
+
+- Admin → Database Backup & Recovery in the web application; or
+- `ESC Backup Settings` on the Windows server.
+
+The new setting is persisted immediately; no reinstall or new Windows scheduled task is required. A missed scheduled time is run when the always-on scheduler next checks that day. Only expired `AUTO` backups are removed automatically. Manual, initial, imported and pre-restore safety backups are never removed by automatic retention.
+
+Review the next run, last result and last successful automatic backup in the Admin screen or `04 - SERVER STATUS.bat`.
+
+## Manual backups
+
+In the web application, open Admin → Database Backup & Recovery and select **Back Up Now**. An optional note can be supplied; no typed confirmation phrase or database-name entry is required.
+
+On the Windows server, run:
 
 ```text
-ESC Backup and Restore Tool.exe
+Administration & Recovery\02 - BACKUP AND RESTORE.bat
 ```
 
-Select:
+and select **Create verified backup now**.
 
-```text
-1. Create verified backup now
-```
+Both entry points use the same backup engine, active-dataset selection, lock, filename convention and SHA-256 manifest.
 
-Alternatively, run:
+A backup is successful only when the `.dump` and `.dump.json` files exist, the dump is non-empty/custom-format, and completion is recorded without error.
 
-```text
-ESC_BACKUP_RESTORE_WINDOWS.bat
-```
+## Restore from the web application
 
-The backup is successful only when:
+The normal restore path is Admin → Database Backup & Recovery:
 
-- a `.dump` file exists;
-- its `.dump.json` manifest exists;
-- the log reports completion;
-- the file is non-zero size;
-- the SHA-256 can be independently recalculated and matched.
+1. use the file browser to choose any accessible `.dump` file, or select **Use for restore** beside a stored backup;
+2. enter the required audit/change/deviation/incident reason;
+3. select **Restore and Activate**;
+4. accept the single confirmation dialog.
 
-## Off-host backup
+When a physical file is selected, it is streamed into the configured backup folder and registered as an imported backup. The service then:
 
-A local Docker host failure can destroy the application and local backups together. Copy verified backups to an approved protected off-host location, such as a controlled server share or backup platform.
+1. validates PostgreSQL custom format and SHA-256 when a manifest is available;
+2. prevents another backup/restore from overlapping;
+3. creates a verified pre-restore safety backup of the current active dataset;
+4. creates an internally named `stock_restore_*` recovery database;
+5. restores without overwriting the current database;
+6. applies the current controlled schema bootstrap to older compatible backups;
+7. verifies required Stock Control tables and representative record counts;
+8. activates the restored database only after validation;
+9. retains the prior database for rollback; and
+10. returns maintenance mode to its previous state.
 
-Recommended structure:
+If restore or validation fails, the incomplete recovery database is removed and the original active database remains selected.
 
-```text
-N:\Quality\QA\ESC -Stock Control\Backups\
-  Production\
-    YYYY\
-      MM\
-```
+Large uploads are allowed up to the configured server limit (5 GB by default). Keep the browser and server running until completion.
 
-Off-host copying should preserve both:
+## Windows guided recovery
 
-```text
-stock-control-YYYYMMDD_HHMMSS.dump
-stock-control-YYYYMMDD_HHMMSS.dump.json
-```
-
-Access should be restricted and backup immutability/versioning used where available.
-
-## Backup review
-
-At an approved frequency, review:
-
-- Task Scheduler last result;
-- `logs\backup.log`;
-- `logs\health-status.json` backup age;
-- local and off-host backup counts;
-- file sizes and unexpected changes;
-- SHA-256 manifest presence;
-- free disk capacity;
-- exceptions/deviations.
-
-## Restore prerequisites
-
-Before restoring:
-
-1. confirm authorised change/deviation/incident reference;
-2. identify the correct target system and database;
-3. confirm users are logged out;
-4. record the current dataset/time;
-5. select and verify the intended backup and manifest;
-6. assess the data-loss interval;
-7. ensure Docker/PostgreSQL are healthy;
-8. ensure adequate disk space;
-9. confirm the post-restore verification plan;
-10. obtain required approval.
-
-## Controlled restore
-
-Run:
-
-```text
-ESC Backup and Restore Tool.exe
-```
-
-Select:
-
-```text
-3. Restore a backup
-```
-
-The tool:
-
-1. opens a controlled backup selector;
-2. verifies SHA-256 when a manifest exists;
-3. requires the exact phrase `RESTORE STOCK CONTROL`;
-4. creates a pre-restore safety backup;
-5. stops API and web containers;
-6. copies the selected backup into PostgreSQL;
-7. replaces the active database;
-8. runs `pg_restore`;
-9. restarts the application;
-10. executes the health monitor.
-
-Do not interrupt the host or Docker during restore.
+`02 - BACKUP AND RESTORE.bat` also provides a native Open File dialog for server-side recovery. It uses one Yes/No confirmation, normally creates a pre-restore backup, restores into a new recovery database, validates required tables, activates only after validation, retains the previous database and runs the health monitor. This path is useful when normal browser access is unavailable but Docker and PostgreSQL are operational. If the API is too unhealthy to create the additional safety dump, the utility records and displays that exception but can still proceed safely because it never overwrites the current database.
 
 ## Post-restore verification
 
 Verify and record:
 
-1. HTTP and HTTPS health;
-2. administrator login;
-3. expected database date/data cut;
-4. user and role configuration;
-5. material and product counts;
-6. representative material master record;
-7. representative receipt;
-8. representative consumption and customer name;
-9. live lot balance;
-10. quarantine status;
-11. audit trail access and representative history;
-12. analytics batch/product drilldown;
-13. automatic material-code sequence progression;
-14. ADMIN access to all permissions;
-15. creation of a new post-restore backup;
-16. QA review and approval before returning to use.
+1. HTTP and HTTPS health and administrator login;
+2. expected data date/cut and representative record counts;
+3. users, roles and permissions;
+4. representative material, lot, receipt and consumption records;
+5. live balances, quarantine status, audit trail and analytics;
+6. automatic material-code sequence progression;
+7. the pre-restore safety backup and retained rollback dataset; and
+8. QA approval before returning the system to routine use.
 
-## Restore challenge / periodic verification
+Create a new manual backup after the restored system is approved.
 
-A backup is not proven until restored successfully. At a risk-based frequency, restore a selected production backup into a segregated test dataset/host and document:
+## Off-host protection
 
-- backup selection and SHA-256;
-- restore execution;
-- integrity checks;
-- record counts;
-- functional checks;
-- audit trail checks;
-- discrepancies;
-- approval.
+Selecting an approved network share as the configured destination can place new backups directly off the application drive, provided the Docker Desktop service account has durable access. Alternatively, copy both `.dump` and `.dump.json` files to an approved protected platform. Use restricted access and immutability/versioning where available.
 
-Never perform a restore challenge over the active production database.
+Daily backup alone may not meet the approved Recovery Point Objective. Define and approve the backup time, retention, off-host copy/replication, restore-test frequency, responsible roles, escalation contacts, RPO and RTO.
 
-## Recovery point and recovery time
+## Restore challenge
 
-The customer must approve:
+A backup is not proven until restored successfully. At a risk-based frequency, restore a selected production backup into a controlled recovery/test context and document the selected file/hash, execution, integrity checks, record counts, functional checks, audit checks, discrepancies and approval. Do not intentionally overwrite the active production database for a routine challenge.
 
-- Recovery Point Objective (maximum acceptable data-loss interval);
-- Recovery Time Objective (maximum acceptable outage);
-- daily backup timing;
-- off-host copy frequency;
-- retention;
-- responsible roles;
-- escalation contacts.
-
-Daily local backup alone may not meet the required recovery point.
-
-## Configuration and certificate recovery package
-
-Protect separately:
+## Relevant records
 
 ```text
-.env
-infra\certs\stock-control-ca.crt
-infra\certs\stock-control-ca.key
-infra\certs\stock-control.crt
-infra\certs\stock-control.key
-deployment\server-config.ini
-approved release package
-approved validation/configuration records
-```
-
-Private keys must be encrypted or otherwise protected and access-controlled. Do not store them in an unrestricted shared folder.
-
-## Failed restore
-
-When restore fails:
-
-1. stop further write activity;
-2. preserve selected and pre-restore backups;
-3. preserve logs;
-4. do not delete the PostgreSQL volume;
-5. document the error and stage reached;
-6. escalate to authorised technical support/QA;
-7. determine whether the pre-restore backup must be restored;
-8. execute full post-recovery verification.
-
-Relevant logs:
-
-```text
-logs\backup-restore-tool.log
+runtime-state\backup_settings.json
+runtime-state\backup_scheduler_status.json
+runtime-state\db_tools_audit.jsonl
 logs\backup.log
-Docker db/api/web logs
+logs\backup-restore-tool.log
+logs\backup-settings.log
+logs\health-status.json
+Docker db/api/backup-scheduler/web logs
 ```
 
-## Prohibited routine commands
-
-Do not use during normal operation:
-
-```text
-docker compose down -v
-docker volume rm stock-control-prodtest-db-data
-UNINSTALL_WINDOWS.bat
-```
-
-These can destroy the active database.
+Do not use `docker compose down -v`, `docker volume rm stock-control-prodtest-db-data` or complete uninstall during normal operation; these can destroy the active database volume.

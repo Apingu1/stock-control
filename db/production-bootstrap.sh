@@ -4,9 +4,11 @@ set -euo pipefail
 : "${DB_NAME:?DB_NAME is required}"
 : "${DB_USER:?DB_USER is required}"
 : "${DB_PASSWORD:?DB_PASSWORD is required}"
+DB_HOST="${DB_HOST:-db}"
+DB_PORT="${DB_PORT:-5432}"
 
 export PGPASSWORD="$DB_PASSWORD"
-PSQL=(psql -h db -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
+PSQL=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
 BOOTSTRAP_VERSION="production-schema-v3-cancelled-bmr-marker"
 
 marker_exists="$(${PSQL[@]} -tAc "SELECT CASE WHEN to_regclass('public.deployment_schema_bootstrap') IS NULL THEN 0 ELSE 1 END;")"
