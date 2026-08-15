@@ -1,6 +1,8 @@
 // src/utils/api.ts
 
 const TOKEN_KEY = "sc_jwt";
+export const LAST_ACTIVITY_KEY = "sc_last_human_activity";
+export const AUTH_EXPIRED_EVENT = "sc_auth_expired";
 
 function normalizeBase(base: string): string {
   // Keep leading slash (for relative bases) but remove trailing slashes
@@ -25,15 +27,24 @@ function getApiBase(): string {
 }
 
 export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
+  // Authentication is intentionally browser-session-only. Browser password
+  // managers remain free to save credentials independently.
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
 }
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  // Never migrate the legacy persistent token: upgrading must require a fresh
+  // login and closing the browser must not leave an application token behind.
+  localStorage.removeItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY);
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(LAST_ACTIVITY_KEY);
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
@@ -73,6 +84,14 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
     }
     const err = new Error(message) as Error & { status?: number };
     err.status = res.status;
+    if (res.status === 401 && token && getToken() === token) {
+      clearToken();
+      window.dispatchEvent(
+        new CustomEvent(AUTH_EXPIRED_EVENT, {
+          detail: { message },
+        })
+      );
+    }
     throw err;
   }
 
@@ -85,9 +104,44 @@ export async function login(username: string, password: string) {
     body: JSON.stringify({ username, password }),
   });
 
-  const data = (await res.json()) as { access_token: string; token_type: string };
+  const data = (await res.json()) as {
+    access_token: string;
+    token_type: string;
+    must_change_password: boolean;
+  };
   setToken(data.access_token);
   return data;
+}
+
+export async function changePassword(newPassword: string) {
+  const res = await apiFetch("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ new_password: newPassword }),
+  });
+  const data = (await res.json()) as {
+    access_token: string;
+    token_type: string;
+    must_change_password: boolean;
+  };
+  setToken(data.access_token);
+  return data;
+}
+
+export async function recordHumanActivity() {
+  await apiFetch("/auth/activity", { method: "POST" });
+}
+
+export async function logoutSession() {
+  await apiFetch("/auth/logout", { method: "POST" });
+}
+
+export async function fetchSessionSettings() {
+  const res = await apiFetch("/auth/session-settings");
+  return (await res.json()) as {
+    inactivity_timeout_minutes: number;
+    updated_at?: string | null;
+    updated_by?: string | null;
+  };
 }
 
 export async function fetchMe() {
@@ -97,6 +151,7 @@ export async function fetchMe() {
     username: string;
     role: string;
     is_active: boolean;
+    must_change_password: boolean;
   };
 }
 

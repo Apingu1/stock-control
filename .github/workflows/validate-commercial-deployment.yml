@@ -44,6 +44,11 @@ jobs:
           from app.main import app
           paths = {route.path for route in app.routes}
           required = {
+              "/auth/change-password",
+              "/auth/activity",
+              "/auth/logout",
+              "/auth/session-settings",
+              "/admin/session-settings",
               "/materials/next-code",
               "/materials/",
               "/issues/batch",
@@ -55,6 +60,12 @@ jobs:
           missing = sorted(required - paths)
           if missing:
               raise SystemExit(f"Missing enhanced API routes: {missing}")
+          permission_path = "/admin/roles/{role_name}/permissions"
+          permission_routes = [route for route in app.routes if route.path == permission_path]
+          if len(permission_routes) != 2:
+              raise SystemExit(
+                  f"Expected canonical GET/PUT permission routes only; found {len(permission_routes)}"
+              )
           print(f"API imported with {len(paths)} registered paths")
           PY
 
@@ -175,7 +186,15 @@ jobs:
               method="POST",
               payload={"username": "admin", "password": "Admin123!"},
           )
-          token = login["access_token"]
+          assert login["must_change_password"] is True
+          changed = request(
+              "/auth/change-password",
+              method="POST",
+              token=login["access_token"],
+              payload={"new_password": "AdminCI123!"},
+          )
+          assert changed["must_change_password"] is False
+          token = changed["access_token"]
 
           my_permissions = request("/auth/my-permissions", token=token)
           permissions = set(my_permissions["permissions"])

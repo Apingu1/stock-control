@@ -1,13 +1,20 @@
 // web/src/App.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Issue, Material, Receipt, UserMe, ViewMode } from "./types";
-import { clearToken, fetchMe, getToken } from "./utils/api";
+import {
+  AUTH_EXPIRED_EVENT,
+  clearToken,
+  fetchMe,
+  getToken,
+  logoutSession,
+} from "./utils/api";
 
 import { useAuth } from "./hooks/useAuth";
 import { usePermissions } from "./hooks/usePermissions";
 import { useStockData } from "./hooks/useStockData";
 import { useBackgroundRefresh } from "./hooks/useBackgroundRefresh";
 import { useAlertsBadge } from "./hooks/useAlertsBadge";
+import { useIdleLogout } from "./hooks/useIdleLogout";
 
 import Sidebar from "./components/layout/Sidebar";
 import TopBar from "./components/layout/TopBar";
@@ -71,6 +78,7 @@ const App: React.FC = () => {
   const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
 
   const [view, setView] = useState<ViewMode>("dashboard");
+  const [loginMessage, setLoginMessage] = useState<string | null>(null);
 
   // Deep-link support: Dashboard → Analytics batch page
   const [analyticsInitialBatchNo, setAnalyticsInitialBatchNo] = useState<string | null>(null);
@@ -144,6 +152,74 @@ const App: React.FC = () => {
     label: "reference data refresh",
   });
 
+  const setAuthenticatedUser = auth.setMe;
+  const setLoginOpen = auth.setShowLogin;
+  const setCurrentPermissions = perms.setMyPermissions;
+  const clearLotBalances = stock.setLotBalances;
+  const clearMaterials = stock.setMaterials;
+  const clearProducts = stock.setProducts;
+  const clearReceipts = stock.setReceipts;
+  const clearIssues = stock.setIssues;
+  const clearExpiryThresholds = stock.setExpiryThresholds;
+
+  const logout = useCallback(
+    (message: string | null = null, notifyServer = true) => {
+      if (notifyServer && getToken()) {
+        void logoutSession().catch(() => {
+          // Local logout still completes if the session is already unavailable.
+        });
+      }
+      clearToken();
+      setAuthenticatedUser(null);
+      setCurrentPermissions([]);
+      setLoginOpen(true);
+      setLoginMessage(message);
+      setView("dashboard");
+      setAnalyticsInitialBatchNo(null);
+      clearLotBalances([]);
+      clearMaterials([]);
+      clearProducts([]);
+      clearReceipts([]);
+      clearIssues([]);
+      clearExpiryThresholds([]);
+      setShowReceiptModal(false);
+      setShowIssueModal(false);
+      setShowNewMaterialModal(false);
+      setEditingMaterial(null);
+      setEditingReceipt(null);
+      setEditingIssue(null);
+    },
+    [
+      clearExpiryThresholds,
+      clearIssues,
+      clearLotBalances,
+      clearMaterials,
+      clearProducts,
+      clearReceipts,
+      setAuthenticatedUser,
+      setCurrentPermissions,
+      setLoginOpen,
+    ]
+  );
+
+  useIdleLogout({
+    enabled: !!auth.me,
+    onTimeout: (timeoutMinutes) =>
+      logout(`Signed out after ${timeoutMinutes} minutes of inactivity.`, false),
+  });
+
+  useEffect(() => {
+    const handleAuthExpired = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      const message = detail?.message?.toLowerCase().includes("inactivity")
+        ? "Signed out because the inactivity limit was reached."
+        : "Your session has ended. Please sign in again.";
+      logout(message, false);
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, [logout]);
+
   // --- Auth bootstrap -------------------------------------------------------
   useEffect(() => {
     const boot = async () => {
@@ -179,23 +255,9 @@ const App: React.FC = () => {
   const handleLoggedIn = async (u: UserMe) => {
     auth.setMe(u);
     auth.setShowLogin(false);
+    setLoginMessage(null);
     await perms.loadMyPermissions();
     await stock.loadAll();
-  };
-
-  const logout = () => {
-    clearToken();
-    auth.setMe(null);
-    perms.setMyPermissions([]);
-    auth.setShowLogin(true);
-    setView("dashboard");
-    stock.setLotBalances([]);
-    stock.setMaterials([]);
-    stock.setProducts([]);
-    stock.setReceipts([]);
-    stock.setIssues([]);
-    setEditingReceipt(null);
-    setEditingIssue(null);
   };
 
   // --- Modal handlers -------------------------------------------------------
@@ -265,10 +327,20 @@ const App: React.FC = () => {
     );
   }
 
+  if (!auth.me) {
+    return (
+      <div className="app-shell">
+        <LoginModal
+          open={auth.showLogin}
+          message={loginMessage}
+          onLoggedIn={handleLoggedIn}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
-      <LoginModal open={auth.showLogin} onLoggedIn={handleLoggedIn} />
-
       <Sidebar
         me={auth.me}
         view={view}
@@ -277,7 +349,7 @@ const App: React.FC = () => {
         canViewAudit={canViewAudit}
         canViewProducts={canViewProducts}
         alertsCounts={alertsCounts}
-        onLogout={logout}
+        onLogout={() => logout()}
       />
 
       <main className="main">

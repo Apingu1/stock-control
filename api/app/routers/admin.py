@@ -1,4 +1,5 @@
 # api/app/routers/admin.py
+from datetime import datetime, timezone
 from typing import List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,7 @@ from ..models import (
     RolePermission,
     RolePermissionAuditEvent,
     ExpiryThresholdSetting,
+    SecuritySessionSetting,
 )
 from ..schemas import (
     UserCreate,
@@ -26,8 +28,11 @@ from ..schemas import (
     RolePermissionSet,
     ExpiryThresholdSettingOut,
     ExpiryThresholdSettingUpdate,
+    SessionSettingsOut,
+    SessionSettingsUpdate,
 )
-from ..security import hash_password, require_admin_access
+from ..audit_logger import log_security_event
+from ..security import hash_password, require_admin_access, revoke_user_sessions
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -38,6 +43,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 SYSTEM_ROLES = {"ADMIN", "SENIOR", "OPERATOR"}
 PROTECTED_ADMIN_USERNAME = "admin"
+MIN_PASSWORD_LENGTH = 8
 
 
 def _active_admin_count(db: Session) -> int:
@@ -102,14 +108,18 @@ def create_user(
     if not role.is_active:
         raise HTTPException(status_code=400, detail="Role is inactive")
 
-    if not payload.password or len(payload.password) < 6:
-        raise HTTPException(status_code=400, detail="password must be at least 6 chars")
+    if not payload.password or len(payload.password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
 
     u = User(
         username=username,
         password_hash=hash_password(payload.password),
         role=role_name,
         is_active=bool(payload.is_active),
+        must_change_password=True,
         created_by=admin.username,
     )
     db.add(u)
@@ -123,7 +133,7 @@ def update_user(
     user_id: int,
     payload: UserUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin_access),
+    admin: User = Depends(require_admin_access),
 ) -> UserOut:
     u = db.query(User).filter(User.id == user_id).one_or_none()
     if not u:
@@ -158,9 +168,25 @@ def update_user(
 
     # Password reset (admin)
     if payload.password is not None:
-        if len(payload.password) < 6:
-            raise HTTPException(status_code=400, detail="password must be at least 6 chars")
+        if len(payload.password) < MIN_PASSWORD_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"password must be at least {MIN_PASSWORD_LENGTH} characters",
+            )
         u.password_hash = hash_password(payload.password)
+        u.must_change_password = True
+        revoke_user_sessions(db, u.id)
+        log_security_event(
+            db,
+            event_type="PASSWORD_RESET",
+            actor_username=admin.username,
+            actor_role=admin.role,
+            target_type="USER",
+            target_ref=u.username,
+            reason="Administrator issued a temporary password",
+            success=True,
+            meta={"password_change_required": True},
+        )
 
     db.commit()
     db.refresh(u)
@@ -296,6 +322,8 @@ def get_role_permissions_matrix(
         raise HTTPException(status_code=404, detail="Role not found")
 
     perms = db.query(Permission).order_by(Permission.key.asc()).all()
+    if rn == "ADMIN":
+        return [RolePermissionOut(permission_key=p.key, granted=True) for p in perms]
     rp_rows = db.query(RolePermission).filter(RolePermission.role_name == rn).all()
     rp_map: Dict[str, bool] = {rp.permission_key: bool(rp.granted) for rp in rp_rows}
 
@@ -339,6 +367,8 @@ def set_role_permissions_matrix(
         raise HTTPException(status_code=400, detail="No valid permissions provided")
 
     all_permissions = sorted(valid)
+    if rn == "ADMIN":
+        incoming = {key: True for key in all_permissions}
     existing_rows = db.query(RolePermission).filter(RolePermission.role_name == rn).all()
     before_map = {key: False for key in all_permissions}
     before_map.update({row.permission_key: bool(row.granted) for row in existing_rows})
@@ -360,6 +390,8 @@ def set_role_permissions_matrix(
     after_map = {key: False for key in all_permissions}
     after_map.update({row.permission_key: bool(row.granted) for row in after_rows})
     if before_map == after_map:
+        if rn == "ADMIN":
+            return get_role_permissions_matrix(rn, db, admin)
         raise HTTPException(status_code=400, detail="No permission changes were supplied")
 
     db.add(
@@ -373,6 +405,58 @@ def set_role_permissions_matrix(
     )
     db.commit()
     return get_role_permissions_matrix(rn, db, admin)
+
+
+# ---------------------------------------------------------------------------
+# Session security settings (Admin -> Settings)
+# ---------------------------------------------------------------------------
+
+@router.put("/session-settings", response_model=SessionSettingsOut)
+def update_session_settings(
+    payload: SessionSettingsUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_access),
+) -> SessionSettingsOut:
+    reason = payload.edit_reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="edit_reason is required")
+
+    row = (
+        db.query(SecuritySessionSetting)
+        .filter(SecuritySessionSetting.id == 1)
+        .one_or_none()
+    )
+    if row is None:
+        row = SecuritySessionSetting(
+            id=1,
+            inactivity_timeout_minutes=15,
+            updated_by="system",
+        )
+        db.add(row)
+        db.flush()
+
+    before = int(row.inactivity_timeout_minutes)
+    after = int(payload.inactivity_timeout_minutes)
+    if before == after:
+        raise HTTPException(status_code=400, detail="The inactivity timeout is unchanged")
+
+    row.inactivity_timeout_minutes = after
+    row.updated_at = datetime.now(timezone.utc)
+    row.updated_by = admin.username
+    log_security_event(
+        db,
+        event_type="SESSION_TIMEOUT_SETTING_CHANGED",
+        actor_username=admin.username,
+        actor_role=admin.role,
+        target_type="SECURITY_SETTING",
+        target_ref="inactivity_timeout_minutes",
+        reason=reason,
+        success=True,
+        meta={"before_minutes": before, "after_minutes": after},
+    )
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 # ---------------------------------------------------------------------------

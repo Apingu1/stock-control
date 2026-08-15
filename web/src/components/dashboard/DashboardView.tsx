@@ -98,7 +98,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         const res = await apiFetch("/summary/dashboard");
         if (!res.ok) throw new Error(`Failed to load dashboard summary (${res.status})`);
         const data = (await res.json()) as DashboardSummary;
-        if (!cancelled) setSummary(data);
+        if (!cancelled) {
+          setSummary(data);
+          setSummaryErr(null);
+        }
       } catch (e: any) {
         if (!cancelled) setSummaryErr(e?.message ?? "Failed to load dashboard summary");
       }
@@ -157,7 +160,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         if (!res.ok) throw new Error(`Failed to load latest batches (${res.status})`);
         const payload = (await res.json()) as any;
         const rows = (payload?.rows ?? []) as LatestBatchRow[];
-        if (!cancelled) setLatestBatches(rows);
+        if (!cancelled) {
+          setLatestBatches(rows);
+          setLatestErr(null);
+        }
       } catch (e: any) {
         if (!cancelled) setLatestErr(e?.message ?? "Failed to load latest batches");
       }
@@ -179,6 +185,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       ]);
       setSummary(nextSummary);
       setLatestBatches((latestPayload?.rows ?? []) as LatestBatchRow[]);
+      setSummaryErr(null);
+      setLatestErr(null);
     },
     { intervalMs: 5_000, label: "dashboard refresh" }
   );

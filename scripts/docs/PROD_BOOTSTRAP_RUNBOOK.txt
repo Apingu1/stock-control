@@ -49,7 +49,7 @@ nvm use 20.19.5
 
 * username: admin
 * password: Admin123!
-  Then immediately change password via Admin UI.
+  The application requires a new private password before access is granted.
 
 Notes
 

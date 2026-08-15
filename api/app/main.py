@@ -67,7 +67,6 @@ from .db import get_db  # noqa: F401,E402
 from .models import Base  # noqa: F401,E402
 
 from .routers import (  # noqa: E402
-    admin_enhanced,
     analytics_enhanced,
     issues_enhanced,
     materials_enhanced,
@@ -85,8 +84,6 @@ from .routers import admin_db_tools
 app.include_router(materials_enhanced.router)
 app.include_router(issues_enhanced.router)
 app.include_router(analytics_enhanced.router)
-app.include_router(admin_enhanced.router)
-
 app.include_router(materials.router)
 app.include_router(products.router)
 app.include_router(receipts.router)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { LotBalance, Product, ProductMaterial } from "../../types";
+import type { LotBalance, Product } from "../../types";
 import { CONSUMPTION_TYPES } from "../../constants";
 import { apiFetch } from "../../utils/api";
 import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
@@ -11,16 +11,14 @@ type MaterialLine = {
   lotSearch: string;
   selectedLot: LotBalance | null;
   qty: string;
-  expectedMaterialCode: string | null;
   error: string | null;
 };
 
-const newLine = (material?: ProductMaterial): MaterialLine => ({
+const newLine = (): MaterialLine => ({
   clientId: `material-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  lotSearch: material ? `${material.material_code} — ${material.material_name}` : "",
+  lotSearch: "",
   selectedLot: null,
   qty: "",
-  expectedMaterialCode: material?.material_code || null,
   error: null,
 });
 
@@ -87,6 +85,7 @@ export default function BatchIssueCreateModal({
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [complianceReviewed, setComplianceReviewed] = useState(false);
 
   const selectedProduct = useMemo(
     () => products.find((product) => product.product_code === productCode) || null,
@@ -126,6 +125,7 @@ export default function BatchIssueCreateModal({
   const hasComplianceProblem =
     productControlsApply &&
     (inactiveProduct || missingCodes.length > 0 || unexpectedCodes.length > 0);
+  const displayComplianceProblem = complianceReviewed && hasComplianceProblem;
 
   useEffect(() => {
     if (!open) return;
@@ -146,6 +146,7 @@ export default function BatchIssueCreateModal({
     setInactiveOverrideReason("");
     setLines([newLine()]);
     setSubmitError(null);
+    setComplianceReviewed(false);
     setPolicyError(null);
     setAllowQuarantine(null);
     void (async () => {
@@ -202,16 +203,8 @@ export default function BatchIssueCreateModal({
     setProductCode(code);
     setApproveRejected(false);
     setRejectionReason("");
-    const product = products.find((row) => row.product_code === code);
-    if (product && !cancelledMode) {
-      setLines(
-        product.materials.length
-          ? product.materials.map((material) => newLine(material))
-          : [newLine()]
-      );
-    } else if (!product && !cancelledMode) {
-      setLines([newLine()]);
-    }
+    setComplianceReviewed(false);
+    if (!cancelledMode) setLines([newLine()]);
   };
 
   const toggleCancelledMode = () => {
@@ -221,13 +214,8 @@ export default function BatchIssueCreateModal({
     setRejectionReason("");
     setInactiveOverrideReason("");
     setSubmitError(null);
-    setLines(
-      nextCancelledMode
-        ? [newLine()]
-        : selectedProduct?.materials.length
-          ? selectedProduct.materials.map((material) => newLine(material))
-          : [newLine()]
-    );
+    setComplianceReviewed(false);
+    setLines([newLine()]);
   };
 
   const blockedReason = (lot: LotBalance) => {
@@ -243,6 +231,9 @@ export default function BatchIssueCreateModal({
   };
 
   const updateLine = (id: string, patch: Partial<MaterialLine>) => {
+    setComplianceReviewed(false);
+    setApproveRejected(false);
+    setRejectionReason("");
     setLines((current) =>
       current.map((line) => (line.clientId === id ? { ...line, ...patch } : line))
     );
@@ -250,13 +241,9 @@ export default function BatchIssueCreateModal({
 
   const suggestionsFor = (line: MaterialLine) => {
     if (!line.lotSearch.trim() || line.selectedLot) return [];
-    const query = line.lotSearch.toLowerCase();
-    const terms = query.split(/[—\s]+/).filter(Boolean);
+    const query = line.lotSearch.trim().toLowerCase();
     return selectableLots
-      .filter((lot) => {
-        const haystack = `${lot.lot_number} ${lot.material_code} ${lot.material_name}`.toLowerCase();
-        return terms.some((term) => haystack.includes(term));
-      })
+      .filter((lot) => lot.lot_number.toLowerCase().includes(query))
       .slice(0, 18);
   };
 
@@ -276,7 +263,7 @@ export default function BatchIssueCreateModal({
     }
     updateLine(line.clientId, {
       selectedLot: lot,
-      lotSearch: `${lot.lot_number} — ${lot.material_code}`,
+      lotSearch: lot.lot_number,
       qty: "",
       error: null,
     });
@@ -320,16 +307,16 @@ export default function BatchIssueCreateModal({
     setLines((current) =>
       current.map((line, index) => {
         let error: string | null = null;
-        if (!line.selectedLot) error = `Material ${index + 1}: select a lot.`;
+        if (!line.selectedLot) error = `Lot entry ${index + 1}: select a lot.`;
         else if (seen.has(line.selectedLot.material_lot_id)) {
-          error = `Material ${index + 1}: duplicate lot segment.`;
+          error = `Lot entry ${index + 1}: duplicate lot segment.`;
         } else {
           seen.add(line.selectedLot.material_lot_id);
           const quantity = Number(line.qty);
           if (!Number.isFinite(quantity) || quantity <= 0) {
-            error = `Material ${index + 1}: enter a quantity greater than zero.`;
+            error = `Lot entry ${index + 1}: enter a quantity greater than zero.`;
           } else if (quantity > Number(line.selectedLot.balance_qty)) {
-            error = `Material ${index + 1}: insufficient stock.`;
+            error = `Lot entry ${index + 1}: insufficient stock.`;
           }
         }
         if (error) valid = false;
@@ -338,6 +325,15 @@ export default function BatchIssueCreateModal({
     );
     if (!valid) {
       setSubmitError("Correct the highlighted material entries.");
+      return false;
+    }
+    if (hasComplianceProblem && !complianceReviewed) {
+      setComplianceReviewed(true);
+      setSubmitError(
+        canApproveRejectedBatch
+          ? "The entries do not match the configured product. Review the compliance warning before continuing."
+          : "The entries do not match the configured product and require a senior operator."
+      );
       return false;
     }
     if (hasComplianceProblem && !approveRejected) {
@@ -632,8 +628,8 @@ export default function BatchIssueCreateModal({
                 <div>
                   <div className="issue-batch-section-title">Materials actually used</div>
                   <div className="issue-batch-section-help">
-                    The configured product materials are prefilled. Different materials can still
-                    be recorded accurately through rejected-batch escalation.
+                    Enter the receipt lot number for each material actually used. Add another row
+                    when more lots are required.
                   </div>
                 </div>
                 <span className="issue-material-count">
@@ -646,7 +642,7 @@ export default function BatchIssueCreateModal({
                   const lot = line.selectedLot;
                   const suggestions = suggestionsFor(line);
                   const unexpected = Boolean(
-                    lot && productControlsApply && !expectedCodes.has(lot.material_code)
+                    complianceReviewed && lot && productControlsApply && !expectedCodes.has(lot.material_code)
                   );
                   return (
                     <div
@@ -655,20 +651,20 @@ export default function BatchIssueCreateModal({
                     >
                       <div className="issue-material-card-header">
                         <div className="issue-material-number">
-                          Material {index + 1}
-                          {line.expectedMaterialCode
-                            ? ` • expected ${line.expectedMaterialCode}`
-                            : ""}
+                          Lot entry {index + 1}
                         </div>
                         {lines.length > 1 && (
                           <button
                             className="btn btn-ghost issue-remove-material"
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
+                              setComplianceReviewed(false);
+                              setApproveRejected(false);
+                              setRejectionReason("");
                               setLines((current) =>
                                 current.filter((item) => item.clientId !== line.clientId)
-                              )
-                            }
+                              );
+                            }}
                           >
                             Remove
                           </button>
@@ -677,7 +673,7 @@ export default function BatchIssueCreateModal({
 
                       <div className="issue-material-grid">
                         <div className="form-group">
-                          <label className="label">Material / lot</label>
+                          <label className="label">Lot number</label>
                           <div className="typeahead-wrap">
                             <input
                               className="input"
@@ -687,17 +683,15 @@ export default function BatchIssueCreateModal({
                                   lotSearch: e.target.value,
                                   selectedLot: null,
                                   qty: "",
-                                  expectedMaterialCode: null,
                                   error: null,
                                 })
                               }
-                              placeholder="Search material code, name or lot…"
+                              placeholder="Start typing the receipt lot number…"
                             />
                             {suggestions.length > 0 && (
                               <div className="typeahead-dropdown issue-lot-dropdown">
                                 {suggestions.map((suggestion) => {
                                   const blocked = blockedReason(suggestion);
-                                  const configured = expectedCodes.has(suggestion.material_code);
                                   return (
                                     <button
                                       type="button"
@@ -711,11 +705,6 @@ export default function BatchIssueCreateModal({
                                       </div>
                                       <div className="typeahead-meta">
                                         EXP {formatDateShort(suggestion.expiry_date)} • {suggestion.status} • {displayQty(suggestion.balance_qty)} {suggestion.uom_code}
-                                        {selectedProduct
-                                          ? configured
-                                            ? " • CONFIGURED"
-                                            : " • NOT CONFIGURED"
-                                          : ""}
                                         {blocked ? ` • ${blocked}` : ""}
                                       </div>
                                     </button>
@@ -767,14 +756,19 @@ export default function BatchIssueCreateModal({
               <button
                 className="btn issue-add-material"
                 type="button"
-                onClick={() => setLines((current) => [...current, newLine()])}
+                onClick={() => {
+                  setComplianceReviewed(false);
+                  setApproveRejected(false);
+                  setRejectionReason("");
+                  setLines((current) => [...current, newLine()]);
+                }}
               >
-                ＋ Add another lot or material
+                ＋ Add another lot
               </button>
             </section>
           )}
 
-          {(hasComplianceProblem || (cancelledMode && inactiveProduct)) && (
+          {(displayComplianceProblem || (cancelledMode && inactiveProduct)) && (
             <section className="issue-compliance-panel">
               <div className="issue-batch-section-title">⚠ Batch compliance warning</div>
               {inactiveProduct && <div>The selected product is inactive.</div>}
@@ -832,7 +826,7 @@ export default function BatchIssueCreateModal({
               type="submit"
               disabled={
                 submitting ||
-                ((hasComplianceProblem || (cancelledMode && inactiveProduct)) &&
+                ((displayComplianceProblem || (cancelledMode && inactiveProduct)) &&
                   !canApproveRejectedBatch)
               }
             >
@@ -840,7 +834,7 @@ export default function BatchIssueCreateModal({
                 ? "Posting…"
                 : cancelledMode
                   ? "Record Cancelled BMR"
-                  : hasComplianceProblem
+                  : displayComplianceProblem
                     ? "Approve as rejected batch"
                     : `Post consumption (${lines.length} line${lines.length === 1 ? "" : "s"})`}
             </button>

@@ -42,7 +42,7 @@ Use a non-production Windows computer.
 - [ ] Confirm HTTPS health on 8443.
 - [ ] Confirm `stock-control.test` opens without certificate warning on the host.
 - [ ] Confirm `admin / Admin123!` works once.
-- [ ] Change the administrator password.
+- [ ] Confirm the mandatory password-change screen prevents access until a new private password is saved.
 - [ ] Confirm the IQ report was generated.
 - [ ] Confirm first verified backup and SHA-256 manifest were generated.
 
@@ -168,7 +168,7 @@ Use only a segregated test installation.
 Use a disposable test installation.
 
 - [ ] Create test data and certificate/client setup.
-- [ ] Run `Administration & Recovery\03 - COMPLETE UNINSTALL.bat`.
+- [ ] Run the root-level `UNINSTALL_WINDOWS.bat` beside `01 - INSTALL SERVER.bat`.
 - [ ] Confirm both exact destructive confirmations are required.
 - [ ] Confirm project containers, network, images and DB volume are removed.
 - [ ] Confirm scheduled tasks are removed.

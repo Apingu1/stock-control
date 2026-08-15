@@ -124,7 +124,8 @@ Add-Check 'IQ-13' 'Initial administrator login is operational' {
         if ($LASTEXITCODE -ne 0) { throw ($raw -join ' ') }
         $response = ($raw -join '') | ConvertFrom-Json
         if (-not $response.access_token) { throw 'Login did not return an access token.' }
-        'Access token returned; token value intentionally omitted.'
+        if (-not $response.must_change_password) { throw 'Initial administrator was not marked for mandatory password change.' }
+        'Temporary access token returned and mandatory first-login password change confirmed; token value intentionally omitted.'
     } finally {
         Remove-Item -LiteralPath $tempBody -Force -ErrorAction SilentlyContinue
     }

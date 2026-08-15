@@ -105,7 +105,9 @@ Username: admin
 Password: Admin123!
 ```
 
-Change the password immediately through the Admin UI.
+This is a temporary password. The application requires a new private password before the administrator can access operational pages. The same control applies to every newly created user and after every administrator password reset.
+
+Complete the prompted password change to continue into the application.
 
 Review:
 
@@ -132,10 +134,9 @@ Do not use `docker compose down -v` during routine operation because `-v` destro
 ```text
 01 - BACKUP SETTINGS.bat
 02 - BACKUP AND RESTORE.bat
-03 - COMPLETE UNINSTALL.bat
 ```
 
-`03 - COMPLETE UNINSTALL.bat` is the one supported **server** uninstall control. There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
+The supported server uninstall control is the root-level `UNINSTALL_WINDOWS.bat`, beside `01 - INSTALL SERVER.bat`. There is no second server uninstaller under `Administration & Recovery` or `System`, and no uninstall EXE.
 
 This is intentionally separate from:
 

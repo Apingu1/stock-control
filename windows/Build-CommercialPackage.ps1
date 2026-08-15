@@ -57,6 +57,7 @@ Copy-RequiredFile (Join-Path $templatesDir 'install-server.bat') (Join-Path $Out
 Copy-RequiredFile (Join-Path $templatesDir 'start-server.bat') (Join-Path $OutputDirectory '02 - START SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'stop-server.bat') (Join-Path $OutputDirectory '03 - STOP SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'server-status.bat') (Join-Path $OutputDirectory '04 - SERVER STATUS.bat')
+Copy-RequiredFile (Join-Path $RepositoryRoot 'UNINSTALL_WINDOWS.bat') (Join-Path $OutputDirectory 'UNINSTALL_WINDOWS.bat')
 
 # CLIENT DEPLOYMENT is visibly complete in the downloaded ZIP. The install and
 # uninstall controls are already present. Server installation finalises only the
@@ -71,20 +72,17 @@ Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding as
     'APP_HTTPS_PORT=8443'
 )
 
-# Administration is deliberately one level down so destructive/recovery tools
-# are not presented alongside routine start/stop controls. This is the only
-# SERVER uninstall control in the package.
+# Backup administration remains one level down so recovery tools are not
+# presented alongside routine start/stop controls. The proven server
+# UNINSTALL_WINDOWS.bat is supplied at package root with the server launchers.
 Copy-RequiredFile (Join-Path $templatesDir 'backup-settings.bat') (Join-Path $adminDir '01 - BACKUP SETTINGS.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'backup-restore.bat') (Join-Path $adminDir '02 - BACKUP AND RESTORE.bat')
-Copy-RequiredFile (Join-Path $templatesDir 'uninstall.bat') (Join-Path $adminDir '03 - COMPLETE UNINSTALL.bat')
 Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Value @(
     'ADMINISTRATION & RECOVERY',
     '',
     'These controls are not required for routine operation.',
     '01 - BACKUP SETTINGS.bat changes the physical backup folder, daily time and retention.',
-    'Backup/restore should be used only by authorised administrators.',
-    '03 - COMPLETE UNINSTALL.bat is the only supported SERVER uninstall control.',
-    'Complete uninstall is destructive and requires explicit confirmation.'
+    'Backup/restore should be used only by authorised administrators.'
 )
 
 # Keep the full controlled Windows documentation available without cluttering
@@ -102,7 +100,7 @@ foreach ($directory in $runtimeDirectories) {
 }
 
 # Copy only root BAT files required by the installed server runtime. Client
-# setup/uninstall and server uninstall are intentionally excluded from System.
+# setup/uninstall controls are intentionally excluded from System.
 $runtimeBatFiles = @(
     'ESC_SERVER_SETUP_WINDOWS.bat',
     'ESC_BACKUP_SETTINGS_WINDOWS.bat',
@@ -148,7 +146,8 @@ $requiredTopLevel = @(
     '01 - INSTALL SERVER.bat',
     '02 - START SERVER.bat',
     '03 - STOP SERVER.bat',
-    '04 - SERVER STATUS.bat'
+    '04 - SERVER STATUS.bat',
+    'UNINSTALL_WINDOWS.bat'
 )
 foreach ($name in $requiredTopLevel) {
     if (-not (Test-Path -LiteralPath (Join-Path $OutputDirectory $name) -PathType Leaf)) {
@@ -191,17 +190,17 @@ foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WI
     }
 }
 
-$serverUninstall = Join-Path $adminDir '03 - COMPLETE UNINSTALL.bat'
+$serverUninstall = Join-Path $OutputDirectory 'UNINSTALL_WINDOWS.bat'
 $clientUninstall = Join-Path $clientDir '02 - UNINSTALL CLIENT.bat'
 if (-not (Test-Path -LiteralPath $serverUninstall -PathType Leaf)) {
-    throw 'Server complete uninstall is missing.'
+    throw 'Root-level UNINSTALL_WINDOWS.bat is missing.'
 }
 if (-not (Test-Path -LiteralPath $clientUninstall -PathType Leaf)) {
     throw 'Client uninstall is missing.'
 }
 $allUninstallBats = @(Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -Filter '*UNINSTALL*.bat')
 if ($allUninstallBats.Count -ne 2) {
-    throw "Commercial package must contain exactly two uninstall BATs: one server complete uninstall and one client uninstall. Found $($allUninstallBats.Count)."
+    throw "Commercial package must contain exactly two uninstall BATs: one root-level server uninstall and one client uninstall. Found $($allUninstallBats.Count)."
 }
 
 $bootstrapPath = Join-Path $systemDir 'db\production-bootstrap.sh'

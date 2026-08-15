@@ -7,6 +7,7 @@ type AdminUserRow = {
   username: string;
   role: Role;
   is_active: boolean;
+  must_change_password: boolean;
 };
 
 type Tab = "users" | "roles";
@@ -160,7 +161,7 @@ export default function AdminUsersView() {
   const createUser = async () => {
     const username = newUsername.trim();
     if (!username) return setErr("Username is required");
-    if (!newPassword || newPassword.length < 6) return setErr("Password must be at least 6 characters");
+    if (!newPassword || newPassword.length < 8) return setErr("Password must be at least 8 characters");
 
     setCreating(true);
     setErr(null);
@@ -205,9 +206,11 @@ export default function AdminUsersView() {
   };
 
   const promptResetPassword = async (u: AdminUserRow) => {
-    const pw = window.prompt(`Set a new password for "${u.username}" (min 6 chars):`);
+    const pw = window.prompt(
+      `Set a temporary password for "${u.username}" (minimum 8 characters).\n\nThe user must replace it at their next login:`
+    );
     if (!pw) return;
-    if (pw.length < 6) return setErr("Password must be at least 6 characters");
+    if (pw.length < 8) return setErr("Password must be at least 8 characters");
     await updateUser(u.id, { password: pw });
   };
 
@@ -285,10 +288,15 @@ export default function AdminUsersView() {
   };
 
   const togglePerm = (key: string) => {
+    if ((selectedRole || "").trim().toUpperCase() === "ADMIN") return;
     setRolePerms((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const savePermissions = async () => {
+    if ((selectedRole || "").trim().toUpperCase() === "ADMIN") {
+      setErr("ADMIN always has every registered permission and cannot be reduced.");
+      return;
+    }
     const editReason = window.prompt(`Reason for changing the ${selectedRole} permission matrix:`);
     if (!editReason?.trim()) {
       setErr("A permission-change reason is required for the audit trail.");
@@ -339,6 +347,7 @@ export default function AdminUsersView() {
   }, [adminRoles, selectedRole]);
 
   const isSelectedRoleInactive = useMemo(() => selectedRoleObj?.is_active === false, [selectedRoleObj]);
+  const isSelectedAdminRole = (selectedRole || "").trim().toUpperCase() === "ADMIN";
 
   const canChangeSelectedRoleActiveState = useMemo(() => {
     const rn = (selectedRole || "").trim().toUpperCase();
@@ -402,7 +411,9 @@ export default function AdminUsersView() {
                 <div className="card-header">
                   <div>
                     <div className="card-title">Create user</div>
-                    <div className="card-subtitle">Passwords are stored hashed server-side.</div>
+                    <div className="card-subtitle">
+                      Create a temporary password. Every user must replace it at first login.
+                    </div>
                   </div>
                 </div>
 
@@ -481,7 +492,14 @@ export default function AdminUsersView() {
                     <tbody>
                       {sortedUsers.map((u) => (
                         <tr key={u.id}>
-                          <td style={{ fontWeight: 600 }}>{u.username}</td>
+                          <td style={{ fontWeight: 600 }}>
+                            <div>{u.username}</div>
+                            {u.must_change_password && (
+                              <div style={{ marginTop: 4, fontSize: 11, color: "var(--warning)" }}>
+                                Password change required
+                              </div>
+                            )}
+                          </td>
                           <td>
                             <select
                               className="input"
@@ -680,9 +698,15 @@ export default function AdminUsersView() {
                       <button
                         className="btn btn-primary"
                         onClick={savePermissions}
-                        disabled={savingPerms || isSelectedRoleInactive}
+                        disabled={savingPerms || isSelectedRoleInactive || isSelectedAdminRole}
                         style={{ minWidth: 160, height: 40 }}
-                        title={isSelectedRoleInactive ? "Cannot edit permissions for an inactive role" : "Save permissions"}
+                        title={
+                          isSelectedAdminRole
+                            ? "ADMIN always has every permission"
+                            : isSelectedRoleInactive
+                              ? "Cannot edit permissions for an inactive role"
+                              : "Save permissions"
+                        }
                       >
                         {savingPerms ? "Saving…" : "Save permissions"}
                       </button>
@@ -692,6 +716,11 @@ export default function AdminUsersView() {
                   {isSelectedRoleInactive && (
                     <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>
                       This role is inactive. Permission edits are disabled.
+                    </div>
+                  )}
+                  {isSelectedAdminRole && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>
+                      ADMIN is the protected system-owner role and always has every registered permission.
                     </div>
                   )}
 
@@ -714,7 +743,7 @@ export default function AdminUsersView() {
                           <div className="card-body" style={{ paddingTop: 0 }}>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                               {groupedPerms[group].map((p) => {
-                                const disabled = isSelectedRoleInactive;
+                                const disabled = isSelectedRoleInactive || isSelectedAdminRole;
                                 return (
                                   <label
                                     key={p.key}
@@ -730,7 +759,13 @@ export default function AdminUsersView() {
                                       opacity: disabled ? 0.55 : 1,
                                       cursor: disabled ? "not-allowed" : "pointer",
                                     }}
-                                    title={disabled ? "Role is inactive" : "Toggle permission"}
+                                    title={
+                                      isSelectedAdminRole
+                                        ? "ADMIN permissions are always enabled"
+                                        : disabled
+                                          ? "Role is inactive"
+                                          : "Toggle permission"
+                                    }
                                   >
                                     <span style={{ display: "flex", flexDirection: "column" }}>
                                       <span style={{ fontWeight: 600, fontSize: 13 }}>{p.key}</span>

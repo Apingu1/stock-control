@@ -150,7 +150,7 @@ Default recovery password:
 Admin123!
 ```
 
-Change it immediately.
+At the next login, complete the mandatory private-password prompt before continuing.
 
 ## Database initialiser failed
 

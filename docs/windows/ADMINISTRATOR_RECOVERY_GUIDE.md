@@ -107,13 +107,13 @@ Username: admin
 Password: Admin123!
 ```
 
-The script verifies the login endpoint. Immediately log in, change the password, and record:
+The script verifies the login endpoint. At the next login, the application blocks access until the administrator creates a new private password. Record:
 
 - reason for reset;
 - person authorising the reset;
 - person executing the reset;
 - date/time;
-- confirmation that the password was changed;
+- confirmation that the mandatory password change was completed;
 - review of relevant security audit events.
 
 ## Lost or corrupted `.env`
@@ -262,12 +262,12 @@ Hosts-file deployment:
 - consider renewing the server certificate so its IP SAN reflects the new IP;
 - update IQ evidence.
 
-## Complete uninstall
+## Server uninstall
 
 Use:
 
 ```text
-Administration & Recovery\03 - COMPLETE UNINSTALL.bat
+UNINSTALL_WINDOWS.bat
 ```
 
 The uninstaller permanently removes the PostgreSQL volume and all Stock Control data after two exact confirmations. Before uninstalling a live or validated system:

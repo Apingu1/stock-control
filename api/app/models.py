@@ -45,6 +45,7 @@ class User(Base):
     # dynamic role string (FK enforced in DB: users.role -> roles.name)
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="OPERATOR")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -53,6 +54,34 @@ class User(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User username={self.username!r} role={self.role!r} active={self.is_active}>"
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SecuritySessionSetting(Base):
+    __tablename__ = "security_session_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    inactivity_timeout_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
 # --- Lookup tables -----------------------------------------------------------

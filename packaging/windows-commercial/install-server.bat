@@ -126,7 +126,7 @@ echo client computer on the shared network folder.
 echo Run 01 - INSTALL CLIENT.bat as Administrator on each client.
 echo No client EXE is created or required.
 echo.
-echo Change the initial administrator password immediately after first login.
+echo The application requires a new private administrator password at first login.
 echo Review the generated IQ report before approving the installation.
 echo.
 pause

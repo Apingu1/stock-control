@@ -36,7 +36,7 @@ echo SUCCESS: Administrator access was reset and verified.
 echo Username: admin
 echo Password: Admin123!
 echo.
-echo Change this password immediately after logging in.
+echo The application will require a new private password at the next login.
 start "" "http://localhost:%APP_HTTP_PORT%"
 pause
 exit /b 0

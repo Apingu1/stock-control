@@ -17,6 +17,7 @@ Use this index for the commercial Windows server/client deployment supplied by *
 02 - START SERVER.bat
 03 - STOP SERVER.bat
 04 - SERVER STATUS.bat
+UNINSTALL_WINDOWS.bat
 CLIENT DEPLOYMENT\
 Administration & Recovery\
 Documentation\
@@ -50,13 +51,13 @@ After successful server installation, client computers may browse directly to th
 
 ## Administration and recovery
 
-The one supported **server** uninstall control is:
+The supported **server** uninstall control is supplied at package root beside the server launchers:
 
 ```text
-Administration & Recovery\03 - COMPLETE UNINSTALL.bat
+UNINSTALL_WINDOWS.bat
 ```
 
-This is separate from the client-only uninstall under `CLIENT DEPLOYMENT`. There is no duplicate `UNINSTALL_WINDOWS.bat` under `System` and no uninstall EXE.
+This is separate from the client-only uninstall under `CLIENT DEPLOYMENT`. There is no duplicate server uninstaller under `Administration & Recovery` or `System`, and no uninstall EXE.
 
 Backup administration is provided by:
 

@@ -9,6 +9,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..models import User
+from ..security import get_current_user
 
 router = APIRouter(prefix="/summary", tags=["summary"])
 
@@ -22,7 +24,10 @@ class StockSummary(BaseModel):
 
 
 @router.get("/stock", response_model=StockSummary)
-def get_stock_summary(db: Session = Depends(get_db)) -> StockSummary:
+def get_stock_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> StockSummary:
     total_materials = db.execute(
         text("SELECT COUNT(*) FROM materials WHERE status = 'ACTIVE' AND is_cancelled_bmr_marker = FALSE")
     ).scalar_one()
@@ -89,7 +94,10 @@ class DashboardSummary(BaseModel):
 
 
 @router.get("/dashboard", response_model=DashboardSummary)
-def get_dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummary:
+def get_dashboard_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> DashboardSummary:
     total_materials = db.execute(
         text("SELECT COUNT(*) FROM materials WHERE status = 'ACTIVE' AND is_cancelled_bmr_marker = FALSE")
     ).scalar_one()

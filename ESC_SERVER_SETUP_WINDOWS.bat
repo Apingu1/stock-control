@@ -147,7 +147,7 @@ echo Application: https://%TLS_HOSTNAME%:8443/
 echo Client deployment folder: %INSTALL_ROOT%\client-deployment
 echo Client package server IP: %SERVER_IP%
 echo Initial login: admin / Admin123!
-echo Change the administrator password immediately.
+echo A new private administrator password is mandatory at first login.
 echo IQ report: %INSTALL_ROOT%\deployment-records\ESC-IQ-Execution-Latest.html
 echo.
 start "" "https://%TLS_HOSTNAME%:8443/"

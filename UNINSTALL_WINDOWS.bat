@@ -19,8 +19,7 @@ echo.
 echo WARNING: This permanently removes the Stock Control installation.
 echo It removes containers, the PostgreSQL volume and all stock data,
 echo generated images, certificates, trusted-root entry, hosts entry,
-echo firewall rules, scheduled tasks, local default backups, logs and shortcuts.
-echo A configured backup folder outside the installation is retained.
+echo firewall rules, scheduled tasks, backups, logs and shortcuts.
 echo.
 echo Docker Desktop and unrelated Docker projects are NOT removed.
 echo.
@@ -73,7 +72,7 @@ if exist ".env" (
   docker compose -f "infra\docker-compose.production.yml" -f "infra\docker-compose.production.tls.yml" down -v --remove-orphans >nul 2>&1
   docker compose -f "infra\docker-compose.production.yml" down -v --remove-orphans >nul 2>&1
 )
-docker rm -f stock-control-prodtest-web-1 stock-control-prodtest-api-1 stock-control-prodtest-backup-scheduler-1 stock-control-prodtest-db-init-1 stock-control-prodtest-db-1 >nul 2>&1
+docker rm -f stock-control-prodtest-web-1 stock-control-prodtest-api-1 stock-control-prodtest-db-init-1 stock-control-prodtest-db-1 >nul 2>&1
 docker volume rm stock-control-prodtest-db-data >nul 2>&1
 docker network rm stock-control-prodtest_stock_control_internal >nul 2>&1
 docker image rm stock-control-prodtest-web stock-control-prodtest-api >nul 2>&1
@@ -81,7 +80,7 @@ docker image rm stock-control-prodtest-web stock-control-prodtest-api >nul 2>&1
 echo Removing generated data and local records...
 if exist ".env" del /f /q ".env" >nul 2>&1
 for %%F in (stock-control.crt stock-control.key stock-control-ca.crt stock-control-ca.key stock-control-ca.srl stock-control.csr stock-control.ext) do if exist "infra\certs\%%F" del /f /q "infra\certs\%%F" >nul 2>&1
-for %%D in (Backups backups-production-test runtime-state client-deployment deployment deployment-records logs) do if exist "%%D" (
+for %%D in (backups-production-test client-deployment deployment deployment-records logs) do if exist "%%D" (
   attrib -h -s -r "%%D\*" /s /d >nul 2>&1
   rmdir /s /q "%%D" >nul 2>&1
 )
@@ -89,11 +88,9 @@ for %%D in (Backups backups-production-test runtime-state client-deployment depl
 del /f /q "%USERPROFILE%\Desktop\Eaststone Stock Control.url" >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\Eaststone Stock Control.lnk" >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\ESC Backup and Restore.lnk" >nul 2>&1
-del /f /q "%USERPROFILE%\Desktop\ESC Backup Settings.lnk" >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\ESC Status.lnk" >nul 2>&1
 del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\Eaststone Stock Control.lnk" >nul 2>&1
 del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\ESC Backup and Restore.lnk" >nul 2>&1
-del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\ESC Backup Settings.lnk" >nul 2>&1
 del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\ESC Status.lnk" >nul 2>&1
 reg delete "HKLM\SOFTWARE\Eaststone\StockControl" /f >nul 2>&1
 

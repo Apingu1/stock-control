@@ -31,6 +31,25 @@ class LoginRequest(ApiBaseModel):
 class TokenOut(ApiBaseModel):
     access_token: str
     token_type: str = "bearer"
+    must_change_password: bool = False
+
+
+class PasswordChangeRequest(ApiBaseModel):
+    new_password: str
+
+
+class SessionSettingsOut(ApiBaseModel):
+    inactivity_timeout_minutes: int
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SessionSettingsUpdate(ApiBaseModel):
+    inactivity_timeout_minutes: int = Field(..., ge=5, le=120)
+    edit_reason: str = Field(..., min_length=1, max_length=500)
 
 
 class UserMeOut(ApiBaseModel):
@@ -38,6 +57,7 @@ class UserMeOut(ApiBaseModel):
     username: str
     role: str
     is_active: bool
+    must_change_password: bool
 
 
 class UserOut(ApiBaseModel):
@@ -45,6 +65,7 @@ class UserOut(ApiBaseModel):
     username: str
     role: str
     is_active: bool
+    must_change_password: bool
     created_at: datetime
     created_by: Optional[str] = None
 

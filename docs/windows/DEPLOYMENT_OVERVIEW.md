@@ -6,10 +6,10 @@ A built Windows release contains a clean BAT-based commercial package:
 
 - `01 - INSTALL SERVER.bat` — elevated, recommended central-server installation;
 - `02 - START SERVER.bat`, `03 - STOP SERVER.bat`, `04 - SERVER STATUS.bat` — routine controls;
+- `UNINSTALL_WINDOWS.bat` — destructive server uninstall at the same package level as the server controls;
 - `CLIENT DEPLOYMENT` — pre-supplied BAT-based client installation/removal, finalised with the server address and public CA during installation;
 - `Administration & Recovery\01 - BACKUP SETTINGS.bat` — backup folder browser and adjustable daily schedule;
 - `Administration & Recovery\02 - BACKUP AND RESTORE.bat` — manual backup and guided restore;
-- `Administration & Recovery\03 - COMPLETE UNINSTALL.bat` — destructive server uninstall; and
 - automatic certificate renewal/health Windows tasks plus an always-on Docker backup scheduler.
 - Installation Qualification execution report and recovery documentation.
 

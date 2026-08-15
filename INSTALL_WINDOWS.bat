@@ -127,7 +127,7 @@ echo ============================================================
 echo Server address: http://localhost:!APP_HTTP_PORT!
 echo Initial username: admin
 echo Initial password: Admin123!
-echo Change the password immediately after first login.
+echo The application will require a new private password at first login.
 if "%QUIET%"=="1" exit /b 0
 set "SHORTCUT=%USERPROFILE%\Desktop\Eaststone Stock Control.url"
 (

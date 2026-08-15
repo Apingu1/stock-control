@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Callable, Set
+from typing import Any, Optional, Callable, Set
+from uuid import uuid4
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -12,7 +14,14 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import User, Role, RolePermission, Permission
+from .models import (
+    AuthSession,
+    Permission,
+    Role,
+    RolePermission,
+    SecuritySessionSetting,
+    User,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -22,6 +31,12 @@ from .models import User, Role, RolePermission, Permission
 JWT_SECRET = os.getenv("JWT_SECRET", "change_me_stock")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRES_MINUTES = int(os.getenv("JWT_EXPIRES_MINUTES", "480"))  # 8h default
+DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 15
+MIN_INACTIVITY_TIMEOUT_MINUTES = 5
+MAX_INACTIVITY_TIMEOUT_MINUTES = 120
+
+ACCESS_TOKEN_PURPOSE = "access"
+PASSWORD_CHANGE_TOKEN_PURPOSE = "password_change"
 
 
 # ---------------------------------------------------------------------------
@@ -42,16 +57,60 @@ def verify_password(plain: str, password_hash: str) -> bool:
 # ---------------------------------------------------------------------------
 # JWT helpers
 # ---------------------------------------------------------------------------
-def create_access_token(*, sub: str, role: str) -> str:
+def create_access_token(
+    *,
+    sub: str,
+    role: str,
+    session_id: str,
+    purpose: str = ACCESS_TOKEN_PURPOSE,
+    expires_at: datetime | None = None,
+) -> str:
     now = datetime.now(timezone.utc)
-    exp = now + timedelta(minutes=JWT_EXPIRES_MINUTES)
+    exp = expires_at or (now + timedelta(minutes=JWT_EXPIRES_MINUTES))
     payload = {
         "sub": sub,
         "role": role,
+        "sid": session_id,
+        "purpose": purpose,
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def get_inactivity_timeout_minutes(db: Session) -> int:
+    row = (
+        db.query(SecuritySessionSetting)
+        .filter(SecuritySessionSetting.id == 1)
+        .one_or_none()
+    )
+    if row is None:
+        return DEFAULT_INACTIVITY_TIMEOUT_MINUTES
+    value = int(row.inactivity_timeout_minutes)
+    return max(MIN_INACTIVITY_TIMEOUT_MINUTES, min(MAX_INACTIVITY_TIMEOUT_MINUTES, value))
+
+
+def create_auth_session(db: Session, user: User) -> AuthSession:
+    now = datetime.now(timezone.utc)
+    session = AuthSession(
+        session_id=str(uuid4()),
+        user_id=user.id,
+        created_at=now,
+        last_activity_at=now,
+        absolute_expires_at=now + timedelta(minutes=JWT_EXPIRES_MINUTES),
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
+def revoke_user_sessions(db: Session, user_id: int) -> None:
+    now = datetime.now(timezone.utc)
+    (
+        db.query(AuthSession)
+        .filter(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+        .update({AuthSession.revoked_at: now}, synchronize_session=False)
+    )
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -69,23 +128,31 @@ def _forbidden(detail: str = "Forbidden") -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
-# ---------------------------------------------------------------------------
-# Auth dependencies
-# ---------------------------------------------------------------------------
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> User:
+@dataclass(frozen=True)
+class AuthContext:
+    user: User
+    session: AuthSession
+    token_payload: dict[str, Any]
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _load_auth_context(token: str, db: Session) -> AuthContext:
     if not token:
         raise _unauthorized()
 
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         username: Optional[str] = payload.get("sub")
-        if not username:
-            raise _unauthorized("Invalid token (missing sub)")
+        session_id: Optional[str] = payload.get("sid")
+        if not username or not session_id:
+            raise _unauthorized("Invalid session token")
     except JWTError:
-        raise _unauthorized("Invalid token")
+        raise _unauthorized("Invalid or expired session")
 
     user = db.query(User).filter(User.username == username).one_or_none()
     if user is None:
@@ -93,7 +160,66 @@ def get_current_user(
     if not user.is_active:
         raise _unauthorized("User is inactive")
 
-    return user
+    session = (
+        db.query(AuthSession)
+        .filter(AuthSession.session_id == session_id, AuthSession.user_id == user.id)
+        .one_or_none()
+    )
+    if session is None or session.revoked_at is not None:
+        raise _unauthorized("Session has ended")
+
+    now = datetime.now(timezone.utc)
+    absolute_expiry = _as_utc(session.absolute_expires_at)
+    idle_expiry = _as_utc(session.last_activity_at) + timedelta(
+        minutes=get_inactivity_timeout_minutes(db)
+    )
+    if now >= absolute_expiry or now >= idle_expiry:
+        session.revoked_at = now
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+        if now >= idle_expiry:
+            raise _unauthorized("Session expired due to inactivity")
+        raise _unauthorized("Session expired")
+
+    return AuthContext(user=user, session=session, token_payload=payload)
+
+
+def get_any_auth_context(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> AuthContext:
+    return _load_auth_context(token, db)
+
+
+def get_password_change_context(
+    context: AuthContext = Depends(get_any_auth_context),
+) -> AuthContext:
+    if context.token_payload.get("purpose") != PASSWORD_CHANGE_TOKEN_PURPOSE:
+        raise _forbidden("This session is not authorised for a password change")
+    if not context.user.must_change_password:
+        raise _forbidden("Password change is not required")
+    return context
+
+
+def get_current_auth_context(
+    context: AuthContext = Depends(get_any_auth_context),
+) -> AuthContext:
+    if context.token_payload.get("purpose") != ACCESS_TOKEN_PURPOSE:
+        raise _forbidden("Password change required before accessing the system")
+    if context.user.must_change_password:
+        raise _forbidden("Password change required before accessing the system")
+    return context
+
+
+# ---------------------------------------------------------------------------
+# Auth dependencies
+# ---------------------------------------------------------------------------
+def get_current_user(
+    context: AuthContext = Depends(get_current_auth_context),
+) -> User:
+    return context.user
 
 
 # ---------------------------------------------------------------------------

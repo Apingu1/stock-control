@@ -21,6 +21,7 @@ export type UserMe = {
   username: string;
   role: Role;
   is_active: boolean;
+  must_change_password: boolean;
 };
 
 export type ApprovedManufacturer = {

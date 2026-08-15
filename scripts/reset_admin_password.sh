@@ -37,6 +37,7 @@ fi
 docker compose -f "$COMPOSE" exec -T db \
   psql -U "${DB_USER:-stock}" -d "${DB_NAME:-stock}" \
   -v ON_ERROR_STOP=1 \
-  -c "UPDATE users SET password_hash = '${HASH}' WHERE username='admin';"
+  -c "UPDATE users SET password_hash = '${HASH}', must_change_password = TRUE WHERE username='admin'; UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = (SELECT id FROM users WHERE username='admin') AND revoked_at IS NULL;"
 
 echo "SUCCESS: admin password reset to: ${DEFAULT_PASSWORD}"
+echo "The administrator must create a private password at the next login."

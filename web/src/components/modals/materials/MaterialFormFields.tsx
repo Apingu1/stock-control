@@ -68,13 +68,13 @@ const MaterialFormFields: React.FC<Props> = (props) => {
           value={props.materialCode}
           readOnly
           disabled
-          aria-describedby="material-code-help"
+          aria-describedby={isEdit ? "material-code-help" : undefined}
         />
-        <div id="material-code-help" className="content-subtitle" style={{ marginTop: 5 }}>
-          {isEdit
-            ? "Material codes are permanent and cannot be changed."
-            : "The server assigns the next controlled code (MAT0001, MAT0002, etc.)."}
-        </div>
+        {isEdit && (
+          <div id="material-code-help" className="content-subtitle" style={{ marginTop: 5 }}>
+            Material codes are permanent and cannot be changed.
+          </div>
+        )}
       </div>
 
       <div className="form-group">

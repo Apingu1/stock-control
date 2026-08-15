@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 from passlib.hash import bcrypt
 
 from .db import _get_sessionmaker, get_active_db_name
-from .models import User
+from .models import AuthSession, User
 
 
 def main() -> None:
@@ -25,6 +26,7 @@ def main() -> None:
                 password_hash=bcrypt.hash(password),
                 role="ADMIN",
                 is_active=True,
+                must_change_password=True,
                 created_by="production-bootstrap",
             )
             db.add(user)
@@ -32,6 +34,18 @@ def main() -> None:
             user.password_hash = bcrypt.hash(password)
             user.role = "ADMIN"
             user.is_active = True
+            user.must_change_password = True
+            (
+                db.query(AuthSession)
+                .filter(
+                    AuthSession.user_id == user.id,
+                    AuthSession.revoked_at.is_(None),
+                )
+                .update(
+                    {AuthSession.revoked_at: datetime.now(timezone.utc)},
+                    synchronize_session=False,
+                )
+            )
 
         db.commit()
         print(f"Bootstrap administrator '{username}' is active and password was reset.")

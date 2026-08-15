@@ -74,6 +74,8 @@ Admin123!
 
 Do not proceed to client deployment until login succeeds.
 
+`Admin123!` is temporary. The first browser login requires a new private administrator password before operational pages are available.
+
 ## 4. Identify the host IPv4 address
 
 Open Command Prompt and run:
@@ -296,4 +298,4 @@ Confirm:
 - client computer can reach TCP 8443;
 - the initial database backup and manifest exist.
 
-Change the initial administrator password after qualification evidence is captured.
+Confirm the mandatory first-login password change was completed and retain that result with the qualification evidence.

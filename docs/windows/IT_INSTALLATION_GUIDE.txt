@@ -24,6 +24,7 @@ Pharmagrowth Stock Control\
   02 - START SERVER.bat
   03 - STOP SERVER.bat
   04 - SERVER STATUS.bat
+  UNINSTALL_WINDOWS.bat
   CLIENT DEPLOYMENT\
   Administration & Recovery\
   Documentation\
@@ -69,7 +70,7 @@ The PostgreSQL database remains in its controlled local Docker volume.
 
 8. Open https://stock-control.test:8443/.
 9. Initial login: admin / Admin123!
-10. Change the administrator password immediately.
+10. The application requires the administrator to create a new private password before access is granted.
 11. Review the generated IQ report:
 
 C:\ProgramData\Eaststone\StockControl\deployment-records\ESC-IQ-Execution-Latest.html
@@ -143,23 +144,22 @@ Use only the top-level controls during routine operation:
 The controlled stop preserves the PostgreSQL data volume. Do not use "docker compose down -v" during routine operation because -v destroys the database volume.
 
 ============================================================
-6. ADMINISTRATION, RECOVERY AND SERVER COMPLETE UNINSTALL
+6. ADMINISTRATION, RECOVERY AND SERVER UNINSTALL
 ============================================================
 
 Administration & Recovery contains:
 
 01 - BACKUP SETTINGS.bat
 02 - BACKUP AND RESTORE.bat
-03 - COMPLETE UNINSTALL.bat
 README.txt
 
 "01 - BACKUP SETTINGS.bat" browses to the physical server backup folder and changes the daily schedule/retention. "02 - BACKUP AND RESTORE.bat" creates manual backups and browses for a restore file.
 
-"03 - COMPLETE UNINSTALL.bat" is the one supported SERVER uninstall control. There is no duplicate UNINSTALL_WINDOWS.bat under System and there is no uninstall EXE.
+"UNINSTALL_WINDOWS.bat" at package root is the supported SERVER uninstall control. It sits beside "01 - INSTALL SERVER.bat" and there is no duplicate server uninstaller under Administration & Recovery or System.
 
 This is separate from "CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat", which only removes one client's local configuration.
 
-Server complete uninstall requires explicit confirmations before destroying the PostgreSQL data volume and generated application data. It can also remove:
+Server uninstall requires explicit confirmations before destroying the PostgreSQL data volume and generated application data. It can also remove:
 
 C:\ProgramData\Eaststone\StockControl
 
