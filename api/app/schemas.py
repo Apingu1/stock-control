@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List, Any, Literal
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, condecimal
+from pydantic import BaseModel, Field, condecimal, model_validator
 
 # ---------------------------------------------------------------------------
 # Decimal standards (GMP / ALCOA+ accuracy)
@@ -171,6 +171,8 @@ class ProductMaterialOut(ApiBaseModel):
     id: int
     material_code: str
     material_name: str
+    category_code: str
+    type_code: str
     base_uom_code: str
     status: str
 
@@ -317,7 +319,7 @@ class IssueBatchItem(ApiBaseModel):
 
 
 class IssueBatchCreate(ApiBaseModel):
-    """Shared batch details plus all material issues posted together."""
+    """Shared batch details plus all stock issues posted together."""
 
     consumption_type: str = "USAGE"
     es_product_code: Optional[str] = None
@@ -331,6 +333,14 @@ class IssueBatchCreate(ApiBaseModel):
     approve_as_rejected_batch: bool = False
     rejection_reason: Optional[str] = Field(None, max_length=470)
     items: List[IssueBatchItem] = Field(..., min_length=1)
+    packaging_items: List[IssueBatchItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_packaging_for_manufactured_batches(self) -> "IssueBatchCreate":
+        consumption_type = (self.consumption_type or "USAGE").strip().upper()
+        if consumption_type in {"USAGE", "R_AND_D"} and not self.packaging_items:
+            raise ValueError("At least one packaging lot is required for a batch")
+        return self
 
 
 class CancelledBatchCreate(ApiBaseModel):
@@ -388,6 +398,7 @@ class IssueOut(ApiBaseModel):
 
     # ✅ NEW: snapshot column so UI can show "Status at time of usage"
     material_status_at_txn: Optional[str] = None
+    consumption_line_type: Optional[Literal["MATERIAL", "PACKAGING"]] = "MATERIAL"
 
     # Shared submission/output fields. Null for historical transactions.
     consumption_group_id: Optional[str] = None

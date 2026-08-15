@@ -51,6 +51,8 @@ export type ProductMaterial = {
   id: number;
   material_code: string;
   material_name: string;
+  category_code: string;
+  type_code: string;
   base_uom_code: string;
   status: string;
 };
@@ -136,6 +138,7 @@ export type Issue = {
   comment: string | null;
 
   material_status_at_txn?: string | null;
+  consumption_line_type?: "MATERIAL" | "PACKAGING" | null;
 
   created_by: string | null;
 

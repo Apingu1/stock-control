@@ -6,7 +6,7 @@ import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
 import type { ConsumptionTypeCode } from "./issues/issueHelpers";
 import { formatDateShort, rankLotStatus } from "./issues/issueHelpers";
 
-type MaterialLine = {
+type StockUseLine = {
   clientId: string;
   lotSearch: string;
   selectedLot: LotBalance | null;
@@ -14,13 +14,22 @@ type MaterialLine = {
   error: string | null;
 };
 
-const newLine = (): MaterialLine => ({
-  clientId: `material-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+type StockUseSection = "material" | "packaging";
+
+const newLine = (section: StockUseSection): StockUseLine => ({
+  clientId: `${section}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   lotSearch: "",
   selectedLot: null,
   qty: "",
   error: null,
 });
+
+const isPackagingStock = (
+  stock: Pick<LotBalance, "category_code" | "type_code">
+) =>
+  [stock.category_code, stock.type_code].some(
+    (value) => (value || "").trim().toUpperCase() === "PACKAGING"
+  );
 
 const displayQty = (value: number | string) => {
   const number = Number(value);
@@ -80,7 +89,12 @@ export default function BatchIssueCreateModal({
   const [approveRejected, setApproveRejected] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [inactiveOverrideReason, setInactiveOverrideReason] = useState("");
-  const [lines, setLines] = useState<MaterialLine[]>([newLine()]);
+  const [materialLines, setMaterialLines] = useState<StockUseLine[]>([
+    newLine("material"),
+  ]);
+  const [packagingLines, setPackagingLines] = useState<StockUseLine[]>([
+    newLine("packaging"),
+  ]);
   const [allowQuarantine, setAllowQuarantine] = useState<boolean | null>(null);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -107,13 +121,32 @@ export default function BatchIssueCreateModal({
     [lotBalances]
   );
 
+  const selectableMaterialLots = useMemo(
+    () => selectableLots.filter((lot) => !isPackagingStock(lot)),
+    [selectableLots]
+  );
+  const selectablePackagingLots = useMemo(
+    () => selectableLots.filter(isPackagingStock),
+    [selectableLots]
+  );
+
   const expectedCodes = useMemo(
-    () => new Set(selectedProduct?.materials.map((material) => material.material_code) || []),
+    () =>
+      new Set(
+        selectedProduct?.materials
+          .filter((material) => !isPackagingStock(material))
+          .map((material) => material.material_code) || []
+      ),
     [selectedProduct]
   );
   const actualCodes = useMemo(
-    () => new Set(lines.flatMap((line) => (line.selectedLot ? [line.selectedLot.material_code] : []))),
-    [lines]
+    () =>
+      new Set(
+        materialLines.flatMap((line) =>
+          line.selectedLot ? [line.selectedLot.material_code] : []
+        )
+      ),
+    [materialLines]
   );
   const missingCodes = [...expectedCodes].filter((code) => !actualCodes.has(code));
   const unexpectedCodes = [...actualCodes].filter((code) => !expectedCodes.has(code));
@@ -144,7 +177,8 @@ export default function BatchIssueCreateModal({
     setApproveRejected(false);
     setCancellationReason("");
     setInactiveOverrideReason("");
-    setLines([newLine()]);
+    setMaterialLines([newLine("material")]);
+    setPackagingLines([newLine("packaging")]);
     setSubmitError(null);
     setComplianceReviewed(false);
     setPolicyError(null);
@@ -164,7 +198,7 @@ export default function BatchIssueCreateModal({
   useEffect(() => {
     if (!open) return;
     const freshById = new Map(lotBalances.map((lot) => [lot.material_lot_id, lot]));
-    setLines((current) => {
+    const refreshSelectedLots = (current: StockUseLine[]) => {
       let changed = false;
       const next = current.map((line) => {
         if (!line.selectedLot) return line;
@@ -182,7 +216,9 @@ export default function BatchIssueCreateModal({
         };
       });
       return changed ? next : current;
-    });
+    };
+    setMaterialLines(refreshSelectedLots);
+    setPackagingLines(refreshSelectedLots);
   }, [open, lotBalances]);
 
   useBackgroundRefresh(
@@ -204,7 +240,10 @@ export default function BatchIssueCreateModal({
     setApproveRejected(false);
     setRejectionReason("");
     setComplianceReviewed(false);
-    if (!cancelledMode) setLines([newLine()]);
+    if (!cancelledMode) {
+      setMaterialLines([newLine("material")]);
+      setPackagingLines([newLine("packaging")]);
+    }
   };
 
   const toggleCancelledMode = () => {
@@ -215,7 +254,8 @@ export default function BatchIssueCreateModal({
     setInactiveOverrideReason("");
     setSubmitError(null);
     setComplianceReviewed(false);
-    setLines([newLine()]);
+    setMaterialLines([newLine("material")]);
+    setPackagingLines([newLine("packaging")]);
   };
 
   const blockedReason = (lot: LotBalance) => {
@@ -230,38 +270,49 @@ export default function BatchIssueCreateModal({
     return null;
   };
 
-  const updateLine = (id: string, patch: Partial<MaterialLine>) => {
+  const updateLine = (
+    section: StockUseSection,
+    id: string,
+    patch: Partial<StockUseLine>
+  ) => {
     setComplianceReviewed(false);
     setApproveRejected(false);
     setRejectionReason("");
-    setLines((current) =>
-      current.map((line) => (line.clientId === id ? { ...line, ...patch } : line))
-    );
+    const update = (current: StockUseLine[]) =>
+      current.map((line) => (line.clientId === id ? { ...line, ...patch } : line));
+    if (section === "packaging") setPackagingLines(update);
+    else setMaterialLines(update);
   };
 
-  const suggestionsFor = (line: MaterialLine) => {
+  const suggestionsFor = (section: StockUseSection, line: StockUseLine) => {
     if (!line.lotSearch.trim() || line.selectedLot) return [];
     const query = line.lotSearch.trim().toLowerCase();
-    return selectableLots
+    const stock =
+      section === "packaging" ? selectablePackagingLots : selectableMaterialLots;
+    return stock
       .filter((lot) => lot.lot_number.toLowerCase().includes(query))
       .slice(0, 18);
   };
 
-  const selectLot = (line: MaterialLine, lot: LotBalance) => {
+  const selectLot = (
+    section: StockUseSection,
+    line: StockUseLine,
+    lot: LotBalance
+  ) => {
     const blocked = blockedReason(lot);
-    if (blocked) return updateLine(line.clientId, { error: blocked });
+    if (blocked) return updateLine(section, line.clientId, { error: blocked });
     if (
-      lines.some(
+      [...materialLines, ...packagingLines].some(
         (other) =>
           other.clientId !== line.clientId &&
           other.selectedLot?.material_lot_id === lot.material_lot_id
       )
     ) {
-      return updateLine(line.clientId, {
+      return updateLine(section, line.clientId, {
         error: "This exact lot segment is already included.",
       });
     }
-    updateLine(line.clientId, {
+    updateLine(section, line.clientId, {
       selectedLot: lot,
       lotSearch: lot.lot_number,
       qty: "",
@@ -304,27 +355,48 @@ export default function BatchIssueCreateModal({
 
     let valid = true;
     const seen = new Set<number>();
-    setLines((current) =>
+    const validateLines = (
+      current: StockUseLine[],
+      section: StockUseSection
+    ) =>
       current.map((line, index) => {
+        const label = section === "packaging" ? "Packaging entry" : "Material entry";
         let error: string | null = null;
-        if (!line.selectedLot) error = `Lot entry ${index + 1}: select a lot.`;
+        if (!line.selectedLot) error = `${label} ${index + 1}: select a lot.`;
         else if (seen.has(line.selectedLot.material_lot_id)) {
-          error = `Lot entry ${index + 1}: duplicate lot segment.`;
+          error = `${label} ${index + 1}: duplicate lot segment.`;
+        } else if (
+          section === "packaging" &&
+          !isPackagingStock(line.selectedLot)
+        ) {
+          error = `${label} ${index + 1}: select packaging stock.`;
+        } else if (
+          section === "material" &&
+          isPackagingStock(line.selectedLot)
+        ) {
+          error = `${label} ${index + 1}: use the Packaging Used section.`;
         } else {
           seen.add(line.selectedLot.material_lot_id);
           const quantity = Number(line.qty);
           if (!Number.isFinite(quantity) || quantity <= 0) {
-            error = `Lot entry ${index + 1}: enter a quantity greater than zero.`;
+            error = `${label} ${index + 1}: enter a quantity greater than zero.`;
           } else if (quantity > Number(line.selectedLot.balance_qty)) {
-            error = `Lot entry ${index + 1}: insufficient stock.`;
+            error = `${label} ${index + 1}: insufficient stock.`;
           }
         }
         if (error) valid = false;
         return { ...line, error };
-      })
-    );
+      });
+    setMaterialLines(validateLines(materialLines, "material"));
+    if (showBatchFields) {
+      setPackagingLines(validateLines(packagingLines, "packaging"));
+    }
     if (!valid) {
-      setSubmitError("Correct the highlighted material entries.");
+      setSubmitError(
+        showBatchFields
+          ? "Correct the highlighted material and packaging entries. At least one packaging lot is required."
+          : "Correct the highlighted material entries."
+      );
       return false;
     }
     if (hasComplianceProblem && !complianceReviewed) {
@@ -412,13 +484,22 @@ export default function BatchIssueCreateModal({
             rejection_reason: hasComplianceProblem
               ? rejectionReason.trim() || null
               : null,
-            items: lines.map((line) => ({
+            items: materialLines.map((line) => ({
               material_code: line.selectedLot!.material_code,
               lot_number: line.selectedLot!.lot_number,
               material_lot_id: line.selectedLot!.material_lot_id,
               qty: Number(line.qty),
               uom_code: line.selectedLot!.uom_code,
             })),
+            packaging_items: showBatchFields
+              ? packagingLines.map((line) => ({
+                  material_code: line.selectedLot!.material_code,
+                  lot_number: line.selectedLot!.lot_number,
+                  material_lot_id: line.selectedLot!.material_lot_id,
+                  qty: Number(line.qty),
+                  uom_code: line.selectedLot!.uom_code,
+                }))
+              : [],
           }),
         });
       }
@@ -429,6 +510,186 @@ export default function BatchIssueCreateModal({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const renderStockUseSection = (
+    section: StockUseSection,
+    title: string,
+    help: string,
+    sectionLines: StockUseLine[]
+  ) => {
+    const packagingSection = section === "packaging";
+    const entryLabel = packagingSection ? "Packaging entry" : "Material entry";
+    const selectedLabel = packagingSection ? "Packaging" : "Material";
+
+    return (
+      <section className="issue-batch-section">
+        <div className="issue-batch-section-heading">
+          <div>
+            <div className="issue-batch-section-title">{title}</div>
+            <div className="issue-batch-section-help">{help}</div>
+          </div>
+          <span className="issue-material-count">
+            {sectionLines.length} line{sectionLines.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        {!packagingSection && policyError && (
+          <div className="issue-policy-warning">{policyError}</div>
+        )}
+        <div className="issue-material-list">
+          {sectionLines.map((line, index) => {
+            const lot = line.selectedLot;
+            const suggestions = suggestionsFor(section, line);
+            const unexpected = Boolean(
+              !packagingSection &&
+                complianceReviewed &&
+                lot &&
+                productControlsApply &&
+                !expectedCodes.has(lot.material_code)
+            );
+            return (
+              <div
+                className={`issue-material-card ${
+                  unexpected ? "issue-material-noncompliant" : ""
+                }`}
+                key={line.clientId}
+              >
+                <div className="issue-material-card-header">
+                  <div className="issue-material-number">
+                    {entryLabel} {index + 1}
+                  </div>
+                  {sectionLines.length > 1 && (
+                    <button
+                      className="btn btn-ghost issue-remove-material"
+                      type="button"
+                      onClick={() => {
+                        setComplianceReviewed(false);
+                        setApproveRejected(false);
+                        setRejectionReason("");
+                        const remove = (current: StockUseLine[]) =>
+                          current.filter((item) => item.clientId !== line.clientId);
+                        if (packagingSection) setPackagingLines(remove);
+                        else setMaterialLines(remove);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                <div className="issue-material-grid">
+                  <div className="form-group">
+                    <label className="label">Lot number</label>
+                    <div className="typeahead-wrap">
+                      <input
+                        className="input"
+                        value={line.lotSearch}
+                        onChange={(event) =>
+                          updateLine(section, line.clientId, {
+                            lotSearch: event.target.value,
+                            selectedLot: null,
+                            qty: "",
+                            error: null,
+                          })
+                        }
+                        placeholder="Start typing the receipt lot number…"
+                      />
+                      {suggestions.length > 0 && (
+                        <div className="typeahead-dropdown issue-lot-dropdown">
+                          {suggestions.map((suggestion) => {
+                            const blocked = blockedReason(suggestion);
+                            return (
+                              <button
+                                type="button"
+                                key={suggestion.material_lot_id}
+                                className={`typeahead-option ${
+                                  blocked ? "is-disabled" : ""
+                                }`}
+                                disabled={Boolean(blocked)}
+                                onClick={() => selectLot(section, line, suggestion)}
+                              >
+                                <div className="typeahead-main">
+                                  {suggestion.lot_number} — {suggestion.material_name} (
+                                  {suggestion.material_code})
+                                </div>
+                                <div className="typeahead-meta">
+                                  EXP {formatDateShort(suggestion.expiry_date)} •{" "}
+                                  {suggestion.status} • {displayQty(suggestion.balance_qty)}{" "}
+                                  {suggestion.uom_code}
+                                  {blocked ? ` • ${blocked}` : ""}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">
+                      Quantity used {lot ? `(${lot.uom_code})` : ""}
+                    </label>
+                    <input
+                      className="input"
+                      inputMode="decimal"
+                      value={line.qty}
+                      disabled={!lot}
+                      onChange={(event) =>
+                        updateLine(section, line.clientId, {
+                          qty: event.target.value,
+                          error: null,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                {lot && (
+                  <div className="issue-selected-lot">
+                    <div>
+                      <span>{selectedLabel}</span>
+                      <strong>{lot.material_name}</strong>
+                      <small>{lot.material_code}</small>
+                    </div>
+                    <div><span>Lot</span><strong>{lot.lot_number}</strong></div>
+                    <div><span>Expiry</span><strong>{formatDateShort(lot.expiry_date)}</strong></div>
+                    <div><span>Status</span><strong>{lot.status}</strong></div>
+                    <div>
+                      <span>Available</span>
+                      <strong>{displayQty(lot.balance_qty)} {lot.uom_code}</strong>
+                    </div>
+                  </div>
+                )}
+
+                {unexpected && (
+                  <div className="issue-quarantine-warning">
+                    <strong>Incorrect material:</strong> {lot!.material_code} is not
+                    configured for {selectedProduct!.product_code}.
+                  </div>
+                )}
+                {line.error && <div className="form-error">{line.error}</div>}
+              </div>
+            );
+          })}
+        </div>
+        <button
+          className="btn issue-add-material"
+          type="button"
+          onClick={() => {
+            setComplianceReviewed(false);
+            setApproveRejected(false);
+            setRejectionReason("");
+            if (packagingSection) {
+              setPackagingLines((current) => [...current, newLine("packaging")]);
+            } else {
+              setMaterialLines((current) => [...current, newLine("material")]);
+            }
+          }}
+        >
+          ＋ Add {packagingSection ? "packaging" : "material"}
+        </button>
+      </section>
+    );
   };
 
   return (
@@ -442,7 +703,7 @@ export default function BatchIssueCreateModal({
             <div className="modal-subtitle">
               {cancelledMode
                 ? "Records an abandoned batch number with zero stock, quantity and value."
-                : "Select a Product List item and enter every material actually used."}
+                : "Select a Product List item and record all material and packaging stock used."}
             </div>
           </div>
           <div className="rowline">
@@ -478,6 +739,7 @@ export default function BatchIssueCreateModal({
                     onChange={(event) => {
                       const value = event.target.value as ConsumptionTypeCode;
                       setConsumptionType(value);
+                      setPackagingLines([newLine("packaging")]);
                       if (value !== "USAGE" && value !== "R_AND_D") chooseProduct("");
                     }}
                   >
@@ -622,151 +884,22 @@ export default function BatchIssueCreateModal({
             </div>
           </section>
 
-          {!cancelledMode && (
-            <section className="issue-batch-section">
-              <div className="issue-batch-section-heading">
-                <div>
-                  <div className="issue-batch-section-title">Materials actually used</div>
-                  <div className="issue-batch-section-help">
-                    Enter the receipt lot number for each material actually used. Add another row
-                    when more lots are required.
-                  </div>
-                </div>
-                <span className="issue-material-count">
-                  {lines.length} line{lines.length === 1 ? "" : "s"}
-                </span>
-              </div>
-              {policyError && <div className="issue-policy-warning">{policyError}</div>}
-              <div className="issue-material-list">
-                {lines.map((line, index) => {
-                  const lot = line.selectedLot;
-                  const suggestions = suggestionsFor(line);
-                  const unexpected = Boolean(
-                    complianceReviewed && lot && productControlsApply && !expectedCodes.has(lot.material_code)
-                  );
-                  return (
-                    <div
-                      className={`issue-material-card ${unexpected ? "issue-material-noncompliant" : ""}`}
-                      key={line.clientId}
-                    >
-                      <div className="issue-material-card-header">
-                        <div className="issue-material-number">
-                          Lot entry {index + 1}
-                        </div>
-                        {lines.length > 1 && (
-                          <button
-                            className="btn btn-ghost issue-remove-material"
-                            type="button"
-                            onClick={() => {
-                              setComplianceReviewed(false);
-                              setApproveRejected(false);
-                              setRejectionReason("");
-                              setLines((current) =>
-                                current.filter((item) => item.clientId !== line.clientId)
-                              );
-                            }}
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
+          {!cancelledMode &&
+            renderStockUseSection(
+              "material",
+              "Materials Used",
+              "Enter the receipt lot number for each material used. Add a material when more lots are required.",
+              materialLines
+            )}
 
-                      <div className="issue-material-grid">
-                        <div className="form-group">
-                          <label className="label">Lot number</label>
-                          <div className="typeahead-wrap">
-                            <input
-                              className="input"
-                              value={line.lotSearch}
-                              onChange={(e) =>
-                                updateLine(line.clientId, {
-                                  lotSearch: e.target.value,
-                                  selectedLot: null,
-                                  qty: "",
-                                  error: null,
-                                })
-                              }
-                              placeholder="Start typing the receipt lot number…"
-                            />
-                            {suggestions.length > 0 && (
-                              <div className="typeahead-dropdown issue-lot-dropdown">
-                                {suggestions.map((suggestion) => {
-                                  const blocked = blockedReason(suggestion);
-                                  return (
-                                    <button
-                                      type="button"
-                                      key={suggestion.material_lot_id}
-                                      className={`typeahead-option ${blocked ? "is-disabled" : ""}`}
-                                      disabled={Boolean(blocked)}
-                                      onClick={() => selectLot(line, suggestion)}
-                                    >
-                                      <div className="typeahead-main">
-                                        {suggestion.lot_number} — {suggestion.material_name} ({suggestion.material_code})
-                                      </div>
-                                      <div className="typeahead-meta">
-                                        EXP {formatDateShort(suggestion.expiry_date)} • {suggestion.status} • {displayQty(suggestion.balance_qty)} {suggestion.uom_code}
-                                        {blocked ? ` • ${blocked}` : ""}
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="form-group">
-                          <label className="label">
-                            Quantity used {lot ? `(${lot.uom_code})` : ""}
-                          </label>
-                          <input
-                            className="input"
-                            inputMode="decimal"
-                            value={line.qty}
-                            disabled={!lot}
-                            onChange={(e) =>
-                              updateLine(line.clientId, {
-                                qty: e.target.value,
-                                error: null,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      {lot && (
-                        <div className="issue-selected-lot">
-                          <div><span>Material</span><strong>{lot.material_name}</strong><small>{lot.material_code}</small></div>
-                          <div><span>Lot</span><strong>{lot.lot_number}</strong></div>
-                          <div><span>Expiry</span><strong>{formatDateShort(lot.expiry_date)}</strong></div>
-                          <div><span>Status</span><strong>{lot.status}</strong></div>
-                          <div><span>Available</span><strong>{displayQty(lot.balance_qty)} {lot.uom_code}</strong></div>
-                        </div>
-                      )}
-
-                      {unexpected && (
-                        <div className="issue-quarantine-warning">
-                          <strong>Incorrect material:</strong> {lot!.material_code} is not configured for {selectedProduct!.product_code}.
-                        </div>
-                      )}
-                      {line.error && <div className="form-error">{line.error}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-              <button
-                className="btn issue-add-material"
-                type="button"
-                onClick={() => {
-                  setComplianceReviewed(false);
-                  setApproveRejected(false);
-                  setRejectionReason("");
-                  setLines((current) => [...current, newLine()]);
-                }}
-              >
-                ＋ Add another lot
-              </button>
-            </section>
-          )}
+          {!cancelledMode &&
+            showBatchFields &&
+            renderStockUseSection(
+              "packaging",
+              "Packaging Used",
+              "Enter at least one packaging receipt lot and quantity. Add packaging for every additional lot or pack size used.",
+              packagingLines
+            )}
 
           {(displayComplianceProblem || (cancelledMode && inactiveProduct)) && (
             <section className="issue-compliance-panel">
@@ -836,7 +969,9 @@ export default function BatchIssueCreateModal({
                   ? "Record Cancelled BMR"
                   : displayComplianceProblem
                     ? "Approve as rejected batch"
-                    : `Post consumption (${lines.length} line${lines.length === 1 ? "" : "s"})`}
+                    : showBatchFields
+                      ? `Post consumption (${materialLines.length} material + ${packagingLines.length} packaging)`
+                      : `Post consumption (${materialLines.length} line${materialLines.length === 1 ? "" : "s"})`}
             </button>
           </div>
         </div>

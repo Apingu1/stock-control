@@ -79,6 +79,8 @@ def _out(db: Session, product: Product) -> ProductOut:
                 id=material.id,
                 material_code=material.material_code,
                 material_name=material.name,
+                category_code=material.category_code,
+                type_code=material.type_code,
                 base_uom_code=material.base_uom_code,
                 status=material.status,
             )

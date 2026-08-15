@@ -132,6 +132,7 @@ export type BatchAnalyticsResp = {
     created_by: string | null;
     material_code: string;
     material_name: string;
+    consumption_line_type: "MATERIAL" | "PACKAGING";
     lot_number: string;
     qty: string;
     uom_code: string;

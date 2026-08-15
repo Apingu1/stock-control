@@ -184,6 +184,14 @@ def _lock_batch_number(db: Session, batch_no: str | None) -> None:
         db.execute(select(func.pg_advisory_xact_lock(func.hashtext(batch_no))))
 
 
+def _is_packaging_material(material: Material) -> bool:
+    """Use either controlled classification field to identify packaging stock."""
+    return any(
+        (value or "").strip().upper() == "PACKAGING"
+        for value in (material.category_code, material.type_code)
+    )
+
+
 def _expected_material_codes(db: Session, product: Product) -> set[str]:
     rows = (
         db.query(Material.material_code)
@@ -191,6 +199,8 @@ def _expected_material_codes(db: Session, product: Product) -> set[str]:
         .filter(
             ProductMaterial.product_id == product.id,
             ProductMaterial.is_active.is_(True),
+            func.upper(func.coalesce(Material.category_code, "")) != "PACKAGING",
+            func.upper(func.coalesce(Material.type_code, "")) != "PACKAGING",
         )
         .all()
     )
@@ -335,6 +345,7 @@ def _issue_out(
         created_by=txn.created_by or created_by_fallback,
         comment=txn.comment,
         material_status_at_txn=txn.material_status_at_txn,
+        consumption_line_type=txn.consumption_line_type or "MATERIAL",
         consumption_group_id=txn.consumption_group_id,
         total_batch_size=txn.total_batch_size,
         batch_size_uom=txn.batch_size_uom,
@@ -365,6 +376,7 @@ def _cancelled_issue_out(batch: ConsumptionBatch) -> IssueOut:
         created_by=batch.created_by,
         comment=batch.comment,
         material_status_at_txn=None,
+        consumption_line_type=None,
         consumption_group_id=batch.consumption_group_id,
         total_batch_size=None,
         batch_size_uom=None,
@@ -578,11 +590,11 @@ def create_issue_batch(
     user: User = Depends(require_permission("issues.create")),
 ) -> IssueBatchOut:
     """
-    Post all materials from one consumption modal atomically.
+    Post all materials and packaging from one consumption modal atomically.
 
-    Every item is still stored as an individual ISSUE row. A shared UUID links
-    the rows for audit and batch-output corrections. Any validation failure
-    rolls back the complete submission.
+    Every stock item is stored as an individual ISSUE row with an explicit line
+    type. A shared UUID links the rows for audit and batch-output corrections.
+    Any validation failure rolls back the complete submission.
     """
     consumption_type = _validate_consumption_header(
         consumption_type=payload.consumption_type,
@@ -608,6 +620,51 @@ def create_issue_batch(
         or db.query(StockTransaction.id).filter(StockTransaction.product_batch_no == batch_no).first()
     ):
         raise HTTPException(status_code=409, detail="This batch number has already been recorded")
+
+    categorised_items = [
+        ("MATERIAL", "Material", line_number, item)
+        for line_number, item in enumerate(payload.items, start=1)
+    ] + [
+        ("PACKAGING", "Packaging", line_number, item)
+        for line_number, item in enumerate(payload.packaging_items, start=1)
+    ]
+    submitted_codes = {item.material_code for _, _, _, item in categorised_items}
+    materials_by_code = {
+        material.material_code: material
+        for material in db.query(Material).filter(Material.material_code.in_(submitted_codes)).all()
+    }
+    for line_type, line_label, line_number, item in categorised_items:
+        material = materials_by_code.get(item.material_code)
+        if material is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{line_label} line {line_number}: material not found",
+            )
+        if material.is_cancelled_bmr_marker:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{line_label} line {line_number}: Cancelled BMR cannot be posted as stock; "
+                    "use the Cancelled BMR action"
+                ),
+            )
+        is_packaging = _is_packaging_material(material)
+        if line_type == "PACKAGING" and not is_packaging:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Packaging line {line_number}: {material.material_code} is not classified "
+                    "as PACKAGING"
+                ),
+            )
+        if line_type == "MATERIAL" and is_packaging:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Material line {line_number}: {material.material_code} is packaging; "
+                    "record it under Packaging Used"
+                ),
+            )
 
     expected_codes = _expected_material_codes(db, product) if product else set()
     actual_codes = {item.material_code for item in payload.items}
@@ -654,7 +711,7 @@ def create_issue_batch(
         disposition = "REJECTED"
         approved_by = user.username
 
-    lot_ids = [item.material_lot_id for item in payload.items]
+    lot_ids = [item.material_lot_id for _, _, _, item in categorised_items]
     if len(lot_ids) != len(set(lot_ids)):
         raise HTTPException(
             status_code=400,
@@ -695,32 +752,15 @@ def create_issue_batch(
 
     try:
         db.add(batch)
-        # Sort by lot id before taking row locks. Consistent lock ordering avoids
-        # deadlocks when two operators submit overlapping multi-material batches.
+        # Sort both stock sections by lot id before taking row locks. Consistent
+        # lock ordering avoids deadlocks when operators submit overlapping lots.
         indexed_items = sorted(
-            enumerate(payload.items, start=1),
-            key=lambda indexed: indexed[1].material_lot_id,
+            categorised_items,
+            key=lambda indexed: indexed[3].material_lot_id,
         )
 
-        for line_number, item in indexed_items:
-            material = (
-                db.query(Material)
-                .filter(Material.material_code == item.material_code)
-                .one_or_none()
-            )
-            if material is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Material line {line_number}: material not found",
-                )
-            if material.is_cancelled_bmr_marker:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Material line {line_number}: Cancelled BMR cannot be posted as stock; "
-                        "use the Cancelled BMR action"
-                    ),
-                )
+        for line_type, line_label, line_number, item in indexed_items:
+            material = materials_by_code[item.material_code]
 
             lot = (
                 db.query(MaterialLot)
@@ -734,12 +774,15 @@ def create_issue_batch(
             if lot is None:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Material line {line_number}: lot segment not found",
+                    detail=f"{line_label} line {line_number}: lot segment not found",
                 )
             if lot.lot_number != item.lot_number:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Material line {line_number}: lot number does not match the selected segment",
+                    detail=(
+                        f"{line_label} line {line_number}: lot number does not match "
+                        "the selected segment"
+                    ),
                 )
 
             try:
@@ -747,14 +790,14 @@ def create_issue_batch(
             except HTTPException as exc:
                 raise HTTPException(
                     status_code=exc.status_code,
-                    detail=f"Material line {line_number}: {exc.detail}",
+                    detail=f"{line_label} line {line_number}: {exc.detail}",
                 ) from exc
 
             issue_qty = _q_qty(_to_decimal(item.qty))
             if issue_qty is None or issue_qty <= 0:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Material line {line_number}: quantity must be greater than zero",
+                    detail=f"{line_label} line {line_number}: quantity must be greater than zero",
                 )
 
             current_balance = (
@@ -767,7 +810,7 @@ def create_issue_batch(
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"Material line {line_number}: insufficient stock in lot {lot.lot_number} "
+                        f"{line_label} line {line_number}: insufficient stock in lot {lot.lot_number} "
                         f"(available {available_qty}, requested {issue_qty})"
                     ),
                 )
@@ -779,6 +822,7 @@ def create_issue_batch(
                 material_lot_id=lot.id,
                 txn_type="ISSUE",
                 consumption_type=consumption_type,
+                consumption_line_type=line_type,
                 qty=issue_qty,
                 uom_code=material.base_uom_code,
                 direction=-1,
@@ -826,7 +870,11 @@ def create_issue_batch(
                 actor_username=user.username,
                 reason=disposition_reason or "Consumption batch created",
                 before_json=None,
-                after_json=_batch_snapshot(batch),
+                after_json={
+                    **_batch_snapshot(batch),
+                    "material_line_count": len(payload.items),
+                    "packaging_line_count": len(payload.packaging_items),
+                },
             )
         )
         db.commit()

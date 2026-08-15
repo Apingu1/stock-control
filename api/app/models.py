@@ -485,6 +485,12 @@ class StockTransaction(Base):
         String(20), nullable=False, default="USAGE"
     )
 
+    # Separates formula materials from variable packaging while retaining one
+    # authoritative stock ledger and one atomic consumption group.
+    consumption_line_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="MATERIAL"
+    )
+
     # ✅ CRITICAL: use Decimal + Numeric (matches DB)
     qty: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     uom_code: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -568,6 +574,7 @@ class StockTransactionEdit(Base):
             "material_lot_id": txn.material_lot_id,
             "txn_type": txn.txn_type,
             "consumption_type": txn.consumption_type,
+            "consumption_line_type": txn.consumption_line_type,
             "qty": str(txn.qty) if txn.qty is not None else None,
             "uom_code": txn.uom_code,
             "direction": txn.direction,

@@ -51,6 +51,11 @@ const formatUnitMoney = (value: unknown): string => {
   return number === null ? "—" : `£${number.toFixed(4)}`;
 };
 
+const formatLineType = (issue: Issue): string => {
+  if (issue.is_non_stock_record) return "N/A";
+  return issue.consumption_line_type === "PACKAGING" ? "Packaging" : "Material";
+};
+
 const formatBatchOutput = (issue: Issue): string => {
   const batchSize = asNumber(issue.total_batch_size);
   const units = asNumber(issue.number_of_units);
@@ -192,6 +197,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         issue.number_of_units,
         issue.comment,
         issue.consumption_type,
+        issue.consumption_line_type,
         issue.material_status_at_txn,
         issue.batch_disposition,
         issue.disposition_reason,
@@ -245,6 +251,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
       "Batch Size UOM",
       "Number of Units",
       "Consumption Group ID",
+      "Stock Use",
       "Material Code",
       "Material Name",
       "Lot No.",
@@ -276,6 +283,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
         batchRelevant ? issue.batch_size_uom ?? "—" : "N/A",
         batchRelevant ? issue.number_of_units ?? "—" : "N/A",
         issue.consumption_group_id ?? "—",
+        formatLineType(issue),
         issue.material_code,
         issue.material_name,
         issue.lot_number,
@@ -296,7 +304,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   };
 
   const showActions = Boolean(canEdit);
-  const emptyColSpan = showActions ? 20 : 19;
+  const emptyColSpan = showActions ? 21 : 20;
 
   return (
     <section className="content">
@@ -399,6 +407,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                   <th>ES Batch / Ref</th>
                   <th>Customer</th>
                   <th>Batch Output</th>
+                  <th>Stock Use</th>
                   <th>Material Code</th>
                   <th>Material Name</th>
                   <th>Lot No.</th>
@@ -453,6 +462,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td>{batchRelevant ? issue.product_batch_no || "—" : "N/A"}</td>
                       <td>{batchRelevant ? issue.customer_name || "—" : "N/A"}</td>
                       <td>{batchRelevant ? formatBatchOutput(issue) : "N/A"}</td>
+                      <td>{formatLineType(issue)}</td>
                       <td>{issue.material_code}</td>
                       <td>{issue.material_name}</td>
                       <td>{issue.lot_number}</td>

@@ -4,6 +4,9 @@ import { Chip, dtFmt, money, qtyFmt } from "./analyticsShared";
 import { buildCsv, downloadCsv } from "./csv";
 import { escapeHtml, moneyText, openPrintWindow } from "./reportPrint";
 
+const lineTypeLabel = (value?: string | null) =>
+  value === "PACKAGING" ? "Packaging" : "Material";
+
 export const BatchPanel: React.FC<{
   batchNo: string;
   batch: BatchAnalyticsResp | null;
@@ -22,6 +25,7 @@ export const BatchPanel: React.FC<{
       "last_issue_at",
       "batch_disposition",
       "disposition_reason",
+      "consumption_line_type",
       "material_code",
       "material_name",
       "lot_number",
@@ -49,6 +53,7 @@ export const BatchPanel: React.FC<{
       "",
       "",
       "",
+      "",
     ]);
 
     for (const material of batch.materials || []) {
@@ -62,6 +67,7 @@ export const BatchPanel: React.FC<{
         batch.header.last_issue_at,
         batch.header.batch_disposition,
         batch.header.disposition_reason || "",
+        material.consumption_line_type,
         material.material_code,
         material.material_name,
         material.lot_number,
@@ -104,6 +110,7 @@ export const BatchPanel: React.FC<{
       .map(
         (material) => `
         <tr>
+          <td>${escapeHtml(lineTypeLabel(material.consumption_line_type))}</td>
           <td><div class="mono">${escapeHtml(material.material_code)}</div><div class="muted">${escapeHtml(material.material_name || "")}</div></td>
           <td class="mono">${escapeHtml(material.lot_number || "")}</td>
           <td class="mono">${escapeHtml(material.qty)}</td>
@@ -118,10 +125,10 @@ export const BatchPanel: React.FC<{
     const body = `
       ${header}
       <div class="card">
-        <div class="ct">Materials (as shown)</div>
+        <div class="ct">Materials and packaging (as shown)</div>
         <table>
-          <thead><tr><th>Material</th><th class="mono">Lot</th><th class="mono">Qty</th><th class="mono">UoM</th><th class="mono">Unit</th><th class="mono">Total</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="6" class="muted">No materials found for this batch.</td></tr>`}</tbody>
+          <thead><tr><th>Use</th><th>Stock item</th><th class="mono">Lot</th><th class="mono">Qty</th><th class="mono">UoM</th><th class="mono">Unit</th><th class="mono">Total</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="7" class="muted">No stock use found for this batch.</td></tr>`}</tbody>
         </table>
       </div>
     `;
@@ -218,7 +225,7 @@ export const BatchPanel: React.FC<{
       <div className="card analytics-card">
         <div className="analytics-tablehead">
           <div className="rowline">
-            <Chip variant="purple">Materials</Chip>
+            <Chip variant="purple">Materials &amp; Packaging</Chip>
             <span className="muted">{batch?.materials?.length ?? 0} row(s)</span>
           </div>
         </div>
@@ -227,7 +234,8 @@ export const BatchPanel: React.FC<{
           <table className="analytics-table">
             <thead>
               <tr>
-                <th>Material</th>
+                <th>Use</th>
+                <th>Stock item</th>
                 <th>Lot</th>
                 <th>Qty</th>
                 <th>UoM</th>
@@ -238,6 +246,7 @@ export const BatchPanel: React.FC<{
             <tbody>
               {(batch?.materials || []).map((material) => (
                 <tr key={material.stock_txn_id}>
+                  <td>{lineTypeLabel(material.consumption_line_type)}</td>
                   <td>
                     <button className="link mono" onClick={() => onOpenMaterial(material.material_code)}>
                       {material.material_code}
@@ -253,10 +262,10 @@ export const BatchPanel: React.FC<{
               ))}
               {!batch || batch.materials.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="muted">
+                  <td colSpan={7} className="muted">
                     {batch?.header.batch_disposition === "CANCELLED"
-                      ? "Cancelled BMR — no materials, quantity or stock movement."
-                      : "No materials found for this batch."}
+                      ? "Cancelled BMR — no stock, quantity or stock movement."
+                      : "No stock use found for this batch."}
                   </td>
                 </tr>
               ) : null}

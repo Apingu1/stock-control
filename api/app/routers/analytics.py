@@ -523,6 +523,7 @@ def batch_analytics(
               created_by,
               material_code,
               material_name,
+              consumption_line_type,
               lot_number,
               qty,
               uom_code,

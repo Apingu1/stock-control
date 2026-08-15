@@ -7,6 +7,7 @@ on:
       - feature/commercial-installation-package-cleanup
       - feature/backup-restore-simplification
       - feature/minor-security-session-ui-fixes
+      - feature/consumption-packaging-lines
   pull_request:
     branches:
       - main
