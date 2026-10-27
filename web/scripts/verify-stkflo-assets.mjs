@@ -9,6 +9,8 @@ const approved = {
   "public/branding/stkflo-horizontal.svg": "eae79cd0ebd72742eea34186557113ba91903b2cd95adf942fb3b4aa13965c2e",
   "public/branding/stkflo-compact.svg": "eedaa30689013da22695355920798fa25f30c2745987a5eaba1552eed42c1938",
   "public/branding/stkflo-monogram.svg": "624dc863e2b417a8bd84d59b6c6b223d3c4ca83b55ea1555f084721b87e49af5",
+  "public/branding/stkflo-login-loop.mp4": "59fef686494beb19f7c48f52a388b5c5f68e5323183cf12eb96fe96d142d8b4d",
+  "public/branding/stkflo-login-poster.webp": "8042c9afa7390baa697f4b3d8ff6e226280448392b4e51b028ef0d4261f7c87e",
   "public/icons/stkflo-32.png": "4bc2fbc884b55c5beaf3c716221119cbb3beeac156df36021a464c13e282de69",
   "public/icons/stkflo-192.png": "68e58c30dcc096e14bc110135b8ec7e49f46dc0b443d6537b1a03357c05bcd95",
   "public/icons/stkflo-512.png": "9adf7ba98ed678f4688631f1f592c5fc08daa6550f7adca99f36bd385b0f126b",
@@ -31,9 +33,10 @@ for (const [relative, expected] of Object.entries(approved)) {
   }
 }
 if (failed) {
-  console.error("Install the regenerated high-quality artwork using:");
+  console.error("Install the approved StkFlo logos and login-video pack before building:");
   console.error('  bash scripts/install_stkflo_branding.sh "/workspaces/stock-control/StkFlo_High_Quality_Complete_Logo_Icon_Pack"');
+  console.error('  bash scripts/install_stkflo_login_video.sh "/workspaces/stock-control/StkFlo_Login_Video_Pack.zip"');
   process.exitCode = 1;
 } else {
-  console.log("Verified all 9 approved high-quality StkFlo brand assets.");
+  console.log("Verified 9 high-quality StkFlo brand assets plus 2 login media assets.");
 }
