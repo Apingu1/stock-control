@@ -5,7 +5,9 @@
 This branch implements the Unison identity in the **existing Stock Control frontend**, based on `feature/consumption-packaging-lines`. No stock calculations, API routes, role permissions, database schema, manufacturing history, or existing navigation destinations are intentionally changed.
 
 The approved identity assets are supplied from the Unison Complete Brand Identity package:
-- `web/public/branding/unison-horizontal-light.webp`: the approved horizontal light-on-dark wordmark, optimised for web delivery with transparency.
+- `web/public/icons/unison-lockup-on-dark.svg`: browser-safe, self-contained original-brand horizontal lockup with the 3D gradient emblem and white Unison lettering, built using the original embedded artwork and alpha mask; no external logo fetch or CSS cropping required.
+- `web/public/icons/unison-transparent-3d-mark.svg`: self-contained transparent gradient-only Unison emblem cropped from the same original artwork for the sign-in panel.
+- `web/public/branding/unison-horizontal-light.webp`: historical source asset retained for compatibility, but no longer referenced by the sign-in screen or sidebar.
 - `web/public/icons/unison-192.webp`: the approved original 3D Unison app icon.
 - `web/public/icons/unison-192.png`: PNG rendition of the supplied app icon for Chromium browser shortcuts and app metadata.
 - `web/public/branding/unison-logo-light.svg`, `unison-monogram.svg`, `web/public/icons/unison.svg`, `unison-maskable.svg`: lightweight SVG presentation and fallback assets.
@@ -16,13 +18,15 @@ The new `web/src/unison.css` layer is deliberately imported after the previous a
 
 1. The sign-in screen uses Unison artwork, a two-column desktop layout and a compact mobile layout. Existing login, login errors, idle-logout messages, and mandatory first-password-change flows remain connected to the same backend APIs.
 2. Unison branding appears in the primary sidebar and at the top of every authenticated view through `TopBar.tsx`.
-3. Sidebar items, order, admin/permissions checks and the Low Stock & Expiry count are unchanged. Icons, spacing, active styling, user footer and collapse behaviour are refreshed based on Training Matrix patterns.
+3. Sidebar items, order, admin/permissions checks and the Low Stock & Expiry count are unchanged. The original **coloured emoji menu icons** are restored from the pre-rebrand sidebar (📊, 🧾, 📈, 🧪, 📥, 🚚, 📦, 👤, ⚙️, 📦, 🚨, 📑), while the newer font, spacing, active styling, user footer and collapse behaviour remain.
 4. On desktop the menu can be fully hidden, and a floating menu button restores it. The choice persists per browser under `unison-sidebar-collapsed`. On narrow screens it appears as a dismissible navigation drawer.
 5. The page title, manifest, favicon, PWA update prompt, offline page and service-worker pre-cache use Unison. PWA requests for operational data remain network-only; this work does **not** introduce offline editing or transactions.
 
 ## Manual acceptance checklist
 
 - [ ] Sign in with each test role; confirm stock views and permissions behave exactly as before.
+- [ ] Verify full, white-lettered Unison lockup above CONNECTED OPERATIONS and at the top of the sidebar. Verify the independent **transparent** 3D emblem above Welcome back; no broken-image placeholders or dark app-icon square.
+- [ ] Verify original coloured navigation icons, new typography and item destinations are retained.
 - [ ] Test wrong password, successful password, password visibility toggle, and forced first-time password change.
 - [ ] Collapse and reopen the desktop sidebar; refresh and verify the choice is remembered.
 - [ ] Resize to mobile width; verify drawer open/close via menu, overlay, navigation selection and Escape key.
