@@ -578,3 +578,46 @@
   .stkflo-login-symbol { width: 84px; height: 116px; }
   .stkflo-login-symbol img { height: 110px; }
 }
+
+
+/* StkFlo login film: the supplied 944x944 artwork remains uncropped.
+   The left panel matches the video background so letterboxing is invisible. */
+.stkflo-login-media {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 620px;
+  overflow: hidden;
+  background: #000d28;
+}
+.stkflo-login-video,
+.stkflo-login-video-poster {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+.stkflo-login-video-poster {
+  z-index: 0;
+}
+.stkflo-login-video {
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease-out;
+}
+.stkflo-login-video.is-playing { opacity: 1; }
+@media (max-width: 740px) {
+  .stkflo-login-media {
+    min-height: 0;
+    aspect-ratio: 4 / 3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stkflo-login-video { display: none; transition: none; }
+}
