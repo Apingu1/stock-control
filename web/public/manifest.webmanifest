@@ -11,9 +11,9 @@
   "orientation": "any",
   "icons": [
     {
-      "src": "/icons/unison-192.webp",
+      "src": "/icons/unison-192.png",
       "sizes": "192x192",
-      "type": "image/webp",
+      "type": "image/png",
       "purpose": "any"
     },
     {
