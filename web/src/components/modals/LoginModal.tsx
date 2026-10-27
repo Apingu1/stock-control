@@ -22,6 +22,7 @@ export default function LoginModal({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -93,18 +94,30 @@ export default function LoginModal({
       <div className="stkflo-login-glow stkflo-login-glow-two" aria-hidden="true" />
       <div className="stkflo-login-wave" aria-hidden="true" />
       <div className="stkflo-login-shell">
-        <section className="stkflo-login-story" aria-label="About StkFlo">
-          <div className="stkflo-login-story-logo">
-            <img src="/branding/stkflo-horizontal.svg" alt="StkFlo — One platform. Greater control." width="420" height="212" />
-          </div>
-          <div className="stkflo-login-story-copy">
-            <span className="stkflo-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
-            <h1>Clarity across <em>every movement.</em></h1>
-            <p>A unified workspace for materials, traceability and confident inventory control.</p>
-            <div className="stkflo-login-story-rule" />
-            <span className="stkflo-login-story-signoff">ONE PLATFORM. GREATER CONTROL.</span>
-          </div>
-          <div className="stkflo-login-story-footer">StkFlo <span>·</span> Secure on-premises workspace</div>
+        <section className="stkflo-login-media" aria-label="Animated StkFlo logo">
+          {/* The video is square; contain preserves the complete SF mark and wordmark. */}
+          <img
+            className="stkflo-login-video-poster"
+            src="/branding/stkflo-login-poster.webp"
+            alt="StkFlo"
+            width="944"
+            height="944"
+          />
+          <video
+            className={"stkflo-login-video" + (videoPlaying ? " is-playing" : "")}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            poster="/branding/stkflo-login-poster.webp"
+            aria-hidden="true"
+            onPlaying={() => setVideoPlaying(true)}
+            onPause={() => setVideoPlaying(false)}
+            onError={() => setVideoPlaying(false)}
+          >
+            <source src="/branding/stkflo-login-loop.mp4" type="video/mp4" />
+          </video>
         </section>
 
         <section className="stkflo-login-panel" aria-label="Sign in to StkFlo">
@@ -112,8 +125,8 @@ export default function LoginModal({
             <div className="stkflo-login-symbol">
               <img src="/branding/stkflo-monogram.svg" alt="StkFlo SF monogram" width="110" height="168" />
             </div>
-            <span className="stkflo-login-panel-kicker">WELCOME TO STKFLO</span>
-            <h2>{changingPassword ? "Set your password" : "Welcome back"}</h2>
+            <span className="stkflo-login-panel-kicker">SECURE ACCESS</span>
+            {changingPassword && <h2>Set your password</h2>}
             <p>
               {changingPassword
                 ? "Your administrator issued a temporary password. Create your personal password to continue."
