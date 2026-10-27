@@ -95,7 +95,7 @@ export default function LoginModal({
       <div className="unison-login-shell">
         <section className="unison-login-story" aria-label="About Unison">
           <div className="unison-login-story-logo">
-            <img src="/icons/unison-lockup-on-dark.svg" alt="Unison" width="420" height="131" />
+            <img src="/branding/Unison_OptionF_Full_Logo.svg" alt="Unison — One platform. Greater control." width="420" height="140" />
           </div>
           <div className="unison-login-story-copy">
             <span className="unison-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
@@ -110,7 +110,7 @@ export default function LoginModal({
         <section className="unison-login-panel" aria-label="Sign in to Unison">
           <div className="unison-login-panel-top">
             <div className="unison-login-symbol">
-              <img src="/icons/unison-transparent-3d-mark.svg" alt="Unison symbol" width="110" height="82" />
+              <img src="/branding/Unison_OptionF_Monogram.svg" alt="Unison symbol" width="110" height="110" />
             </div>
             <span className="unison-login-panel-kicker">WELCOME TO UNISON</span>
             <h2>{changingPassword ? "Set your password" : "Welcome back"}</h2>
