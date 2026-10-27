@@ -97,28 +97,28 @@ export default function LoginModal({
         <section className="stkflo-login-media" aria-label="About StkFlo">
           {/* Keep the square video intact, with the original StkFlo slogans underneath. */}
           <div className="stkflo-login-video-stage">
-          <img
-            className="stkflo-login-video-poster"
-            src="/branding/stkflo-login-poster.webp"
-            alt="StkFlo"
-            width="944"
-            height="944"
-          />
-          <video
-            className={"stkflo-login-video" + (videoPlaying ? " is-playing" : "")}
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            poster="/branding/stkflo-login-poster.webp"
-            aria-hidden="true"
-            onPlaying={() => setVideoPlaying(true)}
-            onPause={() => setVideoPlaying(false)}
-            onError={() => setVideoPlaying(false)}
-          >
-            <source src="/branding/stkflo-login-loop.mp4" type="video/mp4" />
-          </video>
+            <img
+              className="stkflo-login-video-poster"
+              src="/branding/stkflo-login-poster.webp"
+              alt="StkFlo"
+              width="944"
+              height="944"
+            />
+            <video
+              className={"stkflo-login-video" + (videoPlaying ? " is-playing" : "")}
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              poster="/branding/stkflo-login-poster.webp"
+              aria-hidden="true"
+              onPlaying={() => setVideoPlaying(true)}
+              onPause={() => setVideoPlaying(false)}
+              onError={() => setVideoPlaying(false)}
+            >
+              <source src="/branding/stkflo-login-loop.mp4" type="video/mp4" />
+            </video>
           </div>
           <div className="stkflo-login-media-copy">
             <span className="stkflo-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
