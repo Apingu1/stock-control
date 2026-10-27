@@ -1,12 +1,14 @@
-const CACHE_NAME = "eaststone-stock-control-pwa-v1";
+const CACHE_NAME = "unison-pwa-v2";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.webmanifest",
-  "/icons/es-stock-icon-192.png",
-  "/icons/es-stock-icon-512.png",
-  "/icons/es-stock-icon-maskable-512.png",
-  "/icons/es-stock-icon-monochrome-512.png",
+  "/icons/unison-32.png",
+  "/icons/unison-192.png",
+  "/icons/unison-512.png",
+  "/icons/unison-maskable-512.png",
+  "/branding/unison-logo-light.webp",
+  "/branding/unison-monogram.webp",
 ];
 
 self.addEventListener("install", (event) => {
