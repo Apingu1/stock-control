@@ -15,6 +15,13 @@ fi
 if [[ -n "$PUSH" && "$PUSH" != "--push" ]]; then
   echo "ERROR: Unknown option $PUSH (supported: --push)" >&2; exit 1
 fi
+if [[ "$PUSH" == "--push" ]]; then
+  branch="$(git -C "$ROOT" branch --show-current)"
+  if [[ "$branch" != "feature/stkflo-rebrand" ]]; then
+    echo "ERROR: --push requires feature/stkflo-rebrand (on $branch)." >&2
+    exit 1
+  fi
+fi
 
 NAMES=(
   StkFlo_Horizontal_WhiteStk_RasterBacked.svg
@@ -117,14 +124,13 @@ done
 echo "StkFlo 3D artwork, shortcut, favicon, Apple and PWA icons installed."
 if [[ "$PUSH" == "--push" ]]; then
   cd "$ROOT"
-  current="$(git branch --show-current)"
-  if [[ "$current" != "feature/stkflo-rebrand" ]]; then
-    echo "ERROR: --push requires feature/stkflo-rebrand (on $current)." >&2
-    exit 1
-  fi
-  for dest in "${DESTS[@]}"; do git add "web/public/$dest"; done
-  if ! git diff --cached --quiet; then
-    git commit -m "Add verified approved StkFlo brand artwork and application icons"
+  paths=()
+  for dest in "${DESTS[@]}"; do
+    paths+=("web/public/$dest")
+    git add "web/public/$dest"
+  done
+  if ! git diff --cached --quiet -- "${paths[@]}"; then
+    git commit --only -m "Add verified approved StkFlo brand artwork and application icons" -- "${paths[@]}"
   fi
   git push -u origin feature/stkflo-rebrand
   echo "StkFlo assets committed and pushed to feature/stkflo-rebrand."
