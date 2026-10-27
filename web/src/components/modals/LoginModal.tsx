@@ -88,42 +88,42 @@ export default function LoginModal({
   };
 
   return (
-    <main className="unison-login">
-      <div className="unison-login-glow unison-login-glow-one" aria-hidden="true" />
-      <div className="unison-login-glow unison-login-glow-two" aria-hidden="true" />
-      <div className="unison-login-wave" aria-hidden="true" />
-      <div className="unison-login-shell">
-        <section className="unison-login-story" aria-label="About Unison">
-          <div className="unison-login-story-logo">
-            <img src="/branding/Unison_OptionF_Full_Logo.svg" alt="Unison — One platform. Greater control." width="420" height="140" />
+    <main className="stkflo-login">
+      <div className="stkflo-login-glow stkflo-login-glow-one" aria-hidden="true" />
+      <div className="stkflo-login-glow stkflo-login-glow-two" aria-hidden="true" />
+      <div className="stkflo-login-wave" aria-hidden="true" />
+      <div className="stkflo-login-shell">
+        <section className="stkflo-login-story" aria-label="About StkFlo">
+          <div className="stkflo-login-story-logo">
+            <img src="/branding/stkflo-horizontal.svg" alt="StkFlo — One platform. Greater control." width="420" height="140" />
           </div>
-          <div className="unison-login-story-copy">
-            <span className="unison-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
+          <div className="stkflo-login-story-copy">
+            <span className="stkflo-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
             <h1>Clarity across <em>every movement.</em></h1>
             <p>A unified workspace for materials, traceability and confident inventory control.</p>
-            <div className="unison-login-story-rule" />
-            <span className="unison-login-story-signoff">ONE PLATFORM. GREATER CONTROL.</span>
+            <div className="stkflo-login-story-rule" />
+            <span className="stkflo-login-story-signoff">ONE PLATFORM. GREATER CONTROL.</span>
           </div>
-          <div className="unison-login-story-footer">Unison <span>·</span> Secure on-premises workspace</div>
+          <div className="stkflo-login-story-footer">StkFlo <span>·</span> Secure on-premises workspace</div>
         </section>
 
-        <section className="unison-login-panel" aria-label="Sign in to Unison">
-          <div className="unison-login-panel-top">
-            <div className="unison-login-symbol">
-              <img src="/branding/Unison_OptionF_Monogram.svg" alt="Unison symbol" width="110" height="110" />
+        <section className="stkflo-login-panel" aria-label="Sign in to StkFlo">
+          <div className="stkflo-login-panel-top">
+            <div className="stkflo-login-symbol">
+              <img src="/branding/stkflo-monogram.svg" alt="StkFlo symbol" width="110" height="110" />
             </div>
-            <span className="unison-login-panel-kicker">WELCOME TO UNISON</span>
+            <span className="stkflo-login-panel-kicker">WELCOME TO STKFLO</span>
             <h2>{changingPassword ? "Set your password" : "Welcome back"}</h2>
             <p>
               {changingPassword
                 ? "Your administrator issued a temporary password. Create your personal password to continue."
-                : "Sign in to access your secure Unison workspace."}
+                : "Sign in to access your secure StkFlo workspace."}
             </p>
           </div>
-          <form className="unison-login-form" onSubmit={changingPassword ? handlePasswordChange : handleLogin}>
+          <form className="stkflo-login-form" onSubmit={changingPassword ? handlePasswordChange : handleLogin}>
             {!changingPassword ? (
               <>
-                <div className="unison-login-field">
+                <div className="stkflo-login-field">
                   <label htmlFor="stock-control-username">Username</label>
                   <input
                     id="stock-control-username"
@@ -138,9 +138,9 @@ export default function LoginModal({
                     required
                   />
                 </div>
-                <div className="unison-login-field">
+                <div className="stkflo-login-field">
                   <label htmlFor="stock-control-password">Password</label>
-                  <div className="unison-password-wrap">
+                  <div className="stkflo-password-wrap">
                     <input
                       id="stock-control-password"
                       name="password"
@@ -153,7 +153,7 @@ export default function LoginModal({
                       required
                     />
                     <button
-                      className="unison-password-toggle"
+                      className="stkflo-password-toggle"
                       type="button"
                       onClick={() => setShowPassword((prev) => !prev)}
                       aria-label={showPassword ? "Hide password" : "Show password"}
@@ -164,7 +164,7 @@ export default function LoginModal({
               </>
             ) : (
               <>
-                <div className="unison-login-field">
+                <div className="stkflo-login-field">
                   <label htmlFor="stock-control-new-password">New password</label>
                   <input
                     id="stock-control-new-password"
@@ -180,7 +180,7 @@ export default function LoginModal({
                     required
                   />
                 </div>
-                <div className="unison-login-field">
+                <div className="stkflo-login-field">
                   <label htmlFor="stock-control-confirm-password">Confirm new password</label>
                   <input
                     id="stock-control-confirm-password"
@@ -194,23 +194,23 @@ export default function LoginModal({
                     required
                   />
                 </div>
-                <p className="unison-login-password-note">Minimum 8 characters.</p>
+                <p className="stkflo-login-password-note">Minimum 8 characters.</p>
               </>
             )}
             {(message || error) && (
-              <div className={error ? "unison-login-notice is-error" : "unison-login-notice"} role={error ? "alert" : "status"}>
+              <div className={error ? "stkflo-login-notice is-error" : "stkflo-login-notice"} role={error ? "alert" : "status"}>
                 {error || message}
               </div>
             )}
-            <button className="unison-login-submit" type="submit" disabled={busy}>
+            <button className="stkflo-login-submit" type="submit" disabled={busy}>
               {busy
                 ? changingPassword ? "Saving password…" : "Signing in…"
-                : changingPassword ? "Save password and continue" : "Sign in to Unison"}
+                : changingPassword ? "Save password and continue" : "Sign in to StkFlo"}
               <span aria-hidden="true">→</span>
             </button>
           </form>
-          <div className="unison-login-panel-footer">
-            <span className="unison-login-lock" aria-hidden="true">◆</span>
+          <div className="stkflo-login-panel-footer">
+            <span className="stkflo-login-lock" aria-hidden="true">◆</span>
             Authorised access only <span>·</span> Protected session
           </div>
         </section>
