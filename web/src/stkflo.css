@@ -580,15 +580,26 @@
 }
 
 
-/* StkFlo login film: the supplied 944x944 artwork remains uncropped.
-   The left panel matches the video background so letterboxing is invisible. */
+/* StkFlo login animation and editorial slogan layout.
+   The video stays a full square with no crop; text sits BELOW it, never over it. */
 .stkflo-login-media {
-  position: relative;
-  isolation: isolate;
-  display: grid;
-  place-items: center;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   min-width: 0;
   min-height: 620px;
+  padding: 10px 27px 22px;
+  overflow: hidden;
+  background: #000d28;
+}
+.stkflo-login-video-stage {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  width: min(100%, 386px);
+  aspect-ratio: 1;
   overflow: hidden;
   background: #000d28;
 }
@@ -602,9 +613,7 @@
   object-fit: contain;
   object-position: center;
 }
-.stkflo-login-video-poster {
-  z-index: 0;
-}
+.stkflo-login-video-poster { z-index: 0; }
 .stkflo-login-video {
   z-index: 1;
   opacity: 0;
@@ -612,11 +621,83 @@
   transition: opacity 220ms ease-out;
 }
 .stkflo-login-video.is-playing { opacity: 1; }
+.stkflo-login-media-copy {
+  flex: none;
+  width: 100%;
+  max-width: 505px;
+  margin: -2px 0 0;
+  text-align: center;
+}
+.stkflo-login-media-copy .stkflo-login-eyebrow {
+  margin-bottom: 12px;
+  font-size: 9px;
+  letter-spacing: .17em;
+}
+.stkflo-login-media-copy h1 {
+  margin: 0 0 10px;
+  color: #f8fafc;
+  font-size: clamp(27px, 3vw, 36px);
+  font-weight: 750;
+  line-height: 1.14;
+  letter-spacing: -.037em;
+}
+.stkflo-login-media-copy h1 em {
+  color: #a6b1ff;
+  font-style: normal;
+}
+.stkflo-login-media-copy p {
+  max-width: 435px;
+  margin: 0 auto;
+  color: #9fadc8;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.stkflo-login-media-copy .stkflo-login-story-rule {
+  margin: 15px auto 11px;
+  width: 64px;
+}
+.stkflo-login-media-copy .stkflo-login-story-signoff {
+  display: inline-block;
+  font-size: 9.5px;
+}
+.stkflo-login-media-footer {
+  margin-top: auto;
+  padding-top: 10px;
+  color: #687c9d;
+  font-size: 10px;
+  text-align: center;
+}
+.stkflo-login-media-footer span { margin: 0 5px; }
+
+/* Keep the video compact in a narrow desktop split; slogan remains legible. */
+@media (min-width: 741px) and (max-width: 990px) {
+  .stkflo-login-media { padding: 18px 19px 22px; }
+  .stkflo-login-video-stage { width: min(100%, 325px); }
+  .stkflo-login-media-copy h1 { font-size: clamp(25px, 3vw, 31px); }
+}
 @media (max-width: 740px) {
   .stkflo-login-media {
     min-height: 0;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: auto;
+    padding: 6px 24px 25px;
   }
+  .stkflo-login-video-stage { width: min(100%, 292px); }
+  .stkflo-login-media-copy { margin-top: -4px; }
+  .stkflo-login-media-copy .stkflo-login-eyebrow {
+    margin-bottom: 9px;
+    font-size: 8px;
+  }
+  .stkflo-login-media-copy h1 {
+    font-size: clamp(25px, 6.3vw, 32px);
+    margin-bottom: 9px;
+  }
+  .stkflo-login-media-copy p { font-size: 12px; }
+  .stkflo-login-media-copy .stkflo-login-story-rule { margin: 13px auto 9px; }
+  .stkflo-login-media-footer { margin-top: 17px; padding-top: 0; }
+}
+@media (max-width: 390px) {
+  .stkflo-login-video-stage { width: min(100%, 260px); }
+  .stkflo-login-media { padding-left: 18px; padding-right: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .stkflo-login-video { display: none; transition: none; }
