@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./pwa.css";
-import "./unison.css";
+import "./stkflo.css";
 import App from "./App.tsx";
 import PwaUpdatePrompt from "./components/system/PwaUpdatePrompt";
 import { registerPwa } from "./pwa";
