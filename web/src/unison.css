@@ -491,3 +491,27 @@
 @media (prefers-reduced-motion: reduce) {
   .unison-sidebar, .unison-login-submit, .unison-sidebar .unison-nav-link { transition: none; }
 }
+
+
+/* The supplied lockup has generous transparent padding. Crop it visually,
+   without altering the approved U+n emblem or its companion wordmark. */
+.unison-sidebar-brand { overflow: hidden; }
+.unison-sidebar-brand img {
+  width: 300px;
+  max-width: none;
+  margin: -25px 0 -23px -12px;
+}
+.unison-login-story-logo { overflow: hidden; height: 78px; }
+.unison-login-story-logo img {
+  width: 370px;
+  max-width: none;
+  margin: -30px 0 0 -13px;
+}
+@media (max-width: 740px) {
+  .unison-login-story-logo { height: 61px; }
+  .unison-login-story-logo img {
+    width: 270px;
+    max-width: none;
+    margin: -23px 0 0 -10px;
+  }
+}
