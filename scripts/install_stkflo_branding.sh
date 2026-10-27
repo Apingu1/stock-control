@@ -1,128 +1,99 @@
 #!/usr/bin/env bash
-# Install the exact approved StkFlo artwork without requiring Python on the host.
-# Usage: bash scripts/install_stkflo_branding.sh "/path/to/StkFlo_COMPLETE_Logo_and_Branding_Package.zip" [--push]
+# Install the exact approved StkFlo high-quality artwork from an EXTRACTED FOLDER
+# (or ZIP), without requiring Python or Docker.
+#
+# Usage:
+#   bash scripts/install_stkflo_branding.sh "/workspaces/stock-control/StkFlo_High_Quality_Complete_Logo_Icon_Pack" --push
+#
+# All artwork is verified against the approved regenerated pack (October 2026).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ZIP_PATH="${1:-$ROOT/StkFlo_COMPLETE_Logo_and_Branding_Package.zip}"
-PUSH="${2:-}"
-
-if [[ ! -f "$ZIP_PATH" ]]; then
-  echo "ERROR: StkFlo brand ZIP not found: $ZIP_PATH" >&2
-  echo 'Provide its path as the first argument (in quotes if it contains spaces).' >&2
+SOURCE="${1:-$ROOT/StkFlo_High_Quality_Complete_Logo_Icon_Pack}"
+ACTION="${2:-}"
+BRANCH="feature/stkflo-rebrand"
+if [[ "$ACTION" != "" && "$ACTION" != "--push" ]]; then
+  echo "ERROR: Unrecognised option: $ACTION (expected --push)." >&2; exit 1
+fi
+if [[ ! -d "$SOURCE" && ! -f "$SOURCE" ]]; then
+  echo "ERROR: Artwork folder or ZIP does not exist: $SOURCE" >&2; exit 1
+fi
+if [[ -f "$SOURCE" ]] && ! command -v unzip >/dev/null 2>&1; then
+  echo "ERROR: ZIP requires unzip; extract the ZIP into a folder and pass that path instead." >&2
   exit 1
 fi
-if [[ -n "$PUSH" && "$PUSH" != "--push" ]]; then
-  echo "ERROR: Unknown option $PUSH (supported: --push)" >&2; exit 1
-fi
-if [[ "$PUSH" == "--push" ]]; then
-  branch="$(git -C "$ROOT" branch --show-current)"
-  if [[ "$branch" != "feature/stkflo-rebrand" ]]; then
-    echo "ERROR: --push requires feature/stkflo-rebrand (on $branch)." >&2
-    exit 1
-  fi
-fi
-
-NAMES=(
-  StkFlo_Horizontal_WhiteStk_RasterBacked.svg
-  StkFlo_SF_Monogram_RasterBacked.svg
-  StkFlo_Dark_AppIcon_32px.png
-  StkFlo_Dark_AppIcon_192px.png
-  StkFlo_Dark_AppIcon_512px.png
-  StkFlo_Dark_Android_Maskable_512px.png
-  StkFlo_Apple_Touch_Icon_180.png
-  StkFlo_Dark_Windows_Favicon.ico
-)
-HASHES=(
-  4e141cd0ca30dd532e417356704c1d58cdd283ee6f96c0e581135d4dfe974f50
-  53ea0b0a2baf1e365d4f192a57f2a6d004e45ed850d654ec25e7117664df6244
-  7223f778d223b82bb13ffc318cea61296f04c5021e85188f0390576560b30625
-  f3c3ba95f54048d8ac6ddc87b4df091cbf2a31512e598a789fcc56275c709543
-  24f4c4eb421a44ec3e962ad1d6334b761b171605330b38783a787f8c70a0abec
-  8c7b581a733b1038f612ccf187d81e3c5a28efbc50534d01412ba9850293c28c
-  2f54a17536596d07b9966b47add61ae5c08f437eb7d4d9a75977fa22a639b35f
-  90329731e1684306adb61b320388537d54c814e1f5a14269679279cd4be28896
-)
-DESTS=(
-  branding/stkflo-horizontal.svg
-  branding/stkflo-monogram.svg
-  icons/stkflo-32.png
-  icons/stkflo-192.png
-  icons/stkflo-512.png
-  icons/stkflo-maskable-512.png
-  icons/stkflo-apple-touch.png
-  icons/stkflo-favicon.ico
-)
 if ! command -v sha256sum >/dev/null 2>&1; then
-  echo 'ERROR: sha256sum is required for artwork verification.' >&2; exit 1
+  echo "ERROR: sha256sum is needed to verify the approved artwork." >&2; exit 1
+fi
+if [[ "$ACTION" == "--push" ]]; then
+  current="$(git -C "$ROOT" branch --show-current)"
+  if [[ "$current" != "$BRANCH" ]]; then
+    echo "ERROR: Switch to $BRANCH before --push; current branch: $current" >&2; exit 1
+  fi
 fi
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
+NAMES=()
+DESTS=()
+HASHES=()
 
-if command -v unzip >/dev/null 2>&1; then
-  for filename in "${NAMES[@]}"; do
-    member="$(unzip -Z1 "$ZIP_PATH" | grep -F "/$filename" || true)"
-    if [[ -z "$member" || "$member" == *$'\n'* || "$member" != */"$filename" ]]; then
-      echo "ERROR: Expected exactly one $filename in ZIP." >&2; exit 1
-    fi
-    unzip -p "$ZIP_PATH" "$member" > "$STAGE/$filename"
-  done
-else
-  # Some Codespaces do not have Python or unzip. Python inside our API image is used.
-  if ! command -v docker >/dev/null 2>&1; then
-    echo 'ERROR: Neither unzip nor Docker is available.' >&2; exit 1
-  fi
-  PY_EXTRACT=$(cat <<'PY'
-import io, sys, tarfile, zipfile
-names = [
-    "StkFlo_Horizontal_WhiteStk_RasterBacked.svg",
-    "StkFlo_SF_Monogram_RasterBacked.svg",
-    "StkFlo_Dark_AppIcon_32px.png",
-    "StkFlo_Dark_AppIcon_192px.png",
-    "StkFlo_Dark_AppIcon_512px.png",
-    "StkFlo_Dark_Android_Maskable_512px.png",
-    "StkFlo_Apple_Touch_Icon_180.png",
-    "StkFlo_Dark_Windows_Favicon.ico",
-]
-with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as archive:
-    with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as output:
-        for name in names:
-            paths = [p for p in archive.namelist() if p.endswith("/" + name)]
-            if len(paths) != 1:
-                raise SystemExit("Expected exactly one %s, got %s" % (name, len(paths)))
-            data = archive.read(paths[0])
-            entry = tarfile.TarInfo(name)
-            entry.size = len(data)
-            entry.mode = 0o644
-            output.addfile(entry, io.BytesIO(data))
-PY
-)
-  docker compose --env-file "$ROOT/.env" -f "$ROOT/infra/docker-compose.yml" \
-    exec -T api python -c "$PY_EXTRACT" < "$ZIP_PATH" | tar -xf - -C "$STAGE"
-fi
+# Format: relative path within extracted premium pack | public asset destination | sha256.
+while IFS='|' read -r relative dest expected; do
+  [[ -n "$relative" ]] || continue
+  NAMES+=("$relative"); DESTS+=("$dest"); HASHES+=("$expected")
+done <<'APPROVED_ASSETS'
+09_SVG_IMAGE_BACKED/StkFlo_Full_Logo_DarkUI_Raster_Embedded.svg|branding/stkflo-horizontal.svg|eae79cd0ebd72742eea34186557113ba91903b2cd95adf942fb3b4aa13965c2e
+09_SVG_IMAGE_BACKED/StkFlo_Compact_DarkUI_Raster_Embedded.svg|branding/stkflo-compact.svg|eedaa30689013da22695355920798fa25f30c2745987a5eaba1552eed42c1938
+09_SVG_IMAGE_BACKED/StkFlo_Monogram_Raster_Embedded.svg|branding/stkflo-monogram.svg|624dc863e2b417a8bd84d59b6c6b223d3c4ca83b55ea1555f084721b87e49af5
+07_BROWSER_AND_PWA/favicon-32x32.png|icons/stkflo-32.png|4bc2fbc884b55c5beaf3c716221119cbb3beeac156df36021a464c13e282de69
+07_BROWSER_AND_PWA/android-chrome-192x192.png|icons/stkflo-192.png|68e58c30dcc096e14bc110135b8ec7e49f46dc0b443d6537b1a03357c05bcd95
+07_BROWSER_AND_PWA/android-chrome-512x512.png|icons/stkflo-512.png|9adf7ba98ed678f4688631f1f592c5fc08daa6550f7adca99f36bd385b0f126b
+07_BROWSER_AND_PWA/maskable-icon-512x512.png|icons/stkflo-maskable-512.png|9349065e687d520e96b70f4f7c910b37b7c7e4c95218c5d8fd8896573ee96143
+07_BROWSER_AND_PWA/apple-touch-icon.png|icons/stkflo-apple-touch.png|482ae07618dc519406ccfb455370b305ef6f97cc9887dee52ac5ca43fd7ab9f1
+07_BROWSER_AND_PWA/favicon.ico|icons/stkflo-favicon.ico|f96719be61b5948ea344b7ef661861cda6918b14175034b48f812c028d544903
+APPROVED_ASSETS
 
-# Verify ALL images before changing public assets, then publish them atomically per path.
+# Stage all nine assets and validate BEFORE modifying any files.
 for i in "${!NAMES[@]}"; do
-  filename="${NAMES[$i]}"
-  [[ -s "$STAGE/$filename" ]] || { echo "ERROR: Empty/missing $filename" >&2; exit 1; }
-  actual="$(sha256sum "$STAGE/$filename")"
-  actual="${actual%% *}"
-  if [[ "$actual" != "${HASHES[$i]}" ]]; then
-    echo "ERROR: Brand asset hash mismatch for $filename ($actual)" >&2
+  relative="${NAMES[$i]}"
+  staged="$STAGE/asset-$i"
+  if [[ -d "$SOURCE" ]]; then
+    mapfile -d '' -t matches < <(find "$SOURCE" -type f -path "*/$relative" -print0)
+    if (( ${#matches[@]} != 1 )); then
+      echo "ERROR: Expected one $relative under $SOURCE; found ${#matches[@]}." >&2
+      exit 1
+    fi
+    cp "${matches[0]}" "$staged"
+  else
+    mapfile -t matches < <(unzip -Z1 "$SOURCE" | grep -F "/$relative" || true)
+    if (( ${#matches[@]} != 1 )) || [[ "${matches[0]}" != */"$relative" ]]; then
+      echo "ERROR: Expected one $relative in $SOURCE; found ${#matches[@]}." >&2
+      exit 1
+    fi
+    unzip -p "$SOURCE" "${matches[0]}" > "$staged"
+  fi
+  [[ -s "$staged" ]] || { echo "ERROR: Missing or empty artwork: $relative" >&2; exit 1; }
+  digest="$(sha256sum "$staged")"; digest="${digest%% *}"
+  if [[ "$digest" != "${HASHES[$i]}" ]]; then
+    echo "ERROR: Unexpected artwork version: $relative" >&2
+    echo "  SHA-256: $digest" >&2
+    echo "Check that the folder is from the approved high-quality regenerated ZIP." >&2
     exit 1
   fi
 done
-for i in "${!NAMES[@]}"; do
-  dest="$ROOT/web/public/${DESTS[$i]}"
-  mkdir -p "$(dirname "$dest")"
-  cp "$STAGE/${NAMES[$i]}" "$dest.installing"
-  mv -f "$dest.installing" "$dest"
-  echo "Verified: web/public/${DESTS[$i]}"
-done
 
-echo "StkFlo 3D artwork, shortcut, favicon, Apple and PWA icons installed."
-if [[ "$PUSH" == "--push" ]]; then
+# Publish only after successful verification.
+for i in "${!NAMES[@]}"; do
+  path="$ROOT/web/public/${DESTS[$i]}"
+  mkdir -p "$(dirname "$path")"
+  cp "$STAGE/asset-$i" "$path.installing"
+  mv -f "$path.installing" "$path"
+  echo "Verified and installed web/public/${DESTS[$i]}"
+done
+echo "All ${#NAMES[@]} StkFlo premium assets installed successfully."
+
+if [[ "$ACTION" == "--push" ]]; then
   cd "$ROOT"
   paths=()
   for dest in "${DESTS[@]}"; do
@@ -130,10 +101,12 @@ if [[ "$PUSH" == "--push" ]]; then
     git add "web/public/$dest"
   done
   if ! git diff --cached --quiet -- "${paths[@]}"; then
-    git commit --only -m "Add verified approved StkFlo brand artwork and application icons" -- "${paths[@]}"
+    git commit --only -m "Install approved high-quality StkFlo branding and PWA icons" -- "${paths[@]}"
+  else
+    echo "Exact artwork is already committed; nothing new to commit."
   fi
-  git push -u origin feature/stkflo-rebrand
-  echo "StkFlo assets committed and pushed to feature/stkflo-rebrand."
+  git push -u origin "$BRANCH"
+  echo "Pushed verified StkFlo artwork to $BRANCH"
 else
-  echo "To add exact assets to GitHub, rerun with --push or git add/commit/push them."
+  echo "To commit & push the verified assets, rerun this command with --push."
 fi
