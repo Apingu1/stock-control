@@ -5,6 +5,7 @@ const PRECACHE_URLS = [
   "/manifest.webmanifest",
   "/icons/unison.svg",
   "/icons/unison-192.png",
+  "/icons/unison-512.webp",
   "/icons/unison-maskable.svg",
   "/branding/unison-horizontal-light.webp",
 ];
