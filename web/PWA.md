@@ -1,4 +1,4 @@
-# Eaststone Stock Control PWA
+# StkFlo PWA
 
 The operator-facing React application is configured as an installable Progressive Web App (PWA).
 The backend, database and business logic remain centrally hosted on the shared server.
