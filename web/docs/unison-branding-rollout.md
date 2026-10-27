@@ -14,6 +14,19 @@ The approved identity assets are supplied from the Unison Complete Brand Identit
 
 The new `web/src/unison.css` layer is deliberately imported after the previous application styles. This isolates the rebrand and avoids rewriting unrelated page layouts.
 
+## Required approved Option F logo assets
+
+The user-selected assets are `Unison_OptionF_Full_Logo.svg` and `Unison_OptionF_Monogram.svg` from the supplied `Unison_OptionF_FULL_Logo_and_Branding_Package` ZIP, in `10_SVG_Wrappers_Image_Backed/`. They contain original embedded PNG artwork — **not** hand-drawn SVG reconstructions or alternate logo variants.
+
+Frontend references are:
+
+- Full lockup (login left, sidebar): `/branding/Unison_OptionF_Full_Logo.svg`
+- Transparent icon (login right): `/branding/Unison_OptionF_Monogram.svg`
+
+Both source SVGs must be installed into `web/public/branding/` before attempting visual acceptance tests. Copy them **unchanged**, with case-sensitive names. From the Codespace repo root, run `bash scripts/install_option_f_logos.sh path/to/brand-package.zip`. The script validates their SHA-256 checksums and extracts the two exact originals. Then commit and push both files to the Unison branch.
+
+Until that asset installation is done, the page will show missing logos; GitHub's text-only file update does **not** transport attached binary-rich SVG artwork. Existing fallback and reconstructed files should not be substituted.
+
 ## UI behaviour
 
 1. The sign-in screen uses Unison artwork, a two-column desktop layout and a compact mobile layout. Existing login, login errors, idle-logout messages, and mandatory first-password-change flows remain connected to the same backend APIs.
