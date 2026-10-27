@@ -95,7 +95,7 @@ export default function LoginModal({
       <div className="unison-login-shell">
         <section className="unison-login-story" aria-label="About Unison">
           <div className="unison-login-story-logo">
-            <img src="/branding/unison-logo-light.svg" alt="Unison" />
+            <img src="/branding/unison-horizontal-light.webp" alt="Unison" />
           </div>
           <div className="unison-login-story-copy">
             <span className="unison-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
