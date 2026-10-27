@@ -94,8 +94,9 @@ export default function LoginModal({
       <div className="stkflo-login-glow stkflo-login-glow-two" aria-hidden="true" />
       <div className="stkflo-login-wave" aria-hidden="true" />
       <div className="stkflo-login-shell">
-        <section className="stkflo-login-media" aria-label="Animated StkFlo logo">
-          {/* The video is square; contain preserves the complete SF mark and wordmark. */}
+        <section className="stkflo-login-media" aria-label="About StkFlo">
+          {/* Keep the square video intact, with the original StkFlo slogans underneath. */}
+          <div className="stkflo-login-video-stage">
           <img
             className="stkflo-login-video-poster"
             src="/branding/stkflo-login-poster.webp"
@@ -118,6 +119,15 @@ export default function LoginModal({
           >
             <source src="/branding/stkflo-login-loop.mp4" type="video/mp4" />
           </video>
+          </div>
+          <div className="stkflo-login-media-copy">
+            <span className="stkflo-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
+            <h1>Clarity across <em>every movement.</em></h1>
+            <p>A unified workspace for materials, traceability and confident inventory control.</p>
+            <div className="stkflo-login-story-rule" aria-hidden="true" />
+            <span className="stkflo-login-story-signoff">ONE PLATFORM. GREATER CONTROL.</span>
+          </div>
+          <div className="stkflo-login-media-footer">StkFlo <span>·</span> Secure on-premises workspace</div>
         </section>
 
         <section className="stkflo-login-panel" aria-label="Sign in to StkFlo">
