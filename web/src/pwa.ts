@@ -38,7 +38,7 @@ export function registerPwa(): void {
         });
       })
       .catch((error: unknown) => {
-        console.error("Unison PWA registration failed", error);
+        console.error("StkFlo PWA registration failed", error);
       });
   });
 
