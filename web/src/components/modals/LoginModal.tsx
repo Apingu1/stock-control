@@ -94,8 +94,10 @@ export default function LoginModal({
       <div className="unison-login-wave" aria-hidden="true" />
       <div className="unison-login-shell">
         <section className="unison-login-story" aria-label="About Unison">
-          <div className="unison-login-story-logo">
-            <img src="/branding/unison-horizontal-light.webp" alt="Unison" />
+          <div className="unison-login-story-logo" role="img" aria-label="Unison">
+            {/* Original approved gradient emblem with the same wordmark in white for the navy background. */}
+            <img className="unison-login-wordmark-white" src="/branding/unison-horizontal-light.webp" alt="" aria-hidden="true" />
+            <img className="unison-login-wordmark-mark" src="/branding/unison-horizontal-light.webp" alt="" aria-hidden="true" />
           </div>
           <div className="unison-login-story-copy">
             <span className="unison-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
@@ -110,7 +112,7 @@ export default function LoginModal({
         <section className="unison-login-panel" aria-label="Sign in to Unison">
           <div className="unison-login-panel-top">
             <div className="unison-login-symbol">
-              <img src="/icons/unison-192.webp" alt="" />
+              <img src="/branding/unison-horizontal-light.webp" alt="" aria-hidden="true" />
             </div>
             <span className="unison-login-panel-kicker">WELCOME TO UNISON</span>
             <h2>{changingPassword ? "Set your password" : "Welcome back"}</h2>
