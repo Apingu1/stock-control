@@ -1,84 +1,79 @@
-# StkFlo branding rollout (from `feature/unison-branding-navigation`)
+# StkFlo premium rebrand deployment
 
-## Scope
+## Approved high-quality source (27 October 2026)
 
-The StkFlo identity replaces the previous Unison brand while keeping all stock-control
-business rules, authentication, permissions, navigation, slogans and GMP workflows intact.
-The two-panel sign-in keeps the **approved StkFlo white-lettered horizontal lockup on the
-left** and **independent 3D SF monogram above the sign-in form on the right**.
+Use the regenerated **StkFlo_High_Quality_Complete_Logo_Icon_Pack** supplied with this project.
+The regenerated pack replaces the earlier `StkFlo_COMPLETE_Logo_and_Branding_Package.zip`
+and `StkFlo_Web_Artwork_Only.zip`; DO NOT use those earlier exports.
 
-Existing slogans remain unchanged:
-- **ONE PLATFORM. GREATER CONTROL.**
-- **Clarity across every movement.**
-- **CONNECTED OPERATIONS**
+The original approved identity is preserved: 3D blue-violet **SF** monogram and
+white **Stk** / gradient **Flo** wordmark on the dark application.
+The SVG assets in the new pack contain embedded raster artwork (not editable vectors).
 
-Login errors, temporary-password reset, password visibility, session expiry and logout
-remain connected to the existing APIs. The signed-in sidebar and topbar also use StkFlo.
+| UI placement | Source in regenerated pack | Installed name |
+| --- | --- | --- |
+| Login left, full identity | `09_SVG_IMAGE_BACKED/StkFlo_Full_Logo_DarkUI_Raster_Embedded.svg` | `web/public/branding/stkflo-horizontal.svg` |
+| Authenticated sidebar compact identity | `09_SVG_IMAGE_BACKED/StkFlo_Compact_DarkUI_Raster_Embedded.svg` | `web/public/branding/stkflo-compact.svg` |
+| Login right, independent SF icon | `09_SVG_IMAGE_BACKED/StkFlo_Monogram_Raster_Embedded.svg` | `web/public/branding/stkflo-monogram.svg` |
+| Browser tab | `07_BROWSER_AND_PWA/favicon-32x32.png` | `web/public/icons/stkflo-32.png` |
+| Chrome / Edge PWA | `07_BROWSER_AND_PWA/android-chrome-192x192.png` | `web/public/icons/stkflo-192.png` |
+| High-density desktop/PWA | `07_BROWSER_AND_PWA/android-chrome-512x512.png` | `web/public/icons/stkflo-512.png` |
+| Android maskable | `07_BROWSER_AND_PWA/maskable-icon-512x512.png` | `web/public/icons/stkflo-maskable-512.png` |
+| iPhone/iPad home screen | `07_BROWSER_AND_PWA/apple-touch-icon.png` | `web/public/icons/stkflo-apple-touch.png` |
+| Windows/browser ICO | `07_BROWSER_AND_PWA/favicon.ico` | `web/public/icons/stkflo-favicon.ico` |
 
-## Exact artwork (one-time installation)
+The original two-column login layout and slogans remain in place, including
+**ONE PLATFORM. GREATER CONTROL.** and **Clarity across every movement.**
+The sign-in API, password change, RBAC, on-prem server, and GMP transaction
+processing are unchanged.
 
-The uploaded `StkFlo_COMPLETE_Logo_and_Branding_Package.zip` contains binary-backed SVGs
-and PNG/ICO icon artwork; they **cannot be reproduced correctly with text-only changes**.
-This repository contains a hash-verified installer; run it in your Codespace to place the
-actual, unmodified artwork into the new branch.
+## Codespaces: complete the artwork installation
 
-1. In GitHub Codespaces, open the `feature/stkflo-rebrand` branch:
-   ```bash
-   cd /workspaces/stock-control
-   git fetch origin
-   git switch feature/stkflo-rebrand
-   git pull origin feature/stkflo-rebrand
-   ```
-2. Upload the **same** StkFlo branding ZIP into `/workspaces/stock-control`.
-3. Install, commit, and push the original image files (no host Python required):
-   ```bash
-   bash scripts/install_stkflo_branding.sh \
-     "/workspaces/stock-control/StkFlo_COMPLETE_Logo_and_Branding_Package.zip" --push
-   ```
-   If the uploaded ZIP has a different filename (e.g. ` (1)`), supply that exact path.
-   You may omit `--push` to inspect the extracted assets before committing.
+Your extracted folder is expected at:
 
-The script cryptographically verifies **all eight** exact files before modifying assets:
+```text
+/workspaces/stock-control/StkFlo_High_Quality_Complete_Logo_Icon_Pack
+```
 
-| Destination | Approved asset |
-|---|---|
-| `web/public/branding/stkflo-horizontal.svg` | Horizontal WhiteStk original 3D raster-backed SVG |
-| `web/public/branding/stkflo-monogram.svg` | Independent SF 3D monogram raster-backed SVG |
-| `web/public/icons/stkflo-32.png` | Browser favicon PNG |
-| `web/public/icons/stkflo-192.png` | Chromium and PWA icon |
-| `web/public/icons/stkflo-512.png` | Large PWA icon |
-| `web/public/icons/stkflo-maskable-512.png` | Android adaptive icon |
-| `web/public/icons/stkflo-apple-touch.png` | Apple home-screen icon |
-| `web/public/icons/stkflo-favicon.ico` | Windows / browser tab favicon |
+The installer searches recursively for the files from the premium pack, so it
+works if extraction created an additional `StkFlo_Premium_Logo_Icon_Pack` directory.
 
-Icons contain **only the StkFlo monogram**, not the StkFlo wordmark.
+Copy these commands as a block into your Codespaces terminal:
 
-## Browser and installed shortcut identity
+```bash
+cd /workspaces/stock-control
+git fetch origin
+git switch feature/stkflo-rebrand
+git pull --ff-only origin feature/stkflo-rebrand
 
-- Browser title, HTML application metadata and Apple app title say `StkFlo`.
-- Web app manifest keeps stable `id: "/"`, now advertises StkFlo and approved icons.
-- Service worker uses a new StkFlo cache version and precaches the new assets.
-- Offline notice, update prompt, top bar icon, sidebar and login mention StkFlo.
-- No offline posting of GMP transactions is enabled or changed.
+bash scripts/install_stkflo_branding.sh \
+  "/workspaces/stock-control/StkFlo_High_Quality_Complete_Logo_Icon_Pack" --push
 
-After deployment, refresh the app and accept the update prompt. Existing Chrome/Edge
-Windows shortcuts may keep their old title or icon due to OS / Chromium caching;
-**remove and reinstall an old shortcut** if it doesn't update. New shortcuts will use
-the StkFlo monogram after the assets are installed and a production build is served.
+cd web
+npm ci
+npm run build
+```
 
-## Validation / acceptance
+No host Python, Docker or `unzip` is needed for an extracted folder.
+The installer verifies the SHA-256 of all nine approved files before copying,
+commits ONLY those assets, and pushes to the **StkFlo branch**.
+The frontend `prebuild` hook checks those same hashes to fail fast if any
+image is missing or not the approved version.
 
-- [ ] Full StkFlo logo (white `Stk`) is visible **left** above the slogans, not cropped.
-- [ ] Approved 3D SF monogram sits above **Welcome back** on the **right**, no square background.
-- [ ] Sidebar and top bar carry StkFlo correctly in collapsed and expanded navigation.
-- [ ] Existing slogans, navigation, role-gated actions and live metrics are unchanged.
-- [ ] Username/password, mandatory change, invalid password, logout, timeout all work.
-- [ ] Confirm `/manifest.webmanifest`, `/icons/stkflo-192.png`, `/icons/stkflo-favicon.ico`
-      and both `/branding/stkflo-*.svg` return HTTP 200.
-- [ ] `cd web && npm ci && npm run build`
-- [ ] Chrome / Edge install app uses name **StkFlo** and monogram-only icon.
-- [ ] Verify service worker upgrade, offline notice, and no offline GMP transactions.
+### Acceptance checks
 
-**Important:** GitHub source updates are in place, but install the ZIP assets before
-building/deploying the frontend. Until installed, the new image URLs will 404 and the
-service-worker precache install will fail.
+- [ ] Full StkFlo dark-UI horizontal logo on the left of login, with white Stk letters
+- [ ] Independent 3D SF monogram above login fields on the right
+- [ ] All original slogans and original sign-in behaviour are unchanged
+- [ ] Compact StkFlo image in sidebar and monogram in top bar
+- [ ] `npm run build` passes after installer and `web/public/branding` assets load
+- [ ] Favicon, Chrome/Edge install icon, Android and Apple icons have SF monogram only
+- [ ] Browser title and PWA installed app name display StkFlo
+- [ ] Existing PWA install may need reinstalling to clear Windows/Chrome icon caches
+- [ ] Test wrong password, forced change, successful login, logout, and permissions
+- [ ] Check service worker update and that stock activity remains network-only
+
+**Deployment caution:** do not deploy before running the installer. The GitHub
+source references the premium assets, but binaries must first be installed and
+committed from your Codespaces folder. Existing clients may cache older shortcut
+icons until the PWA or shortcut is removed/reinstalled.
