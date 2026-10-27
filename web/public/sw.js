@@ -1,4 +1,4 @@
-const CACHE_NAME = "unison-pwa-v3";
+const CACHE_NAME = "unison-pwa-v4";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -7,8 +7,8 @@ const PRECACHE_URLS = [
   "/icons/unison-192.png",
   "/icons/unison-512.webp",
   "/icons/unison-maskable.svg",
-  "/icons/unison-lockup-on-dark.svg",
-  "/icons/unison-transparent-3d-mark.svg",
+  "/branding/Unison_OptionF_Full_Logo.svg",
+  "/branding/Unison_OptionF_Monogram.svg",
 ];
 
 self.addEventListener("install", (event) => {
