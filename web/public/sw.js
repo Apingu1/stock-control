@@ -1,12 +1,15 @@
-const CACHE_NAME = "unison-pwa-v4";
+const CACHE_NAME = "stkflo-pwa-v1";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.webmanifest",
-  "/icons/unison.svg",
-  "/icons/unison-192.png",
-  "/icons/unison-512.webp",
-  "/icons/unison-maskable.svg",
+  "/branding/stkflo-monogram.svg",
+  "/icons/stkflo-192.png",
+  "/icons/stkflo-512.png",
+  "/icons/stkflo-maskable-512.png",
+  "/icons/stkflo-apple-touch.png",
+  "/branding/stkflo-horizontal.svg",
+  "/icons/stkflo-favicon.ico",
 ];
 
 self.addEventListener("install", (event) => {
