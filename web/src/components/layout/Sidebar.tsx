@@ -107,7 +107,7 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
       <aside className={"sidebar unison-sidebar" + (collapsed ? " is-collapsed" : "") + (mobileOpen ? " is-mobile-open" : "")} aria-label="Primary navigation">
         <div className="unison-sidebar-top">
           <div className="unison-sidebar-brand">
-            <img src="/branding/unison-logo-light.webp" alt="Unison" />
+            <img src="/branding/unison-logo-light.svg" alt="Unison" />
             <span>ONE PLATFORM. GREATER CONTROL.</span>
           </div>
           <button className="unison-sidebar-collapse" type="button" onClick={hide} aria-label="Collapse menu" title="Collapse navigation">
