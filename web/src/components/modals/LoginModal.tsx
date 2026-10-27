@@ -19,6 +19,7 @@ export default function LoginModal({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -29,6 +30,7 @@ export default function LoginModal({
     setNewPassword("");
     setConfirmPassword("");
     setChangingPassword(false);
+    setShowPassword(false);
     setError(null);
     setBusy(false);
   }, [open, message]);
@@ -41,7 +43,6 @@ export default function LoginModal({
       setError("Enter your username and password.");
       return;
     }
-
     setBusy(true);
     setError(null);
     try {
@@ -71,7 +72,6 @@ export default function LoginModal({
       setError("The new passwords do not match.");
       return;
     }
-
     setBusy(true);
     setError(null);
     try {
@@ -88,102 +88,133 @@ export default function LoginModal({
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal" style={{ maxWidth: 520 }}>
-        <div className="modal-header">
-          <div>
-            <div className="modal-title">
-              {changingPassword ? "Create your private password" : "Sign in"}
+    <main className="unison-login">
+      <div className="unison-login-glow unison-login-glow-one" aria-hidden="true" />
+      <div className="unison-login-glow unison-login-glow-two" aria-hidden="true" />
+      <div className="unison-login-wave" aria-hidden="true" />
+      <div className="unison-login-shell">
+        <section className="unison-login-story" aria-label="About Unison">
+          <div className="unison-login-story-logo">
+            <img src="/branding/unison-logo-light.webp" alt="Unison" />
+          </div>
+          <div className="unison-login-story-copy">
+            <span className="unison-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
+            <h1>Clarity across <em>every movement.</em></h1>
+            <p>A unified workspace for materials, traceability and confident inventory control.</p>
+            <div className="unison-login-story-rule" />
+            <span className="unison-login-story-signoff">ONE PLATFORM. GREATER CONTROL.</span>
+          </div>
+          <div className="unison-login-story-footer">Unison <span>·</span> Secure on-premises workspace</div>
+        </section>
+
+        <section className="unison-login-panel" aria-label="Sign in to Unison">
+          <div className="unison-login-panel-top">
+            <div className="unison-login-symbol">
+              <img src="/branding/unison-monogram.webp" alt="" />
             </div>
-            <div className="modal-subtitle">
+            <span className="unison-login-panel-kicker">WELCOME TO UNISON</span>
+            <h2>{changingPassword ? "Set your password" : "Welcome back"}</h2>
+            <p>
               {changingPassword
-                ? "The password supplied by your administrator is temporary. Create a new password before continuing."
-                : "Please sign in to access the Stock Control system."}
-            </div>
+                ? "Your administrator issued a temporary password. Create your personal password to continue."
+                : "Sign in to access your secure Unison workspace."}
+            </p>
           </div>
-        </div>
-
-        <form
-          className="modal-body"
-          onSubmit={changingPassword ? handlePasswordChange : handleLogin}
-        >
-          {!changingPassword ? (
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="label" htmlFor="stock-control-username">Username</label>
-                <input
-                  id="stock-control-username"
-                  className="input"
-                  name="username"
-                  autoComplete="username"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  autoFocus
-                />
+          <form className="unison-login-form" onSubmit={changingPassword ? handlePasswordChange : handleLogin}>
+            {!changingPassword ? (
+              <>
+                <div className="unison-login-field">
+                  <label htmlFor="stock-control-username">Username</label>
+                  <input
+                    id="stock-control-username"
+                    name="username"
+                    type="text"
+                    autoComplete="username"
+                    placeholder="Enter your username"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    disabled={busy}
+                    autoFocus
+                    required
+                  />
+                </div>
+                <div className="unison-login-field">
+                  <label htmlFor="stock-control-password">Password</label>
+                  <div className="unison-password-wrap">
+                    <input
+                      id="stock-control-password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      disabled={busy}
+                      required
+                    />
+                    <button
+                      className="unison-password-toggle"
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                    >{showPassword ? "Hide" : "Show"}</button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="unison-login-field">
+                  <label htmlFor="stock-control-new-password">New password</label>
+                  <input
+                    id="stock-control-new-password"
+                    name="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    placeholder="Create your new password"
+                    disabled={busy}
+                    minLength={8}
+                    autoFocus
+                    required
+                  />
+                </div>
+                <div className="unison-login-field">
+                  <label htmlFor="stock-control-confirm-password">Confirm new password</label>
+                  <input
+                    id="stock-control-confirm-password"
+                    name="confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="Repeat your new password"
+                    disabled={busy}
+                    required
+                  />
+                </div>
+                <p className="unison-login-password-note">Minimum 8 characters.</p>
+              </>
+            )}
+            {(message || error) && (
+              <div className={error ? "unison-login-notice is-error" : "unison-login-notice"} role={error ? "alert" : "status"}>
+                {error || message}
               </div>
-
-              <div className="form-group">
-                <label className="label" htmlFor="stock-control-password">Password</label>
-                <input
-                  id="stock-control-password"
-                  className="input"
-                  type="password"
-                  name="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="label" htmlFor="stock-control-new-password">New password</label>
-                <input
-                  id="stock-control-new-password"
-                  className="input"
-                  type="password"
-                  name="new-password"
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label" htmlFor="stock-control-confirm-password">
-                  Confirm new password
-                </label>
-                <input
-                  id="stock-control-confirm-password"
-                  className="input"
-                  type="password"
-                  name="confirm-password"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                />
-              </div>
-              <div className="content-subtitle">Minimum 8 characters.</div>
-            </div>
-          )}
-
-          {(message || error) && <div className={error ? "error-row" : "info-row"}>{error || message}</div>}
-
-          <div className="modal-footer">
-            <button className="btn btn-primary" type="submit" disabled={busy}>
+            )}
+            <button className="unison-login-submit" type="submit" disabled={busy}>
               {busy
-                ? changingPassword
-                  ? "Saving password…"
-                  : "Signing in…"
-                : changingPassword
-                  ? "Save password and continue"
-                  : "Sign in"}
+                ? changingPassword ? "Saving password…" : "Signing in…"
+                : changingPassword ? "Save password and continue" : "Sign in to Unison"}
+              <span aria-hidden="true">→</span>
             </button>
+          </form>
+          <div className="unison-login-panel-footer">
+            <span className="unison-login-lock" aria-hidden="true">◆</span>
+            Authorised access only <span>·</span> Protected session
           </div>
-        </form>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
