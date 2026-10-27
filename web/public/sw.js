@@ -4,7 +4,7 @@ const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.webmanifest",
   "/icons/unison.svg",
-  "/icons/unison-192.webp",
+  "/icons/unison-192.png",
   "/icons/unison-maskable.svg",
   "/branding/unison-horizontal-light.webp",
 ];
