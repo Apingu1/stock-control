@@ -629,10 +629,18 @@
 }
 .stkflo-login-video.is-playing { opacity: 1; }
 .stkflo-login-media-copy {
-  flex: none;
+  /* Use the area below the video for the slogans rather than leaving a
+     large unused block above the bottom footer. Video sizing is unchanged. */
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
   width: 100%;
   max-width: 505px;
-  margin: -2px 0 0;
+  min-height: 0;
+  margin: 0;
+  padding-top: 7px;
   text-align: center;
 }
 .stkflo-login-media-copy .stkflo-login-eyebrow {
@@ -668,8 +676,9 @@
   font-size: 9.5px;
 }
 .stkflo-login-media-footer {
-  margin-top: auto;
-  padding-top: 10px;
+  flex: none;
+  margin-top: 0;
+  padding-top: 5px;
   color: #687c9d;
   font-size: 10px;
   text-align: center;
@@ -689,18 +698,23 @@
     padding: 13px 24px 25px;
   }
   .stkflo-login-video-stage { width: min(100%, 330px); }
-  .stkflo-login-media-copy { margin-top: -4px; }
+  .stkflo-login-media-copy {
+    flex: none;
+    display: block;
+    margin-top: 6px;
+    padding-top: 0;
+  }
   .stkflo-login-media-copy .stkflo-login-eyebrow {
-    margin-bottom: 9px;
+    margin-bottom: 13px;
     font-size: 8px;
   }
   .stkflo-login-media-copy h1 {
     font-size: clamp(25px, 6.3vw, 32px);
-    margin-bottom: 9px;
+    margin-bottom: 15px;
   }
   .stkflo-login-media-copy p { font-size: 12px; }
-  .stkflo-login-media-copy .stkflo-login-story-rule { margin: 13px auto 9px; }
-  .stkflo-login-media-footer { margin-top: 17px; padding-top: 0; }
+  .stkflo-login-media-copy .stkflo-login-story-rule { margin: 17px auto 13px; }
+  .stkflo-login-media-footer { margin-top: 22px; padding-top: 0; }
 }
 @media (max-width: 390px) {
   .stkflo-login-video-stage { width: min(100%, 285px); }
