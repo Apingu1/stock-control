@@ -18,7 +18,7 @@ export default function PwaUpdatePrompt() {
   return (
     <aside className="pwa-update-prompt" role="status" aria-live="polite">
       <div>
-        <strong>Unison update available</strong>
+        <strong>StkFlo update available</strong>
         <span>Please save any work before updating.</span>
       </div>
       <button type="button" onClick={activatePwaUpdate}>
