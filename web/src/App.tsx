@@ -329,7 +329,7 @@ const App: React.FC = () => {
 
   if (!auth.me) {
     return (
-      <div className="app-shell unison-auth-shell">
+      <div className="app-shell stkflo-auth-shell">
         <LoginModal
           open={auth.showLogin}
           message={loginMessage}
