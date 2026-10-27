@@ -12,7 +12,7 @@ The SVG assets in the new pack contain embedded raster artwork (not editable vec
 
 | UI placement | Source in regenerated pack | Installed name |
 | --- | --- | --- |
-| Login left, full identity | `09_SVG_IMAGE_BACKED/StkFlo_Full_Logo_DarkUI_Raster_Embedded.svg` | `web/public/branding/stkflo-horizontal.svg` |
+| Full horizontal identity (asset retained; left login now uses animation) | `09_SVG_IMAGE_BACKED/StkFlo_Full_Logo_DarkUI_Raster_Embedded.svg` | `web/public/branding/stkflo-horizontal.svg` |
 | Authenticated sidebar compact identity | `09_SVG_IMAGE_BACKED/StkFlo_Compact_DarkUI_Raster_Embedded.svg` | `web/public/branding/stkflo-compact.svg` |
 | Login right, independent SF icon | `09_SVG_IMAGE_BACKED/StkFlo_Monogram_Raster_Embedded.svg` | `web/public/branding/stkflo-monogram.svg` |
 | Browser tab | `07_BROWSER_AND_PWA/favicon-32x32.png` | `web/public/icons/stkflo-32.png` |
@@ -22,10 +22,7 @@ The SVG assets in the new pack contain embedded raster artwork (not editable vec
 | iPhone/iPad home screen | `07_BROWSER_AND_PWA/apple-touch-icon.png` | `web/public/icons/stkflo-apple-touch.png` |
 | Windows/browser ICO | `07_BROWSER_AND_PWA/favicon.ico` | `web/public/icons/stkflo-favicon.ico` |
 
-The original two-column login layout and slogans remain in place, including
-**ONE PLATFORM. GREATER CONTROL.** and **Clarity across every movement.**
-The sign-in API, password change, RBAC, on-prem server, and GMP transaction
-processing are unchanged.
+The two-column login layout is preserved, but the original left-side logo, slogans and copy have been replaced by a looping animated StkFlo logo. The right-hand panel retains the 3D SF monogram, now says SECURE ACCESS, and no longer shows Welcome back. The sign-in API, password change, RBAC, on-prem server and GMP transactions remain unchanged.
 
 ## Codespaces: complete the artwork installation
 
@@ -49,6 +46,9 @@ git pull --ff-only origin feature/stkflo-rebrand
 bash scripts/install_stkflo_branding.sh \
   "/workspaces/stock-control/StkFlo_High_Quality_Complete_Logo_Icon_Pack" --push
 
+# Upload the supplied StkFlo_Login_Video_Pack.zip to the repository root.
+bash scripts/install_stkflo_login_video.sh "/workspaces/stock-control/StkFlo_Login_Video_Pack.zip" --push
+
 cd web
 npm ci
 npm run build
@@ -57,14 +57,15 @@ npm run build
 No host Python, Docker or `unzip` is needed for an extracted folder.
 The installer verifies the SHA-256 of all nine approved files before copying,
 commits ONLY those assets, and pushes to the **StkFlo branch**.
-The frontend `prebuild` hook checks those same hashes to fail fast if any
-image is missing or not the approved version.
+The frontend `prebuild` hook checks the nine approved brand assets AND both video and poster SHA-256 hashes. If unzip is unavailable, extract the video ZIP and pass that extracted folder to the installer.
 
 ### Acceptance checks
 
-- [ ] Full StkFlo dark-UI horizontal logo on the left of login, with white Stk letters
+- [ ] Left panel contains the full animated StkFlo logo, without stretching or cropping
+- [ ] Video autoplays silently, loops, and shows a static poster when unavailable or motion is reduced
+- [ ] The Welcome back heading has been removed
 - [ ] Independent 3D SF monogram above login fields on the right
-- [ ] All original slogans and original sign-in behaviour are unchanged
+- [ ] Left-panel slogans are removed along with the old marketing panel; authentication works as before
 - [ ] Compact StkFlo image in sidebar and monogram in top bar
 - [ ] `npm run build` passes after installer and `web/public/branding` assets load
 - [ ] Favicon, Chrome/Edge install icon, Android and Apple icons have SF monogram only
@@ -73,7 +74,7 @@ image is missing or not the approved version.
 - [ ] Test wrong password, forced change, successful login, logout, and permissions
 - [ ] Check service worker update and that stock activity remains network-only
 
-**Deployment caution:** do not deploy before running the installer. The GitHub
+**Deployment caution:** do not deploy before running BOTH the branding and login-video installers. The GitHub
 source references the premium assets, but binaries must first be installed and
 committed from your Codespaces folder. Existing clients may cache older shortcut
 icons until the PWA or shortcut is removed/reinstalled.
