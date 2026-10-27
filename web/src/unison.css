@@ -515,3 +515,58 @@
     margin: -23px 0 0 -10px;
   }
 }
+
+
+/* Unison login asset presentation: original transparent source.
+   Preserve the approved full-colour emblem while making the exact original
+   wordmark legible on navy. Both layers use the existing transparent brand
+   file, rather than the solid-background app icon. */
+.unison-login-story-logo {
+  position: relative;
+  width: min(100%, 470px);
+  height: auto;
+  aspect-ratio: 10 / 3;
+  overflow: hidden;
+  flex: none;
+}
+.unison-login-story-logo .unison-login-wordmark-white,
+.unison-login-story-logo .unison-login-wordmark-mark {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  object-fit: fill;
+}
+.unison-login-wordmark-white {
+  filter: brightness(0) invert(1);
+}
+.unison-login-story-logo .unison-login-wordmark-mark {
+  clip-path: inset(0 60% 0 0);
+}
+.unison-login-symbol {
+  position: relative;
+  display: block;
+  width: 124px;
+  height: 93px;
+  overflow: hidden;
+  margin: 0 auto 13px;
+}
+.unison-login-symbol img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 308px;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+}
+@media (max-width: 740px) {
+  .unison-login-story-logo {
+    width: min(290px, 100%);
+    height: auto;
+  }
+}
