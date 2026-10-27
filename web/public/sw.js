@@ -4,6 +4,7 @@ const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.webmanifest",
   "/branding/stkflo-monogram.svg",
+  "/icons/stkflo-32.png",
   "/icons/stkflo-192.png",
   "/icons/stkflo-512.png",
   "/icons/stkflo-maskable-512.png",
