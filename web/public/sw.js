@@ -1,5 +1,6 @@
-const CACHE_NAME = "stkflo-pwa-v1";
+const CACHE_NAME = "stkflo-pwa-v2";
 const OFFLINE_URL = "/offline.html";
+// Cache only static brand imagery, not the looping MP4 or transactional data.
 const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.webmanifest",
@@ -10,6 +11,7 @@ const PRECACHE_URLS = [
   "/icons/stkflo-maskable-512.png",
   "/icons/stkflo-apple-touch.png",
   "/branding/stkflo-horizontal.svg",
+  "/branding/stkflo-login-poster.webp",
   "/icons/stkflo-favicon.ico",
 ];
 
