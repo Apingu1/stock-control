@@ -3,37 +3,37 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 
-// Prevent a production build with missing or substituted approved brand art.
+// Required approved StkFlo premium artwork. Fails closed if not installed or altered.
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const approved = {
-  "public/branding/stkflo-horizontal.svg": "4e141cd0ca30dd532e417356704c1d58cdd283ee6f96c0e581135d4dfe974f50",
-  "public/branding/stkflo-monogram.svg": "53ea0b0a2baf1e365d4f192a57f2a6d004e45ed850d654ec25e7117664df6244",
-  "public/icons/stkflo-32.png": "7223f778d223b82bb13ffc318cea61296f04c5021e85188f0390576560b30625",
-  "public/icons/stkflo-192.png": "f3c3ba95f54048d8ac6ddc87b4df091cbf2a31512e598a789fcc56275c709543",
-  "public/icons/stkflo-512.png": "24f4c4eb421a44ec3e962ad1d6334b761b171605330b38783a787f8c70a0abec",
-  "public/icons/stkflo-maskable-512.png": "8c7b581a733b1038f612ccf187d81e3c5a28efbc50534d01412ba9850293c28c",
-  "public/icons/stkflo-apple-touch.png": "2f54a17536596d07b9966b47add61ae5c08f437eb7d4d9a75977fa22a639b35f",
-  "public/icons/stkflo-favicon.ico": "90329731e1684306adb61b320388537d54c814e1f5a14269679279cd4be28896",
+  "public/branding/stkflo-horizontal.svg": "eae79cd0ebd72742eea34186557113ba91903b2cd95adf942fb3b4aa13965c2e",
+  "public/branding/stkflo-compact.svg": "eedaa30689013da22695355920798fa25f30c2745987a5eaba1552eed42c1938",
+  "public/branding/stkflo-monogram.svg": "624dc863e2b417a8bd84d59b6c6b223d3c4ca83b55ea1555f084721b87e49af5",
+  "public/icons/stkflo-32.png": "4bc2fbc884b55c5beaf3c716221119cbb3beeac156df36021a464c13e282de69",
+  "public/icons/stkflo-192.png": "68e58c30dcc096e14bc110135b8ec7e49f46dc0b443d6537b1a03357c05bcd95",
+  "public/icons/stkflo-512.png": "9adf7ba98ed678f4688631f1f592c5fc08daa6550f7adca99f36bd385b0f126b",
+  "public/icons/stkflo-maskable-512.png": "9349065e687d520e96b70f4f7c910b37b7c7e4c95218c5d8fd8896573ee96143",
+  "public/icons/stkflo-apple-touch.png": "482ae07618dc519406ccfb455370b305ef6f97cc9887dee52ac5ca43fd7ab9f1",
+  "public/icons/stkflo-favicon.ico": "f96719be61b5948ea344b7ef661861cda6918b14175034b48f812c028d544903",
 };
-
 let failed = false;
 for (const [relative, expected] of Object.entries(approved)) {
   const path = resolve(webRoot, relative);
   if (!existsSync(path)) {
-    console.error("MISSING approved StkFlo asset:", relative);
+    console.error("MISSING StkFlo approved image:", relative);
     failed = true;
     continue;
   }
-  const digest = createHash("sha256").update(readFileSync(path)).digest("hex");
-  if (digest !== expected) {
-    console.error("INVALID StkFlo artwork checksum:", relative);
+  const actual = createHash("sha256").update(readFileSync(path)).digest("hex");
+  if (actual !== expected) {
+    console.error("CHANGED StkFlo approved image:", relative);
     failed = true;
   }
 }
 if (failed) {
-  console.error("\nInstall the exact approved artwork before building:");
-  console.error('  bash scripts/install_stkflo_branding.sh "/path/to/StkFlo_COMPLETE_Logo_and_Branding_Package.zip"');
+  console.error("Install the regenerated high-quality artwork using:");
+  console.error('  bash scripts/install_stkflo_branding.sh "/workspaces/stock-control/StkFlo_High_Quality_Complete_Logo_Icon_Pack"');
   process.exitCode = 1;
 } else {
-  console.log("StkFlo branding validated: 8 approved assets present and unchanged.");
+  console.log("Verified all 9 approved high-quality StkFlo brand assets.");
 }
