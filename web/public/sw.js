@@ -3,12 +3,10 @@ const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.webmanifest",
-  "/icons/unison-32.png",
-  "/icons/unison-192.png",
-  "/icons/unison-512.png",
-  "/icons/unison-maskable-512.png",
-  "/branding/unison-logo-light.webp",
-  "/branding/unison-monogram.webp",
+  "/icons/unison.svg",
+  "/icons/unison-192.webp",
+  "/icons/unison-maskable.svg",
+  "/branding/unison-logo-light.svg",
 ];
 
 self.addEventListener("install", (event) => {
