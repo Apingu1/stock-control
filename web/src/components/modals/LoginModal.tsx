@@ -95,7 +95,7 @@ export default function LoginModal({
       <div className="stkflo-login-shell">
         <section className="stkflo-login-story" aria-label="About StkFlo">
           <div className="stkflo-login-story-logo">
-            <img src="/branding/stkflo-horizontal.svg" alt="StkFlo — One platform. Greater control." width="420" height="140" />
+            <img src="/branding/stkflo-horizontal.svg" alt="StkFlo — One platform. Greater control." width="420" height="212" />
           </div>
           <div className="stkflo-login-story-copy">
             <span className="stkflo-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
@@ -110,7 +110,7 @@ export default function LoginModal({
         <section className="stkflo-login-panel" aria-label="Sign in to StkFlo">
           <div className="stkflo-login-panel-top">
             <div className="stkflo-login-symbol">
-              <img src="/branding/stkflo-monogram.svg" alt="StkFlo symbol" width="110" height="110" />
+              <img src="/branding/stkflo-monogram.svg" alt="StkFlo SF monogram" width="110" height="168" />
             </div>
             <span className="stkflo-login-panel-kicker">WELCOME TO STKFLO</span>
             <h2>{changingPassword ? "Set your password" : "Welcome back"}</h2>
