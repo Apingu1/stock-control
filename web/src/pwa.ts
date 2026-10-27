@@ -38,7 +38,7 @@ export function registerPwa(): void {
         });
       })
       .catch((error: unknown) => {
-        console.error("Stock Control PWA registration failed", error);
+        console.error("Unison PWA registration failed", error);
       });
   });
 
