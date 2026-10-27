@@ -122,7 +122,7 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
       <aside className={"sidebar stkflo-sidebar" + (collapsed ? " is-collapsed" : "") + (mobileOpen ? " is-mobile-open" : "")} aria-label="Primary navigation">
         <div className="stkflo-sidebar-top">
           <div className="stkflo-sidebar-brand">
-            <img src="/branding/stkflo-horizontal.svg" alt="StkFlo — One platform. Greater control." width="194" height="98" />
+            <img src="/branding/stkflo-compact.svg" alt="StkFlo — One platform. Greater control." width="194" height="60" />
           </div>
           <button className="stkflo-sidebar-collapse" type="button" onClick={hide} aria-label="Collapse menu" title="Collapse navigation">
             <Icon name="close" size={19} />
