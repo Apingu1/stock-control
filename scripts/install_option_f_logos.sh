@@ -25,7 +25,7 @@ target_dir = root / "web" / "public" / "branding"
 target_dir.mkdir(parents=True, exist_ok=True)
 expected = {
     "Unison_OptionF_Full_Logo.svg": "62c4cee90778759e67ff5338b017ce0b20ae1c1dca5e89fe4898eee125131ba5",
-    "Unison_OptionF_Monogram.svg": "743f8a5395eb8af9e86ce52d16e0e7a2d1584ec5f914ce8aa84114af97edbdbfeac0ed970f",
+    "Unison_OptionF_Monogram.svg": "743f8a5395eb8af900e3d2c1584ec5f914ce8aa84114af97edbdbfeac0ed970f",
 }
 
 with ZipFile(zip_path) as source:
