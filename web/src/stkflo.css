@@ -581,7 +581,8 @@
 
 
 /* StkFlo login animation and editorial slogan layout.
-   The video stays a full square with no crop; text sits BELOW it, never over it. */
+   Preserve the square video aspect ratio, crop only empty top/bottom padding,
+   and feather its rectangular background seamlessly into the left panel. */
 .stkflo-login-media {
   box-sizing: border-box;
   display: flex;
