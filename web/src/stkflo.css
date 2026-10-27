@@ -1,0 +1,580 @@
+/* StkFlo identity. Import after legacy theme so functional page styling stays intact. */
+:root {
+  --stkflo-navy: #0f172a;
+  --stkflo-night: #081329;
+  --stkflo-panel: #14243b;
+  --stkflo-indigo: #6366f1;
+  --stkflo-violet: #8b5cf6;
+  --stkflo-cyan: #06b6d4;
+}
+
+.app-shell {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.app-shell:has(.stkflo-sidebar.is-collapsed) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stkflo-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  min-height: 0;
+  min-width: 0;
+  padding: 23px 15px 17px;
+  gap: 0;
+  overflow: hidden;
+  z-index: 35;
+  background:
+    radial-gradient(ellipse at -20% -10%, rgba(99,102,241,.19), transparent 58%),
+    linear-gradient(173deg, #101d35 0%, #0b1428 64%, #081225 100%);
+  box-shadow: 8px 0 42px rgba(3, 8, 24, .18);
+  border-right: 1px solid rgba(148,163,184,.12);
+  color: #eef2ff;
+}
+.stkflo-sidebar.is-collapsed { display: none; }
+.stkflo-sidebar-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 2px 2px 20px 4px;
+  border-bottom: 1px solid rgba(148,163,184,.12);
+}
+.stkflo-sidebar-brand { flex: 1; min-width: 0; }
+.stkflo-sidebar-brand img {
+  display: block;
+  width: min(100%, 178px);
+  height: auto;
+  object-fit: contain;
+  object-position: left center;
+}
+.stkflo-sidebar-brand > span {
+  display: block;
+  padding: 0 0 0 4px;
+  margin-top: -2px;
+  color: #889cbd;
+  font-size: 8.7px;
+  font-weight: 730;
+  letter-spacing: .13em;
+  white-space: nowrap;
+}
+.stkflo-sidebar-collapse,
+.stkflo-sidebar-logout,
+.stkflo-menu-trigger {
+  flex: none;
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 10px;
+  color: #cbd5e1;
+  background: rgba(255,255,255,.045);
+  cursor: pointer;
+  transition: color .16s ease, background .16s ease, border-color .16s ease;
+}
+.stkflo-sidebar-collapse:hover,
+.stkflo-sidebar-logout:hover,
+.stkflo-menu-trigger:hover {
+  color: white;
+  background: rgba(99,102,241,.18);
+  border-color: rgba(129,140,248,.4);
+}
+.stkflo-sidebar-navigation {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 11px 3px 16px 0;
+  scrollbar-color: #344560 transparent;
+  scrollbar-width: thin;
+}
+.stkflo-sidebar .sidebar-section-label {
+  margin: 20px 10px 9px;
+  color: #7385a6;
+  text-transform: uppercase;
+  font-weight: 760;
+  letter-spacing: .14em;
+  font-size: 10px;
+}
+.stkflo-sidebar .sidebar-section-label:first-child { margin-top: 8px; }
+.stkflo-sidebar .nav-list { margin: 0; padding: 0; list-style: none; }
+.stkflo-nav-item { margin: 2px 0; }
+.stkflo-sidebar .stkflo-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 43px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: #acbbd4;
+  font: inherit;
+  font-size: 12.6px;
+  font-weight: 580;
+  letter-spacing: .008em;
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
+}
+.stkflo-sidebar .stkflo-nav-link:hover:not(:disabled) {
+  color: #ffffff;
+  border-color: rgba(148,163,184,.09);
+  background: rgba(255,255,255,.055);
+}
+.stkflo-sidebar .stkflo-nav-link.active {
+  background: linear-gradient(90deg, rgba(99,102,241,.25), rgba(59,130,246,.08));
+  border-color: rgba(129,140,248,.17);
+  box-shadow: inset 3px 0 #818cf8;
+  color: #ffffff;
+}
+.stkflo-nav-link:disabled { opacity: .42; cursor: not-allowed; }
+.stkflo-nav-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 23px;
+  color: #8399bd;
+}
+.stkflo-nav-link.active .stkflo-nav-icon { color: #9feafa; }
+.stkflo-nav-label { flex: 1; min-width: 0; }
+.stkflo-nav-chevron { color: #526886; opacity: 0; display: inline-flex; align-items: center; }
+.stkflo-nav-link:hover .stkflo-nav-chevron,
+.stkflo-nav-link.active .stkflo-nav-chevron { opacity: 1; }
+.stkflo-nav-badge {
+  flex: none;
+  max-width: 60px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  color: #bac9ff;
+  background: rgba(99,102,241,.15);
+  font-size: 9.5px;
+  font-weight: 730;
+  text-align: center;
+}
+.stkflo-sidebar-footer {
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr) 34px;
+  gap: 9px;
+  align-items: center;
+  margin-top: auto;
+  padding: 17px 4px 1px;
+  border-top: 1px solid rgba(148,163,184,.14);
+}
+.stkflo-user-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #e4e8ff;
+  background: linear-gradient(135deg,#4f46e5,#7c3aed);
+  font-size: 11px;
+  font-weight: 800;
+}
+.stkflo-user-details { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.stkflo-user-details strong {
+  color: #f8fafc; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.stkflo-user-details span {
+  color: #92a1b9; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.stkflo-sidebar-footnote {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 1px 0;
+  color: #7d8ca8;
+  font-size: 10px;
+}
+.stkflo-online-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 10px rgba(52,211,153,.45);
+}
+.stkflo-menu-trigger {
+  display: none;
+  position: fixed;
+  z-index: 49;
+  top: 17px;
+  left: 16px;
+  width: 40px;
+  height: 40px;
+  color: #f8fafc;
+  background: #182947;
+  box-shadow: 0 7px 25px rgba(0,0,0,.27);
+}
+.stkflo-menu-trigger.is-visible { display: grid; }
+.app-shell:has(.stkflo-sidebar.is-collapsed) .main { padding-top: 24px; }
+.app-shell:has(.stkflo-sidebar.is-collapsed) .top-bar-left { padding-left: 39px; }
+.stkflo-sidebar-scrim { display: none; }
+
+/* Persistent StkFlo mark at the top of every signed-in page. */
+.stkflo-topbar-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.stkflo-topbar-mark {
+  display: block;
+  width: 33px;
+  height: 33px;
+  object-fit: contain;
+  flex: none;
+  filter: drop-shadow(0 4px 12px rgba(99,102,241,.18));
+}
+.stkflo-topbar-page { min-width: 0; }
+.stkflo-topbar-page .page-tag { letter-spacing: .035em; }
+
+/* Authentication screen inspired by the supplied StkFlo login concept. */
+.app-shell.stkflo-auth-shell { display: block; min-height: 100vh; }
+.stkflo-login {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 28px;
+  box-sizing: border-box;
+  background: #08132c;
+}
+.stkflo-login-glow {
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  filter: blur(12px);
+}
+.stkflo-login-glow-one {
+  width: 880px; height: 880px; top: -580px; left: -290px;
+  background: radial-gradient(circle, rgba(99,102,241,.3), transparent 70%);
+}
+.stkflo-login-glow-two {
+  width: 1000px; height: 1000px; bottom: -740px; right: -250px;
+  background: radial-gradient(circle, rgba(139,92,246,.3), transparent 69%);
+}
+.stkflo-login-wave {
+  position: absolute;
+  z-index: -1;
+  left: -10%;
+  bottom: 7%;
+  width: 125%;
+  height: 26%;
+  opacity: .24;
+  pointer-events: none;
+  transform: rotate(-5deg);
+  background: repeating-linear-gradient(to bottom, transparent 0 16px, rgba(126,104,255,.65) 17px 19px, transparent 20px 30px);
+  mask-image: linear-gradient(90deg, transparent 0%, black 23%, black 70%, transparent 100%);
+}
+.stkflo-login-shell {
+  width: min(1070px, 100%);
+  min-height: 620px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(350px,420px);
+  border: 1px solid rgba(158,174,204,.2);
+  border-radius: 26px;
+  background: rgba(15,25,46,.92);
+  box-shadow: 0 44px 115px rgba(0,0,0,.45);
+  overflow: hidden;
+}
+.stkflo-login-story {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 46px 50px 37px;
+  background:
+    radial-gradient(circle at 20% 72%, rgba(43,76,170,.21), transparent 64%),
+    linear-gradient(140deg, #11213c, #0a1831);
+}
+.stkflo-login-story-logo img {
+  display: block; width: min(220px, 100%); height: auto;
+}
+.stkflo-login-story-copy { margin: auto 0; padding: 52px 0 42px; }
+.stkflo-login-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 24px;
+  color: #9fafe2;
+  letter-spacing: .18em;
+  font-size: 10px;
+  font-weight: 800;
+}
+.stkflo-login-eyebrow span { width: 7px; height: 7px; border-radius: 50%; background: #06b6d4; }
+.stkflo-login-story h1 {
+  max-width: 500px;
+  margin: 0 0 21px;
+  color: #f8fafc;
+  font-size: clamp(34px, 3.4vw, 48px);
+  font-weight: 750;
+  line-height: 1.11;
+  letter-spacing: -.04em;
+}
+.stkflo-login-story h1 em { font-style: normal; color: #a6b1ff; }
+.stkflo-login-story p { max-width: 420px; color: #9fadc8; font-size: 15px; line-height: 1.7; }
+.stkflo-login-story-rule {
+  width: 68px; height: 3px; margin: 28px 0 17px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #06b6d4, #6366f1, #8b5cf6);
+}
+.stkflo-login-story-signoff { color: #b7c4da; font-size: 10px; font-weight: 760; letter-spacing: .16em; }
+.stkflo-login-story-footer { margin-top: auto; color: #687c9d; font-size: 11px; }
+.stkflo-login-story-footer span { margin: 0 5px; }
+.stkflo-login-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 52px 39px 33px;
+  background: linear-gradient(155deg, #1c2a42, #172338 85%);
+  border-left: 1px solid rgba(148,163,184,.15);
+}
+.stkflo-login-panel-top { text-align: center; }
+.stkflo-login-symbol {
+  width: 118px;
+  height: 102px;
+  margin: 0 auto 10px;
+  display: grid;
+  place-items: center;
+}
+.stkflo-login-symbol img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.stkflo-login-panel-kicker { color: #a5b4fc; font-size: 10px; letter-spacing: .15em; font-weight: 800; }
+.stkflo-login-panel h2 {
+  margin: 13px 0 9px;
+  color: #f8fafc;
+  font-size: 28px;
+  letter-spacing: -.03em;
+  font-weight: 750;
+}
+.stkflo-login-panel p { color: #a1afc6; line-height: 1.6; font-size: 12.7px; }
+.stkflo-login-form { display: flex; flex-direction: column; gap: 17px; margin-top: 29px; }
+.stkflo-login-field { display: flex; flex-direction: column; min-width: 0; gap: 7px; }
+.stkflo-login-field label { color: #dae3f4; font-size: 12px; font-weight: 690; }
+.stkflo-login-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 45px;
+  border: 1px solid #415574;
+  border-radius: 10px;
+  outline: none;
+  padding: 11px 14px;
+  color: #f8fafc;
+  background: #0c192e;
+  font: inherit;
+  font-size: 13px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.stkflo-login-field input::placeholder { color: #7284a1; }
+.stkflo-login-field input:focus { border-color: #878dff; box-shadow: 0 0 0 3px rgba(99,102,241,.19); }
+.stkflo-login-field input:disabled { opacity: .7; }
+.stkflo-password-wrap { position: relative; }
+.stkflo-password-wrap input { padding-right: 66px; }
+.stkflo-password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: #a5b4fc;
+  font-size: 11px;
+  cursor: pointer;
+}
+.stkflo-password-toggle:hover { color: white; }
+.stkflo-login-form .stkflo-login-password-note { margin: -8px 0 0; font-size: 11px; }
+.stkflo-login-notice {
+  padding: 11px 13px;
+  border: 1px solid rgba(99,102,241,.3);
+  border-radius: 10px;
+  background: rgba(99,102,241,.11);
+  color: #c7d2fe;
+  font-size: 12px;
+}
+.stkflo-login-notice.is-error {
+  border-color: rgba(248,113,113,.4);
+  background: rgba(248,113,113,.08);
+  color: #fecaca;
+}
+.stkflo-login-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 47px;
+  margin-top: 6px;
+  border: 1px solid rgba(199,210,254,.15);
+  border-radius: 10px;
+  background: linear-gradient(100deg,#5b5ff0,#7456e9);
+  color: white;
+  box-shadow: 0 11px 24px rgba(72,57,209,.23);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: filter .2s ease, transform .2s ease;
+}
+.stkflo-login-submit:hover:not(:disabled) { filter: brightness(1.13); transform: translateY(-1px); }
+.stkflo-login-submit:disabled { opacity: .7; cursor: wait; }
+.stkflo-login-submit span { font-size: 18px; font-weight: 400; }
+.stkflo-login-panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 30px;
+  color: #7387a5;
+  font-size: 10px;
+}
+.stkflo-login-lock { color: #54d9e8; font-size: 8px; }
+
+@media (max-width: 1020px) {
+  .app-shell { grid-template-columns: 242px minmax(0,1fr); }
+  .stkflo-login-story { padding-left: 32px; padding-right: 32px; }
+  .stkflo-login-panel { padding: 44px 28px 30px; }
+}
+
+@media (max-width: 900px) {
+  .app-shell,
+  .app-shell:has(.stkflo-sidebar.is-collapsed) { display: block; }
+  .app-shell .main { padding: 79px 18px 22px; width: 100%; box-sizing: border-box; }
+  .app-shell:has(.stkflo-sidebar.is-collapsed) .main { padding-top: 79px; }
+  .app-shell:has(.stkflo-sidebar.is-collapsed) .top-bar-left { padding-left: 0; }
+  .stkflo-menu-trigger,
+  .stkflo-menu-trigger.is-visible { display: grid; }
+  .stkflo-menu-trigger.is-open { display: none; }
+  .stkflo-sidebar,
+  .stkflo-sidebar.is-collapsed {
+    position: fixed;
+    inset: 0 auto 0 0;
+    display: flex;
+    width: min(290px, calc(100vw - 50px));
+    height: 100dvh;
+    z-index: 52;
+    transform: translateX(-105%);
+    transition: transform .2s ease;
+    box-sizing: border-box;
+    box-shadow: 12px 0 50px rgba(0,0,0,.5);
+  }
+  .stkflo-sidebar.is-mobile-open { transform: translateX(0); }
+  .stkflo-sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 51;
+    border: 0;
+    background: rgba(2,6,23,.73);
+    cursor: pointer;
+  }
+}
+@media (max-width: 740px) {
+  .stkflo-login { padding: 20px 13px; align-items: flex-start; }
+  .stkflo-login-shell { grid-template-columns: minmax(0,1fr); min-height: 0; border-radius: 20px; }
+  .stkflo-login-story { padding: 20px 25px 14px; }
+  .stkflo-login-story-logo img { width: 150px; }
+  .stkflo-login-story-copy, .stkflo-login-story-footer { display: none; }
+  .stkflo-login-panel { border-left: 0; border-top: 1px solid rgba(148,163,184,.15); padding: 24px 25px 30px; }
+  .stkflo-login-form { margin-top: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stkflo-sidebar, .stkflo-login-submit, .stkflo-sidebar .stkflo-nav-link { transition: none; }
+}
+
+/* Approved StkFlo branding (self-contained image assets).
+   No oversized images, negative margins, mask clipping or background tiles. */
+.stkflo-sidebar-brand {
+  min-width: 0;
+  overflow: visible;
+  align-self: center;
+}
+.stkflo-sidebar-brand img {
+  display: block;
+  width: 188px;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  margin: 0;
+}
+.stkflo-sidebar-brand > span {
+  margin: 3px 0 0;
+  padding: 0;
+  font-size: 7.5px;
+  letter-spacing: .105em;
+}
+
+.stkflo-nav-icon-colour {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 16px;
+  font-weight: normal;
+  line-height: 1;
+  color: initial;
+}
+.stkflo-nav-link.active .stkflo-nav-icon-colour {
+  color: initial;
+}
+.stkflo-login-story-logo {
+  width: min(440px, 100%);
+  height: auto;
+  overflow: visible;
+  flex: none;
+}
+.stkflo-login-story-logo img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  object-fit: contain;
+}
+.stkflo-login-symbol {
+  width: 112px;
+  height: 90px;
+  margin: 0 auto 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+}
+.stkflo-login-symbol img {
+  position: static;
+  display: block;
+  width: 110px;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  object-fit: contain;
+}
+@media (max-width: 740px) {
+  .stkflo-login-story-logo {
+    width: min(235px, 100%);
+    height: auto;
+  }
+}
+
+/* Approved StkFlo 3D artwork: preserve the full lockup and its natural aspect ratio. */
+.stkflo-login-story-logo { width: min(355px, 100%); }
+.stkflo-login-story-logo img { width: 100%; max-width: 100%; height: auto; }
+.stkflo-login-symbol { width: 112px; height: 152px; margin: 0 auto 12px; }
+.stkflo-login-symbol img { width: auto; height: 145px; max-width: 100%; max-height: 100%; object-fit: contain; }
+.stkflo-sidebar-brand img { width: min(193px, 100%); }
+@media (max-width: 740px) {
+  .stkflo-login-story-logo { width: min(235px, 100%); }
+  .stkflo-login-symbol { width: 84px; height: 116px; }
+  .stkflo-login-symbol img { height: 110px; }
+}
