@@ -590,26 +590,32 @@
   justify-content: flex-start;
   min-width: 0;
   min-height: 620px;
-  padding: 10px 27px 22px;
+  padding: 23px 27px 22px;
   overflow: hidden;
-  background: #000d28;
+  background: var(--stkflo-video-panel-bg, #000d28);
 }
 .stkflo-login-video-stage {
   position: relative;
   isolation: isolate;
   flex: none;
-  width: min(100%, 386px);
-  aspect-ratio: 1;
+  width: min(100%, 525px);
+  aspect-ratio: 1.8 / 1;
   overflow: hidden;
-  background: #000d28;
+  background: var(--stkflo-video-panel-bg, #000d28);
+  /* Feather the edges into the exact same panel colour. No rectangular boundary. */
+  -webkit-mask-image: radial-gradient(ellipse closest-side at center, #000 0%, #000 73%, transparent 100%);
+  mask-image: radial-gradient(ellipse closest-side at center, #000 0%, #000 73%, transparent 100%);
 }
 .stkflo-login-video,
 .stkflo-login-video-poster {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: 1;
   object-fit: contain;
   object-position: center;
 }
@@ -671,17 +677,17 @@
 
 /* Keep the video compact in a narrow desktop split; slogan remains legible. */
 @media (min-width: 741px) and (max-width: 990px) {
-  .stkflo-login-media { padding: 18px 19px 22px; }
-  .stkflo-login-video-stage { width: min(100%, 325px); }
+  .stkflo-login-media { padding: 19px 19px 22px; }
+  .stkflo-login-video-stage { width: min(100%, 440px); }
   .stkflo-login-media-copy h1 { font-size: clamp(25px, 3vw, 31px); }
 }
 @media (max-width: 740px) {
   .stkflo-login-media {
     min-height: 0;
     aspect-ratio: auto;
-    padding: 6px 24px 25px;
+    padding: 13px 24px 25px;
   }
-  .stkflo-login-video-stage { width: min(100%, 292px); }
+  .stkflo-login-video-stage { width: min(100%, 330px); }
   .stkflo-login-media-copy { margin-top: -4px; }
   .stkflo-login-media-copy .stkflo-login-eyebrow {
     margin-bottom: 9px;
@@ -696,7 +702,7 @@
   .stkflo-login-media-footer { margin-top: 17px; padding-top: 0; }
 }
 @media (max-width: 390px) {
-  .stkflo-login-video-stage { width: min(100%, 260px); }
+  .stkflo-login-video-stage { width: min(100%, 285px); }
   .stkflo-login-media { padding-left: 18px; padding-right: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
