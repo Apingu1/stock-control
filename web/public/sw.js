@@ -7,8 +7,6 @@ const PRECACHE_URLS = [
   "/icons/unison-192.png",
   "/icons/unison-512.webp",
   "/icons/unison-maskable.svg",
-  "/branding/Unison_OptionF_Full_Logo.svg",
-  "/branding/Unison_OptionF_Monogram.svg",
 ];
 
 self.addEventListener("install", (event) => {
