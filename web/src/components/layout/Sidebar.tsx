@@ -58,7 +58,7 @@ const colouredNavIcons: Record<Exclude<IconName, "menu" | "close" | "logout" | "
 };
 
 function savedCollapsed(): boolean {
-  try { return localStorage.getItem("unison-sidebar-collapsed") === "true"; }
+  try { return localStorage.getItem("stkflo-sidebar-collapsed") === "true"; }
   catch { return false; }
 }
 
@@ -78,12 +78,12 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
   const hide = () => {
     setMobileOpen(false);
     setCollapsed(true);
-    try { localStorage.setItem("unison-sidebar-collapsed", "true"); } catch { /* storage may be disabled */ }
+    try { localStorage.setItem("stkflo-sidebar-collapsed", "true"); } catch { /* storage may be disabled */ }
   };
   const reveal = () => {
     setCollapsed(false);
     setMobileOpen(true);
-    try { localStorage.setItem("unison-sidebar-collapsed", "false"); } catch { /* storage may be disabled */ }
+    try { localStorage.setItem("stkflo-sidebar-collapsed", "false"); } catch { /* storage may be disabled */ }
   };
   const navigate = (destination: ViewMode) => {
     setView(destination);
@@ -91,19 +91,19 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
   };
 
   const item = (destination: ViewMode, label: string, icon: keyof typeof colouredNavIcons, opts: { badge?: string | number; disabled?: boolean; title?: string } = {}) => (
-    <li className="unison-nav-item" key={destination}>
+    <li className="stkflo-nav-item" key={destination}>
       <button
         type="button"
-        className={"unison-nav-link" + (view === destination ? " active" : "")}
+        className={"stkflo-nav-link" + (view === destination ? " active" : "")}
         onClick={() => navigate(destination)}
         disabled={!me || opts.disabled}
         aria-current={view === destination ? "page" : undefined}
         title={opts.title || label}
       >
-        <span className="unison-nav-icon unison-nav-icon-colour" aria-hidden="true">{colouredNavIcons[icon]}</span>
-        <span className="unison-nav-label">{label}</span>
-        {opts.badge !== undefined && <span className="unison-nav-badge">{opts.badge}</span>}
-        <span className="unison-nav-chevron"><Icon name="chevron" size={13} /></span>
+        <span className="stkflo-nav-icon stkflo-nav-icon-colour" aria-hidden="true">{colouredNavIcons[icon]}</span>
+        <span className="stkflo-nav-label">{label}</span>
+        {opts.badge !== undefined && <span className="stkflo-nav-badge">{opts.badge}</span>}
+        <span className="stkflo-nav-chevron"><Icon name="chevron" size={13} /></span>
       </button>
     </li>
   );
@@ -111,25 +111,25 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
   return (
     <>
       <button
-        className={"unison-menu-trigger" + (collapsed ? " is-visible" : "") + (mobileOpen ? " is-open" : "")}
+        className={"stkflo-menu-trigger" + (collapsed ? " is-visible" : "") + (mobileOpen ? " is-open" : "")}
         type="button"
         aria-label="Open navigation menu"
         title="Open menu"
         aria-expanded={mobileOpen}
         onClick={reveal}
       ><Icon name="menu" size={22} /></button>
-      {mobileOpen && <button className="unison-sidebar-scrim" type="button" onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" />}
-      <aside className={"sidebar unison-sidebar" + (collapsed ? " is-collapsed" : "") + (mobileOpen ? " is-mobile-open" : "")} aria-label="Primary navigation">
-        <div className="unison-sidebar-top">
-          <div className="unison-sidebar-brand">
-            <img src="/branding/Unison_OptionF_Full_Logo.svg" alt="Unison — One platform. Greater control." width="194" height="65" />
+      {mobileOpen && <button className="stkflo-sidebar-scrim" type="button" onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" />}
+      <aside className={"sidebar stkflo-sidebar" + (collapsed ? " is-collapsed" : "") + (mobileOpen ? " is-mobile-open" : "")} aria-label="Primary navigation">
+        <div className="stkflo-sidebar-top">
+          <div className="stkflo-sidebar-brand">
+            <img src="/branding/stkflo-horizontal.svg" alt="StkFlo — One platform. Greater control." width="194" height="65" />
           </div>
-          <button className="unison-sidebar-collapse" type="button" onClick={hide} aria-label="Collapse menu" title="Collapse navigation">
+          <button className="stkflo-sidebar-collapse" type="button" onClick={hide} aria-label="Collapse menu" title="Collapse navigation">
             <Icon name="close" size={19} />
           </button>
         </div>
 
-        <nav className="unison-sidebar-navigation" aria-label="Unison sections">
+        <nav className="stkflo-sidebar-navigation" aria-label="StkFlo sections">
           <div className="sidebar-section-label">Workspace</div>
           <ul className="nav-list">
             {item("dashboard", "Dashboard", "dashboard", { badge: "Today" })}
@@ -155,18 +155,18 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
           </ul>
         </nav>
 
-        <footer className="unison-sidebar-footer">
+        <footer className="stkflo-sidebar-footer">
           {me ? <>
-            <div className="unison-user-avatar" aria-hidden="true">{me.username.slice(0, 2).toUpperCase()}</div>
-            <div className="unison-user-details">
+            <div className="stkflo-user-avatar" aria-hidden="true">{me.username.slice(0, 2).toUpperCase()}</div>
+            <div className="stkflo-user-details">
               <strong title={me.username}>{me.username}</strong>
               <span title={me.role}>{me.role}</span>
             </div>
-            <button className="unison-sidebar-logout" type="button" onClick={onLogout} title="Sign out" aria-label="Sign out">
+            <button className="stkflo-sidebar-logout" type="button" onClick={onLogout} title="Sign out" aria-label="Sign out">
               <Icon name="logout" size={18}/>
             </button>
           </> : <span>Please sign in.</span>}
-          <div className="unison-sidebar-footnote"><span className="unison-online-indicator" /> GMP Mode <span>·</span> Pilot · On-prem</div>
+          <div className="stkflo-sidebar-footnote"><span className="stkflo-online-indicator" /> GMP Mode <span>·</span> Pilot · On-prem</div>
         </footer>
       </aside>
     </>
