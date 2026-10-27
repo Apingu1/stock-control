@@ -42,6 +42,21 @@ function Icon({ name, size = 19 }: { name: IconName; size?: number }) {
   return <svg {...common}>{paths[name]}</svg>;
 }
 
+const colouredNavIcons: Record<Exclude<IconName, "menu" | "close" | "logout" | "chevron">, string> = {
+  dashboard: "📊",
+  products: "🧾",
+  analytics: "📈",
+  materials: "🧪",
+  receipts: "📥",
+  consumption: "🚚",
+  lots: "📦",
+  users: "👤",
+  settings: "⚙️",
+  quarantine: "📦",
+  alerts: "🚨",
+  audit: "📑",
+};
+
 function savedCollapsed(): boolean {
   try { return localStorage.getItem("unison-sidebar-collapsed") === "true"; }
   catch { return false; }
@@ -75,7 +90,7 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
     setMobileOpen(false);
   };
 
-  const item = (destination: ViewMode, label: string, icon: IconName, opts: { badge?: string | number; disabled?: boolean; title?: string } = {}) => (
+  const item = (destination: ViewMode, label: string, icon: keyof typeof colouredNavIcons, opts: { badge?: string | number; disabled?: boolean; title?: string } = {}) => (
     <li className="unison-nav-item" key={destination}>
       <button
         type="button"
@@ -85,7 +100,7 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
         aria-current={view === destination ? "page" : undefined}
         title={opts.title || label}
       >
-        <span className="unison-nav-icon"><Icon name={icon} /></span>
+        <span className="unison-nav-icon unison-nav-icon-colour" aria-hidden="true">{colouredNavIcons[icon]}</span>
         <span className="unison-nav-label">{label}</span>
         {opts.badge !== undefined && <span className="unison-nav-badge">{opts.badge}</span>}
         <span className="unison-nav-chevron"><Icon name="chevron" size={13} /></span>
@@ -107,7 +122,7 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
       <aside className={"sidebar unison-sidebar" + (collapsed ? " is-collapsed" : "") + (mobileOpen ? " is-mobile-open" : "")} aria-label="Primary navigation">
         <div className="unison-sidebar-top">
           <div className="unison-sidebar-brand">
-            <img src="/branding/unison-horizontal-light.webp" alt="Unison" />
+            <img src="/icons/unison-lockup-on-dark.svg" alt="Unison" width="194" height="61" />
             <span>ONE PLATFORM. GREATER CONTROL.</span>
           </div>
           <button className="unison-sidebar-collapse" type="button" onClick={hide} aria-label="Collapse menu" title="Collapse navigation">
