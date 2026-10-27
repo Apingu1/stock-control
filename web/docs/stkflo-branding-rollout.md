@@ -22,7 +22,7 @@ The SVG assets in the new pack contain embedded raster artwork (not editable vec
 | iPhone/iPad home screen | `07_BROWSER_AND_PWA/apple-touch-icon.png` | `web/public/icons/stkflo-apple-touch.png` |
 | Windows/browser ICO | `07_BROWSER_AND_PWA/favicon.ico` | `web/public/icons/stkflo-favicon.ico` |
 
-The two-column login layout is preserved, but the original left-side logo, slogans and copy have been replaced by a looping animated StkFlo logo. The right-hand panel retains the 3D SF monogram, now says SECURE ACCESS, and no longer shows Welcome back. The sign-in API, password change, RBAC, on-prem server and GMP transactions remain unchanged.
+The two-column login layout is preserved. The left-hand panel now places the square looping StkFlo video high in the panel, with the restored original slogans beneath it: CONNECTED OPERATIONS, Clarity across every movement., A unified workspace for materials, traceability and confident inventory control., and ONE PLATFORM. GREATER CONTROL. The right-hand sign-in panel retains the SF monogram and SECURE ACCESS label, without Welcome back. Authentication, password change, RBAC, on-prem server and GMP transactions are unchanged.
 
 ## Codespaces: complete the artwork installation
 
@@ -46,8 +46,8 @@ git pull --ff-only origin feature/stkflo-rebrand
 bash scripts/install_stkflo_branding.sh \
   "/workspaces/stock-control/StkFlo_High_Quality_Complete_Logo_Icon_Pack" --push
 
-# Upload the supplied StkFlo_Login_Video_Pack.zip to the repository root.
-bash scripts/install_stkflo_login_video.sh "/workspaces/stock-control/StkFlo_Login_Video_Pack.zip" --push
+# Use your already extracted video folder:
+bash scripts/install_stkflo_login_video.sh "/workspaces/stock-control/StkFlo_Login_Video_Pack" --push
 
 cd web
 npm ci
@@ -61,11 +61,12 @@ The frontend `prebuild` hook checks the nine approved brand assets AND both vide
 
 ### Acceptance checks
 
-- [ ] Left panel contains the full animated StkFlo logo, without stretching or cropping
+- [ ] Animated StkFlo logo sits towards the top of the left-hand panel with no stretching or cropping
+- [ ] The original headline, supporting line and slogan are visible beneath the film, including on mobile
 - [ ] Video autoplays silently, loops, and shows a static poster when unavailable or motion is reduced
 - [ ] The Welcome back heading has been removed
 - [ ] Independent 3D SF monogram above login fields on the right
-- [ ] Left-panel slogans are removed along with the old marketing panel; authentication works as before
+- [ ] Authentication works as before, with the login layout and restored slogan copy
 - [ ] Compact StkFlo image in sidebar and monogram in top bar
 - [ ] `npm run build` passes after installer and `web/public/branding` assets load
 - [ ] Favicon, Chrome/Edge install icon, Android and Apple icons have SF monogram only
