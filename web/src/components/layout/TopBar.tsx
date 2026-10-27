@@ -92,10 +92,10 @@ const TopBar: React.FC<Props> = ({
 
       <header className="top-bar">
         <div className="top-bar-left">
-          <div className="unison-topbar-heading">
-            <img className="unison-topbar-mark" src="/icons/unison-192.png" alt="Unison" />
-            <div className="unison-topbar-page">
-              <div className="page-tag">Unison / {header.tag}</div>
+          <div className="stkflo-topbar-heading">
+            <img className="stkflo-topbar-mark" src="/icons/stkflo-192.png" alt="StkFlo" />
+            <div className="stkflo-topbar-page">
+              <div className="page-tag">StkFlo / {header.tag}</div>
               <div className="page-title">{header.title}</div>
               <div className="page-subtitle">{header.subtitle}</div>
             </div>
