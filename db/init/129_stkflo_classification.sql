@@ -40,4 +40,7 @@ DELETE FROM material_categories mc WHERE mc.code = 'OTHER'
   AND NOT EXISTS (SELECT 1 FROM materials m WHERE m.category_code = mc.code);
 DELETE FROM uoms u WHERE u.code = 'KG'
   AND NOT EXISTS (SELECT 1 FROM materials m WHERE m.base_uom_code = u.code);
+
+-- Preserve compatibility for legacy consumers of the balance-view alias.
+CREATE OR REPLACE VIEW v_lot_balances AS SELECT * FROM lot_balances_view;
 COMMIT;
