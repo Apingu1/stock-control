@@ -34,7 +34,7 @@ for (const [name, file] of Object.entries(paths)) {
   const source = ts.createSourceFile(file, pages[name], ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   for (const diagnostic of source.parseDiagnostics) {
     const location = source.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
-    process.stderr.write(`TSX syntax: ${file}:${location.line + 1}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}\\n`);
+    process.stderr.write(`TSX syntax: ${file}:${location.line + 1}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}\n`);
   }
   check(name + " TSX syntax parses", source.parseDiagnostics.length === 0);
 }
