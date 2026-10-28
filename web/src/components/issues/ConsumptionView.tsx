@@ -404,7 +404,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
           isFiltered={Boolean(search.trim()) || dateFilter !== "ALL" || dispositionFilter !== "ALL" || typeFilter !== "ALL" || customerFilter !== "ALL" || manufacturerFilter !== "ALL"}
           onClear={() => { setSearch(""); setDateFilter("ALL"); setDispositionFilter("ALL"); setTypeFilter("ALL"); setCustomerFilter("ALL"); setManufacturerFilter("ALL"); }}
         />
-        {loadingIssues && <div className="info-row">Loading consumption history…</div>
+        {loadingIssues && <div className="info-row">Loading consumption history…</div>}
         {issuesError && !loadingIssues && <div className="error-row">{issuesError}</div>}
 
         {!loadingIssues && !issuesError && (

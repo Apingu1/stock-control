@@ -306,7 +306,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           isFiltered={Boolean(search.trim()) || dateFilter !== "ALL" || supplierFilter !== "ALL" || manufacturerFilter !== "ALL"}
           onClear={() => { setSearch(""); setDateFilter("ALL"); setSupplierFilter("ALL"); setManufacturerFilter("ALL"); }}
         />
-        {loadingReceipts && <div className="info-row">Loading goods receipts…</div>
+        {loadingReceipts && <div className="info-row">Loading goods receipts…</div>}
         {receiptsError && !loadingReceipts && <div className="error-row">{receiptsError}</div>}
 
         {!loadingReceipts && !receiptsError && (

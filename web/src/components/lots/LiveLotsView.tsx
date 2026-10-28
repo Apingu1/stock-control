@@ -335,7 +335,7 @@ const LiveLotsView: React.FC<{
           isFiltered={Boolean(materialsSearch.trim()) || categoryFilter !== "ALL" || typeFilter !== "ALL" || statusFilter !== "ALL" || dateFilter !== "ALL"}
           onClear={() => { setMaterialsSearch(""); setCategoryFilter("ALL"); setTypeFilter("ALL"); setStatusFilter("ALL"); setDateFilter("ALL"); }}
         />
-        {loadingLots && <div className="info-row">Loading lot balances…</div>
+        {loadingLots && <div className="info-row">Loading lot balances…</div>}
         {lotsError && !loadingLots && <div className="error-row">{lotsError}</div>}
 
         {!loadingLots && !lotsError && (

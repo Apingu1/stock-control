@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(join(root, p), "utf8");
@@ -27,6 +28,16 @@ const pages = Object.fromEntries(Object.entries(paths).map(([name, path]) => [na
 const main = read("src/main.tsx");
 const css = read("src/styles/stkflo-operational.css");
 const resultBar = read("src/components/ui/OperationalResultBar.tsx");
+
+// Parse actual TSX syntax; substring checks alone miss unclosed JSX expressions.
+for (const [name, file] of Object.entries(paths)) {
+  const source = ts.createSourceFile(file, pages[name], ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  for (const diagnostic of source.parseDiagnostics) {
+    const location = source.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
+    process.stderr.write(`TSX syntax: ${file}:${location.line + 1}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}\\n`);
+  }
+  check(name + " TSX syntax parses", source.parseDiagnostics.length === 0);
+}
 
 check("Phase 03 styling loaded after adaptive styling",
   main.indexOf("stkflo-operational.css") > main.indexOf("stkflo-adaptive.css"));
