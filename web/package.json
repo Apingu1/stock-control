@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "prebuild": "node scripts/verify-stkflo-assets.mjs",
-    "check:design-system": "node scripts/verify-stkflo-design-system.mjs"
+    "check:design-system": "node scripts/verify-stkflo-design-system.mjs",
+    "check:adaptive-layout": "node scripts/verify-stkflo-adaptive-layout.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
