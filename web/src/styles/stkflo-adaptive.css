@@ -1,0 +1,353 @@
+/**
+ * StkFlo Phase 02 — adaptive workspace.
+ *
+ * Fit to the AVAILABLE viewport, not the physical monitor or browser zoom.
+ * "Auto" responds to height & width while Compact/Comfortable are user
+ * overrides. Never transform:scale() or zoom: this preserves native inputs,
+ * pointer targets, calendar controls and text accessibility.
+ *
+ * The original login/sidebar appearance is deliberately excluded.
+ */
+.app-shell:not(.stkflo-auth-shell) {
+  --sf-page-gutter-x: clamp(16px, 1.8vw, 30px);
+  --sf-page-gutter-top: clamp(15px, 2vh, 24px);
+  --sf-page-gutter-bottom: clamp(16px, 2.5vh, 26px);
+  --sf-header-gap: clamp(12px, 2vh, 24px);
+  --sf-panel-pad: 18px;
+  --sf-metric-pad: 15px;
+  --sf-dashboard-gap: 12px;
+  --sf-metric-size: 28px;
+  --sf-metric-label: 13px;
+  --sf-workspace-control: 38px;
+  --sf-content-max-width: 2100px;
+}
+
+/* Explicit user choice overrides the automatic density variables. */
+.app-shell[data-density="compact"] {
+  --sf-page-gutter-x: 16px;
+  --sf-page-gutter-top: 13px;
+  --sf-page-gutter-bottom: 16px;
+  --sf-header-gap: 11px;
+  --sf-panel-pad: 14px;
+  --sf-metric-pad: 11px;
+  --sf-dashboard-gap: 10px;
+  --sf-metric-size: 24px;
+  --sf-metric-label: 12px;
+  --sf-workspace-control: 34px;
+}
+.app-shell[data-density="comfortable"] {
+  --sf-page-gutter-x: clamp(22px, 2vw, 38px);
+  --sf-page-gutter-top: 24px;
+  --sf-page-gutter-bottom: 26px;
+  --sf-header-gap: 24px;
+  --sf-panel-pad: 22px;
+  --sf-metric-pad: 20px;
+  --sf-dashboard-gap: 16px;
+  --sf-metric-size: 32px;
+  --sf-metric-label: 14px;
+  --sf-workspace-control: 42px;
+}
+/* Laptop height: a dense, readable 100%-zoom alternative to Chrome 80%. */
+@media (max-height: 840px) {
+  .app-shell[data-density="auto"] {
+    --sf-page-gutter-x: clamp(14px, 1.4vw, 22px);
+    --sf-page-gutter-top: 13px;
+    --sf-page-gutter-bottom: 17px;
+    --sf-header-gap: 11px;
+    --sf-panel-pad: 14px;
+    --sf-metric-pad: 11px;
+    --sf-dashboard-gap: 10px;
+    --sf-metric-size: 24px;
+    --sf-metric-label: 12px;
+    --sf-workspace-control: 34px;
+  }
+}
+@media (min-height: 980px) and (min-width: 1660px) {
+  .app-shell[data-density="auto"] {
+    --sf-page-gutter-x: clamp(22px, 2vw, 36px);
+    --sf-page-gutter-top: 24px;
+    --sf-page-gutter-bottom: 26px;
+    --sf-header-gap: 22px;
+    --sf-panel-pad: 21px;
+    --sf-metric-pad: 18px;
+    --sf-dashboard-gap: 16px;
+    --sf-metric-size: 31px;
+    --sf-metric-label: 14px;
+    --sf-workspace-control: 40px;
+  }
+}
+
+/* The lower padding reserves a real margin outside the rounded panel.
+   All page containers are constrained inside this box, not to 100vh. */
+.app-shell:not(.stkflo-auth-shell) .main {
+  box-sizing: border-box;
+  height: 100dvh;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: sf-workspace;
+  padding: var(--sf-page-gutter-top) var(--sf-page-gutter-x) var(--sf-page-gutter-bottom);
+  background: var(--sf-bg-canvas);
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar {
+  flex: 0 0 auto;
+  align-items: center;
+  margin-bottom: var(--sf-header-gap);
+  min-width: 0;
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-right {
+  gap: 8px;
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-right .btn {
+  min-height: var(--sf-workspace-control);
+  white-space: nowrap;
+  padding: 8px 11px;
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-center {
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.sf-density-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 7px 2px 10px;
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-pill);
+  background: rgba(20, 36, 59, .72);
+  color: var(--sf-text-secondary);
+  font-size: var(--sf-font-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.sf-density-select {
+  min-width: 94px;
+  min-height: 28px;
+  max-width: 130px;
+  padding: 3px 20px 3px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--sf-radius-control);
+  background: var(--sf-bg-field);
+  color: var(--sf-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.sf-density-select:focus-visible {
+  outline: 2px solid var(--sf-border-focus);
+  outline-offset: 2px;
+}
+.app-shell:not(.stkflo-auth-shell) .main > .content {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: var(--sf-content-max-width);
+  margin-inline: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* The five operational workspaces remain flex layouts with a rounded,
+   fully visible bottom edge. Their table region alone scrolls. */
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stock-workspace-page {
+  overflow: hidden;
+}
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stock-workspace-page > .card {
+  padding: var(--sf-panel-pad);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stock-workspace-page > .card > .card-header {
+  margin-bottom: var(--sf-dashboard-gap);
+}
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stock-workspace-page > .card > .table-wrapper {
+  min-height: 0;
+  overflow: auto;
+  max-height: none !important;
+}
+
+/* Dashboard: use remaining available height for alert/batch lists, rather
+   than pushing the outer panel below the browser window. */
+.app-shell:not(.stkflo-auth-shell) .main > .content:has(> .grid-top) {
+  display: block;
+  overflow: hidden;
+}
+.app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top > .card {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: var(--sf-panel-pad);
+  overflow: hidden;
+}
+.app-shell:not(.stkflo-auth-shell) .grid-top > .card > .card-header {
+  flex: 0 0 auto;
+  margin-bottom: var(--sf-dashboard-gap);
+}
+.app-shell:not(.stkflo-auth-shell) .metrics-row {
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: var(--sf-dashboard-gap);
+  margin-bottom: var(--sf-dashboard-gap);
+}
+.app-shell:not(.stkflo-auth-shell) .metric-card {
+  padding: var(--sf-metric-pad);
+  min-width: 0;
+}
+.app-shell:not(.stkflo-auth-shell) .metric-label {
+  font-size: var(--sf-metric-label);
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+.app-shell:not(.stkflo-auth-shell) .metric-value {
+  font-size: var(--sf-metric-size);
+  line-height: 1.18;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell:not(.stkflo-auth-shell) .mini-spark {
+  margin-top: 5px;
+  line-height: 1;
+}
+.app-shell:not(.stkflo-auth-shell) .dash-widgets {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  gap: var(--sf-dashboard-gap);
+  min-height: 0;
+  margin-top: var(--sf-dashboard-gap);
+}
+.app-shell:not(.stkflo-auth-shell) .dash-widget {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--sf-metric-pad);
+  overflow: hidden;
+}
+.app-shell:not(.stkflo-auth-shell) .dash-alert-list,
+.app-shell:not(.stkflo-auth-shell) .dash-batch-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* In compact mode we use all space for useful data, not decorative spark
+   glyphs; labels and quantities remain fully visible. */
+.app-shell[data-density="compact"] .mini-spark { display: none; }
+@media (max-height: 840px) {
+  .app-shell[data-density="auto"] .mini-spark { display: none; }
+}
+@container sf-workspace (max-width: 1070px) {
+  .app-shell:not(.stkflo-auth-shell) .metrics-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .app-shell:not(.stkflo-auth-shell) .metric-label {
+    overflow-wrap: anywhere;
+  }
+}
+@container sf-workspace (max-width: 880px) {
+  .app-shell:not(.stkflo-auth-shell) .metrics-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .app-shell:not(.stkflo-auth-shell) .dash-widgets {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+}
+@container sf-workspace (max-width: 560px) {
+  .app-shell:not(.stkflo-auth-shell) .metrics-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .app-shell:not(.stkflo-auth-shell) .metric-value {
+    font-size: 23px;
+  }
+}
+/* Extremely short browser windows need an accessible dashboard scroll rather
+   than shrinking controls to unreadable sizes or clipping the final KPI. */
+@media (max-height: 650px) {
+  .app-shell:not(.stkflo-auth-shell) .main > .content:has(> .grid-top) { overflow-y: auto; }
+  .app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top { height: auto; min-height: 100%; }
+  .app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top > .card { height: auto; overflow: visible; }
+  .app-shell:not(.stkflo-auth-shell) .dash-widgets { min-height: 230px; }
+}
+@media (max-width: 900px) {
+  /* Respect the existing mobile drawer rather than clipping its trigger. */
+  .app-shell:not(.stkflo-auth-shell) .main {
+    padding: 79px 14px 16px;
+  }
+  .app-shell:not(.stkflo-auth-shell) .top-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .app-shell:not(.stkflo-auth-shell) .top-bar-left { flex: 1 1 220px; }
+  .app-shell:not(.stkflo-auth-shell) .top-bar-right { flex: 1 1 100%; justify-content: flex-start; }
+  .app-shell:not(.stkflo-auth-shell) .top-bar-center { flex: 0 1 auto; }
+  .sf-density-label { display: none; }
+}
+@media (max-width: 520px) {
+  .app-shell:not(.stkflo-auth-shell) .top-bar-center { flex: 1 1 100%; justify-content: flex-start; }
+  .app-shell:not(.stkflo-auth-shell) .main { padding-left: 11px; padding-right: 11px; }
+}
+
+/* Settings font correction now: the deeper Backup & Recovery reorganisation
+   remains Phase 04. Keep monospace only for literal identifiers/paths. */
+.app-shell:not(.stkflo-auth-shell) .stkflo-settings-page,
+.app-shell:not(.stkflo-auth-shell) .stkflo-settings-page :is(button, input, select, textarea, label, table) {
+  font-family: var(--sf-font-family);
+}
+.app-shell:not(.stkflo-auth-shell) .stkflo-settings-page {
+  font-size: var(--sf-font-md);
+  line-height: var(--sf-line-height);
+  padding-bottom: 2px;
+}
+.stkflo-settings-page .sf-settings-section-title {
+  color: var(--sf-text-primary);
+  font: 740 var(--sf-font-lg)/1.35 var(--sf-font-family);
+  letter-spacing: -.018em;
+}
+.stkflo-settings-page .sf-settings-path {
+  margin-top: 9px;
+  color: var(--sf-text-primary);
+  font-size: var(--sf-font-md);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.stkflo-settings-page .sf-settings-path span {
+  font-family: var(--sf-font-mono);
+  font-size: var(--sf-font-md);
+  font-weight: 550;
+}
+.stkflo-settings-page .card-title {
+  font-size: var(--sf-font-lg);
+  font-weight: 740;
+}
+.stkflo-settings-page .card-subtitle,
+.stkflo-settings-page .info-row,
+.stkflo-settings-page .label {
+  font-size: var(--sf-font-md);
+}
+.stkflo-settings-page input:not([type="checkbox"]),
+.stkflo-settings-page select,
+.stkflo-settings-page textarea {
+  min-height: var(--sf-workspace-control);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell:not(.stkflo-auth-shell) .metric-card,
+  .app-shell:not(.stkflo-auth-shell) .top-bar .btn {
+    transition: none;
+  }
+}
