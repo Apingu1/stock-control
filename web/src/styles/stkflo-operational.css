@@ -1,0 +1,301 @@
+/**
+ * StkFlo Phase 03: consistent operational workspace treatment.
+ * Presentation only — do not override permissions, validation, posting
+ * behaviour, stock quantities, audit trails, or native date pickers.
+ *
+ * Loaded AFTER the Phase 02 adaptive stylesheet. Page geometry and
+ * Auto/Compact/Comfortable density remain owned by Phase 02.
+ */
+
+/* The small editorial label from the approved premium login treatment. */
+.sf-operational-page .sf-ops-eyebrow {
+  color: var(--sf-text-accent);
+  font-family: var(--sf-font-family);
+  font-size: 10px;
+  font-weight: 790;
+  line-height: 1.45;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.sf-operational-page .card-title {
+  letter-spacing: -.018em;
+}
+.sf-operational-page .card-subtitle {
+  line-height: 1.5;
+  max-width: 78ch;
+}
+.sf-operational-page > .card > .card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(10px, 1.2vw, 16px);
+  min-width: 0;
+  margin-bottom: clamp(10px, 1.5vh, 16px);
+}
+.sf-operational-page > .card > .card-header > div:first-child {
+  min-width: 0;
+}
+.sf-operational-page > .card > .card-header .sf-ops-toolbar {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.sf-operational-page > .card > .card-header .sf-ops-toolbar > .input {
+  box-sizing: border-box;
+  width: auto;
+  max-width: 100%;
+  min-width: min(145px, 100%);
+  margin: 0 !important;
+  flex: 1 1 155px;
+}
+.sf-operational-page > .card > .card-header .sf-ops-toolbar > input.input {
+  flex: 1.7 1 230px;
+}
+.sf-operational-page > .card > .card-header .sf-ops-toolbar > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* Product List has a separate toolbar outside its card header. */
+.sf-operational-page .product-filters.sf-ops-toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(155px, 100%), 1fr));
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sf-operational-page .product-filters.sf-ops-toolbar > .input {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 !important;
+}
+.sf-operational-page .product-filters.sf-ops-toolbar > .product-search {
+  grid-column: span 2;
+}
+
+/* Shared results row differentiates interactive filters from the live data. */
+.sf-ops-results {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 25px;
+  margin: 1px 0 12px;
+  padding: 6px 1px 10px;
+  border-bottom: 1px solid var(--sf-border-muted);
+  color: var(--sf-text-secondary);
+  font-family: var(--sf-font-family);
+  font-size: var(--sf-font-sm);
+  line-height: 1.4;
+}
+.sf-ops-result-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.sf-ops-result-count strong {
+  color: var(--sf-text-primary);
+  font-weight: 770;
+  font-variant-numeric: tabular-nums;
+}
+.sf-ops-result-icon {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: var(--sf-cyan);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, .11);
+}
+.sf-ops-clear {
+  appearance: none;
+  border: 1px solid rgba(165, 180, 252, .20);
+  background: rgba(99, 102, 241, .075);
+  color: #c7d2fe;
+  border-radius: var(--sf-radius-control);
+  padding: 5px 10px;
+  font: 650 var(--sf-font-sm)/1.25 var(--sf-font-family);
+  cursor: pointer;
+}
+.sf-ops-clear:hover:not(:disabled) {
+  border-color: rgba(165, 180, 252, .48);
+  background: rgba(99, 102, 241, .16);
+}
+.sf-ops-clear:focus-visible {
+  outline: 2px solid var(--sf-border-focus);
+  outline-offset: 2px;
+}
+.sf-ops-clear:disabled { opacity: .55; cursor: not-allowed; }
+
+/* Readable operational tables; column widths are allowed to exceed the
+   viewport inside their own scroll surface (especially Consumption History). */
+.sf-operational-page > .card > .table-wrapper,
+.sf-operational-page > .card > .product-table-wrap,
+.sf-ops-secondary-page .table-wrapper {
+  min-width: 0;
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-control);
+  background: rgba(6, 17, 35, .28);
+  scrollbar-color: rgba(145, 157, 204, .36) transparent;
+  scrollbar-width: thin;
+}
+.sf-operational-page .sf-ops-table {
+  border-spacing: 0;
+}
+.sf-operational-page .sf-ops-table thead {
+  position: sticky !important;
+  top: 0;
+  z-index: 2;
+}
+.sf-operational-page .sf-ops-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #101d33;
+  color: #b9c9e4;
+  border-bottom: 1px solid var(--sf-border-normal);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .035em;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.sf-operational-page .sf-ops-table tbody td {
+  border-bottom: 1px solid rgba(148, 163, 184, .095);
+  line-height: 1.4;
+  vertical-align: middle;
+}
+.sf-operational-page .sf-ops-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.sf-operational-page .sf-ops-table tbody tr:hover td {
+  background: rgba(99, 102, 241, .07);
+}
+.sf-operational-page .sf-ops-code {
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #c9dbff;
+}
+.sf-operational-page .numeric,
+.sf-operational-page .metric-value {
+  font-variant-numeric: tabular-nums;
+}
+.sf-operational-page .empty-row {
+  text-align: center;
+  color: var(--sf-text-muted);
+  padding: clamp(24px, 4vh, 44px);
+}
+
+/* Distinct controls are still consistent with the main workspaces. */
+.sf-ops-secondary-page > .card {
+  min-height: 0;
+  overflow: hidden;
+}
+.sf-ops-secondary-page .sf-ops-inner-scroll {
+  min-width: 0;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(145, 157, 204, .36) transparent;
+}
+.sf-ops-secondary-page .sf-ops-subpage {
+  min-width: 0;
+}
+.sf-ops-secondary-page .sf-ops-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sf-ops-tabs [role="tab"] {
+  border-radius: var(--sf-radius-control);
+}
+.sf-ops-tabs [role="tab"][aria-selected="true"] {
+  box-shadow: 0 0 0 1px rgba(165, 180, 252, .24);
+}
+.sf-ops-secondary-page .page-header {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+.sf-ops-secondary-page .page-header .sf-alerts-filter-row {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 8px;
+}
+.sf-ops-secondary-page .page-header .sf-alerts-filter-row > .input {
+  flex: 1 1 150px;
+  min-width: min(140px, 100%);
+  width: auto !important;
+  max-width: 100%;
+  height: var(--sf-workspace-control) !important;
+  font-size: var(--sf-font-md) !important;
+}
+.sf-ops-secondary-page .page-header .sf-alerts-filter-row > input.input {
+  flex: 1.5 1 230px;
+}
+.sf-ops-secondary-page .sf-alerts-heading {
+  margin-bottom: 12px;
+}
+.sf-ops-secondary-page .sf-ops-page-heading {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.sf-alerts-page > .card,
+.sf-alerts-page .card {
+  border-color: var(--sf-border-muted);
+}
+.sf-ops-secondary-page .card-header .card-title,
+.sf-ops-secondary-page .card-header .card-subtitle {
+  font-family: var(--sf-font-family);
+}
+
+/* Density is still controlled by Phase 02. Adjust only table row rhythm. */
+.app-shell[data-density="compact"] .sf-operational-page .sf-ops-table td {
+  padding-block: 7px;
+}
+.app-shell[data-density="comfortable"] .sf-operational-page .sf-ops-table td {
+  padding-block: 12px;
+}
+
+@container sf-workspace (max-width: 890px) {
+  .sf-operational-page .product-filters.sf-ops-toolbar > .product-search {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 620px) {
+  .sf-operational-page > .card > .card-header .sf-ops-toolbar > .input {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .sf-operational-page > .card > .card-header .sf-ops-toolbar > button {
+    flex: 1 1 auto;
+  }
+  .sf-ops-secondary-page .page-header .sf-alerts-filter-row > .input {
+    flex: 1 1 100%;
+  }
+  .sf-operational-page .product-filters.sf-ops-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sf-operational-page .product-filters.sf-ops-toolbar > .product-search {
+    grid-column: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sf-ops-clear, .sf-operational-page .sf-ops-table tbody tr {
+    transition: none;
+  }
+}
