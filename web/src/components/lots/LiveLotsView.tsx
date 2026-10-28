@@ -260,6 +260,7 @@ const LiveLotsView: React.FC<{
             <select
               className="input"
               style={{ width: 180, marginRight: 8 }}
+              aria-label="Filter lots by material category"
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
@@ -274,6 +275,7 @@ const LiveLotsView: React.FC<{
             <select
               className="input"
               style={{ width: 160, marginRight: 8 }}
+              aria-label="Filter lots by material type"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >
@@ -288,6 +290,7 @@ const LiveLotsView: React.FC<{
             <select
               className="input"
               style={{ width: 160, marginRight: 8 }}
+              aria-label="Filter lots by status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -302,6 +305,7 @@ const LiveLotsView: React.FC<{
             <select
               className="input"
               style={{ width: 140, marginRight: 8 }}
+              aria-label="Filter lots by expiry date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value as DateFilter)}
             >
@@ -315,6 +319,7 @@ const LiveLotsView: React.FC<{
               className="input"
               style={{ width: 260, marginRight: 8 }}
               placeholder="Search by code, name, lot, manufacturer…"
+              aria-label="Search lot balances"
               value={materialsSearch}
               onChange={(e) => setMaterialsSearch(e.target.value)}
             />

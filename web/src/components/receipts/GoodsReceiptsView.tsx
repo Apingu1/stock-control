@@ -247,6 +247,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
               className="input"
               style={{ minWidth: 260 }}
               placeholder="Search material / lot / supplier / manufacturer…"
+              aria-label="Search goods receipts"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -254,6 +255,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             <select
               className="input"
               style={{ width: 150 }}
+              aria-label="Filter goods receipts by date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value as DateFilter)}
             >
@@ -266,6 +268,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             <select
               className="input"
               style={{ width: 180 }}
+              aria-label="Filter goods receipts by supplier"
               value={supplierFilter}
               onChange={(e) => setSupplierFilter(e.target.value)}
             >
@@ -280,6 +283,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
             <select
               className="input"
               style={{ width: 210 }}
+              aria-label="Filter goods receipts by manufacturer"
               value={manufacturerFilter}
               onChange={(e) => setManufacturerFilter(e.target.value)}
             >

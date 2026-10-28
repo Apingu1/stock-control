@@ -321,12 +321,14 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
               className="input"
               style={{ minWidth: 280 }}
               placeholder="Search material / batch / customer / comment…"
+              aria-label="Search consumption history"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
             <select
               className="input"
               style={{ width: 150 }}
+              aria-label="Filter consumption history by date"
               value={dateFilter}
               onChange={(event) => setDateFilter(event.target.value as DateFilter)}
             >
@@ -338,6 +340,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
             <select
               className="input"
               style={{ width: 175 }}
+              aria-label="Filter consumption by batch disposition"
               value={dispositionFilter}
               onChange={(event) => setDispositionFilter(event.target.value)}
             >
@@ -349,6 +352,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
             <select
               className="input"
               style={{ width: 190 }}
+              aria-label="Filter consumption by type"
               value={typeFilter}
               onChange={(event) =>
                 setTypeFilter(event.target.value as ConsumptionTypeFilter)
@@ -364,6 +368,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
             <select
               className="input"
               style={{ width: 210 }}
+              aria-label="Filter consumption by customer"
               value={customerFilter}
               onChange={(event) => setCustomerFilter(event.target.value)}
             >
@@ -377,6 +382,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
             <select
               className="input"
               style={{ width: 210 }}
+              aria-label="Filter consumption by manufacturer"
               value={manufacturerFilter}
               onChange={(event) => setManufacturerFilter(event.target.value)}
             >

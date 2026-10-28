@@ -106,6 +106,7 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
             <select
               className="input"
               style={{ width: 180, marginRight: 8 }}
+              aria-label="Filter materials by category"
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
@@ -120,6 +121,7 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
             <select
               className="input"
               style={{ width: 160, marginRight: 8 }}
+              aria-label="Filter materials by type"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >
@@ -135,6 +137,7 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
               className="input"
               style={{ width: 260, marginRight: 8 }}
               placeholder="Search by code, name, supplier, manufacturer…"
+              aria-label="Search materials by code, name, supplier or manufacturer"
               value={materialsSearch}
               onChange={(e) => setMaterialsSearch(e.target.value)}
             />
