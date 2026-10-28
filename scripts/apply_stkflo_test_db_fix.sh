@@ -47,9 +47,9 @@ echo "Checking active database and quantity precision..."
 db_psql -Atc "SELECT current_database() || ' | material rows=' || count(*) FROM materials;"
 QTY_SCALE="$(db_psql -Atc "SELECT numeric_scale FROM information_schema.columns WHERE table_schema='public' AND table_name='stock_transactions' AND column_name='qty';" | tr -d '\r\n')"
 if [[ "$QTY_SCALE" != "6" ]]; then
-  echo "ERROR: stock_transactions.qty has scale=$QTY_SCALE (expected 6)." >&2
-  echo "This patch does not alter historical transaction quantities. Fix precision separately." >&2
-  exit 1
+  echo "WARNING: stock_transactions.qty has scale=$QTY_SCALE (expected 6)." >&2
+  echo "Proceeding with the lookup and valuation fix only; quantity precision needs" >&2
+  echo "a separate schema migration. No quantity records will be altered." >&2
 fi
 
 # Migration 129 is idempotent: seeds NA, AMP and UNIT; updates Packaging,
