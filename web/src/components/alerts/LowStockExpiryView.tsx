@@ -555,7 +555,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
     const bgKind = stateBadgeKind(act.state);
 
     return (
-      <div className="sf-alerts-filter-row" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <select
           className="input"
           style={{ height: 34, width: 160, fontSize: 13 }}
@@ -658,7 +658,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
       <div className="page sf-alerts-page">
         <div className="page-header sf-alerts-heading" style={{ gap: 10 }}>
           <div className="sf-ops-page-heading"><div className="sf-ops-eyebrow">STOCK MONITORING</div><div className="card-title">Low Stock &amp; Expiry Alerts</div><div className="card-subtitle">Review, prioritise and manage active stock alerts.</div></div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className="sf-alerts-filter-row" style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button
               type="button"
               className="btn btn-ghost"
