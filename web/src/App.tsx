@@ -1,5 +1,6 @@
 // web/src/App.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { readDensityPreference, saveDensityPreference, type WorkspaceDensity } from "./utils/workspaceDensity";
 import type { Issue, Material, Receipt, UserMe, ViewMode } from "./types";
 import {
   AUTH_EXPIRED_EVENT,
@@ -78,6 +79,11 @@ const App: React.FC = () => {
   const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
 
   const [view, setView] = useState<ViewMode>("dashboard");
+  const [density, setDensity] = useState<WorkspaceDensity>(readDensityPreference);
+  const handleDensityChange = useCallback((next: WorkspaceDensity) => {
+    setDensity(next);
+    saveDensityPreference(next);
+  }, []);
   const [loginMessage, setLoginMessage] = useState<string | null>(null);
 
   // Deep-link support: Dashboard → Analytics batch page
@@ -340,7 +346,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-density={density}>
       <Sidebar
         me={auth.me}
         view={view}
@@ -354,6 +360,8 @@ const App: React.FC = () => {
 
       <main className="main">
         <TopBar
+          density={density}
+          onDensityChange={handleDensityChange}
           header={header}
           isSignedIn={!!auth.me}
           onNewMaterial={() => setShowNewMaterialModal(true)}

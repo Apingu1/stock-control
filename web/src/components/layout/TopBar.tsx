@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { formatNowChip } from "../../utils/format";
 import { apiFetch } from "../../utils/api";
+import type { WorkspaceDensity } from "../../utils/workspaceDensity";
 
 type Header = {
   tag: string;
@@ -10,6 +11,8 @@ type Header = {
 
 type Props = {
   header: Header;
+  density: WorkspaceDensity;
+  onDensityChange: (density: WorkspaceDensity) => void;
   isSignedIn: boolean;
   onNewMaterial: () => void;
   onNewReceipt: () => void;
@@ -18,6 +21,8 @@ type Props = {
 
 const TopBar: React.FC<Props> = ({
   header,
+  density,
+  onDensityChange,
   isSignedIn,
   onNewMaterial,
   onNewReceipt,
@@ -108,6 +113,19 @@ const TopBar: React.FC<Props> = ({
           <span className="chip-dot" />
           {now}
         </div>
+        <label className="sf-density-control" title="Choose automatic or manual workspace density">
+          <span className="sf-density-label">View</span>
+          <select
+            className="sf-density-select"
+            aria-label="Workspace display density"
+            value={density}
+            onChange={(event) => onDensityChange(event.target.value as WorkspaceDensity)}
+          >
+            <option value="auto">Auto</option>
+            <option value="compact">Compact</option>
+            <option value="comfortable">Comfortable</option>
+          </select>
+        </label>
       </div>
 
       {/* Primary actions */}

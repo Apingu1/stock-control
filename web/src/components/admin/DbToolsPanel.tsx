@@ -133,10 +133,8 @@ const sectionStyle = {
 } as const;
 
 const fieldLabelStyle = {
-  fontSize: 12,
-  opacity: 0.72,
+  opacity: 0.85,
   marginBottom: 6,
-  fontWeight: 700,
 } as const;
 
 
@@ -449,7 +447,7 @@ export default function DbToolsPanel() {
 
       <div style={sectionStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <div style={{ fontSize: 17, fontWeight: 900 }}>Automatic Daily Backup</div>
+          <div className="sf-settings-section-title">Automatic Daily Backup</div>
           <div style={{ fontSize: 12, opacity: 0.72 }}>Times use {settings?.timezone || "Europe/London"}</div>
         </div>
 
@@ -525,8 +523,8 @@ export default function DbToolsPanel() {
       </div>
 
       <div style={sectionStyle}>
-        <div style={{ fontSize: 17, fontWeight: 900 }}>Backup Location</div>
-        <div style={{ marginTop: 9, fontSize: 16, fontWeight: 800 }}>{mono(hostLocation)}</div>
+        <div className="sf-settings-section-title">Backup Location</div>
+        <div className="sf-settings-path">{mono(hostLocation)}</div>
         <div style={{ marginTop: 7, fontSize: 13, opacity: 0.78, lineHeight: 1.5 }}>
           This is a physical folder on the Stock Control server, outside the Docker container. To browse to a different
           local drive or approved network location, open <b>ESC Backup Settings</b> on the Windows server. The utility
@@ -535,7 +533,7 @@ export default function DbToolsPanel() {
       </div>
 
       <div style={sectionStyle}>
-        <div style={{ fontSize: 17, fontWeight: 900 }}>Create a Manual Backup</div>
+        <div className="sf-settings-section-title">Create a Manual Backup</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 12 }}>
           <input
             className="input"
@@ -556,7 +554,7 @@ export default function DbToolsPanel() {
 
       <div style={sectionStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <div style={{ fontSize: 17, fontWeight: 900 }}>Restore a Backup</div>
+          <div className="sf-settings-section-title">Restore a Backup</div>
           <div style={{ fontSize: 12, opacity: 0.72 }}>One confirmation • automatic safety backup • automatic activation</div>
         </div>
         <div
@@ -615,7 +613,7 @@ export default function DbToolsPanel() {
 
       <div style={sectionStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <div style={{ fontSize: 17, fontWeight: 900 }}>Available Backups</div>
+          <div className="sf-settings-section-title">Available Backups</div>
           <div style={{ fontSize: 12, opacity: 0.72 }}>{backupRows.length} file(s) • active dataset {mono(activeDb)}</div>
         </div>
         <div style={{ overflowX: "auto", marginTop: 10 }}>

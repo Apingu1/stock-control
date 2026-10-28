@@ -5,6 +5,7 @@ import "./pwa.css";
 import "./stkflo.css";
 import "./styles/stkflo-tokens.css";
 import "./styles/stkflo-components.css";
+import "./styles/stkflo-adaptive.css";
 import App from "./App.tsx";
 import PwaUpdatePrompt from "./components/system/PwaUpdatePrompt";
 import { registerPwa } from "./pwa";
