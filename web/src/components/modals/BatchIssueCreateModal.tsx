@@ -291,8 +291,8 @@ export default function BatchIssueCreateModal({
     const stock =
       section === "packaging" ? selectablePackagingLots : selectableMaterialLots;
     return stock
-      .filter((lot) => [lot.lot_number, lot.material_code, lot.material_name]
-        .some((text) => text.toLowerCase().includes(query)))
+      // Lot number is the only permitted search key for consumption selection.
+      .filter((lot) => lot.lot_number.toLowerCase().includes(query))
       .slice(0, 18);
   };
 

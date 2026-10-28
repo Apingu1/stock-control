@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiFetch } from "../../utils/api";
 import type { LotBalance } from "../../types";
 
@@ -107,9 +108,9 @@ export default function LotStatusModal({
     }
   };
 
-  return (
-    <div className="modal-overlay">
-      <div className="modal" role="dialog" aria-modal="true">
+  return createPortal(
+    <div className="modal-overlay lot-status-overlay">
+      <div className="modal lot-status-dialog" role="dialog" aria-modal="true" aria-label="Change lot status">
         <div className="modal-header">
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 18, fontWeight: 600 }}>Change lot status</div>
@@ -220,6 +221,7 @@ export default function LotStatusModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
