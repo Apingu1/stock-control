@@ -12,18 +12,19 @@ WITH latest_status_change AS (
   ORDER BY lsc.material_lot_id, lsc.changed_at DESC
 ),
 lot_costs AS (
-  -- Weighted average unit cost based on receipt (direction=1) transactions.
+  -- Transfers do not create value. Price each PHYSICAL lot across status
+  -- segments using only RECEIPT costs (not positive STATUS_MOVE entries).
   SELECT
-    st.material_lot_id,
-    CASE
-      WHEN SUM(CASE WHEN st.direction = 1 AND st.total_value IS NOT NULL THEN st.total_value ELSE 0 END) = 0 THEN NULL
-      WHEN SUM(CASE WHEN st.direction = 1 THEN st.qty ELSE 0 END) = 0 THEN NULL
-      ELSE
-        SUM(CASE WHEN st.direction = 1 AND st.total_value IS NOT NULL THEN st.total_value ELSE 0 END)
-        / NULLIF(SUM(CASE WHEN st.direction = 1 THEN st.qty ELSE 0 END), 0)
+    ml.material_id, ml.lot_number,
+    CASE WHEN SUM(CASE WHEN st.txn_type = 'RECEIPT' THEN st.qty ELSE 0 END) > 0
+      THEN SUM(CASE WHEN st.txn_type = 'RECEIPT'
+        THEN COALESCE(st.total_value, st.unit_price * st.qty, 0) ELSE 0 END)
+        / SUM(CASE WHEN st.txn_type = 'RECEIPT' THEN st.qty ELSE 0 END)
+      ELSE NULL
     END AS lot_unit_price
-  FROM stock_transactions st
-  GROUP BY st.material_lot_id
+  FROM material_lots ml
+  LEFT JOIN stock_transactions st ON st.material_lot_id = ml.id
+  GROUP BY ml.material_id, ml.lot_number
 )
 SELECT
   ml.id AS material_lot_id,
@@ -49,7 +50,7 @@ FROM material_lots ml
 JOIN materials m ON ml.material_id = m.id
 LEFT JOIN stock_transactions st ON st.material_lot_id = ml.id
 LEFT JOIN latest_status_change lsc ON lsc.material_lot_id = ml.id
-LEFT JOIN lot_costs lc ON lc.material_lot_id = ml.id
+LEFT JOIN lot_costs lc ON lc.material_id = ml.material_id AND lc.lot_number = ml.lot_number
 GROUP BY
   ml.id, m.material_code, m.name, m.category_code, m.type_code,
   ml.lot_number, ml.expiry_date, ml.status, ml.manufacturer, ml.supplier,

@@ -9,7 +9,7 @@ DB_PORT="${DB_PORT:-5432}"
 
 export PGPASSWORD="$DB_PASSWORD"
 PSQL=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
-BOOTSTRAP_VERSION="production-schema-v5-consumption-packaging-lines"
+BOOTSTRAP_VERSION="production-schema-v6-stkflo-inventory-integrity"
 
 marker_exists="$(${PSQL[@]} -tAc "SELECT CASE WHEN to_regclass('public.deployment_schema_bootstrap') IS NULL THEN 0 ELSE 1 END;")"
 if [[ "$marker_exists" == "1" ]]; then
@@ -34,9 +34,22 @@ apply_sql() {
 echo "Applying Stock Control database schema in controlled order..."
 apply_sql "phase-a_auth_users.sql"
 apply_sql "phase-1_materials.sql"
-apply_sql "phase-1b_lots_and_txn.sql"
 
+# Recreate application read-model views before widening an existing test DB's
+# quantity column. All dropped views are rebuilt by the numbered SQL scripts.
+"${PSQL[@]}" <<'SQL'
+DROP VIEW IF EXISTS analytics_product_batch_frequency CASCADE;
+DROP VIEW IF EXISTS analytics_product_batches_cost CASCADE;
+DROP VIEW IF EXISTS analytics_batch_materials CASCADE;
+DROP VIEW IF EXISTS analytics_material_monthly CASCADE;
+DROP VIEW IF EXISTS analytics_monthly_kpis CASCADE;
+DROP VIEW IF EXISTS audit_events_view CASCADE;
+DROP VIEW IF EXISTS v_lot_balances CASCADE;
+DROP VIEW IF EXISTS lot_balances_view CASCADE;
+SQL
+apply_sql "phase-1b_lots_and_txn.sql"
 "${PSQL[@]}" -c "DROP VIEW IF EXISTS lot_balances_view CASCADE;"
+"${PSQL[@]}" -c "ALTER TABLE stock_transactions ALTER COLUMN qty TYPE NUMERIC(18,6);"
 apply_sql "phase-1d_split_lots.sql"
 apply_sql "phase-b_roles_permissions.sql"
 apply_sql "phase-b_patch_001.sql"

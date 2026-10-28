@@ -1,5 +1,5 @@
 # api/app/routers/issues.py
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import List, Optional, Any
 from uuid import uuid4
@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..material_classification import validate_base_uom
 from ..models import (
     BatchAuditEvent,
     ConsumptionBatch,
@@ -148,7 +149,9 @@ def _enforce_issue_status_policy(
     *,
     status_at_txn: str | None = None,
 ) -> None:
-    """Block rejected stock and apply the configured quarantine policy."""
+    """Block expired/rejected stock and apply the configured quarantine policy."""
+    if lot.expiry_date and lot.expiry_date < date.today():
+        raise HTTPException(status_code=400, detail=f"Lot {lot.lot_number} is expired")
     if _is_rejected_status(lot.status) or _is_rejected_status(status_at_txn):
         raise HTTPException(
             status_code=400,
@@ -395,6 +398,7 @@ def _lot_weighted_unit_price(db: Session, lot_id: int) -> Decimal | None:
     If some old receipts have total_value NULL but unit_price present, we treat
     total_value as (unit_price * qty) for the purpose of the weighting.
     """
+    lot = db.query(MaterialLot).filter(MaterialLot.id == lot_id).one()
     sum_value, sum_qty = (
         db.query(
             func.coalesce(
@@ -408,8 +412,10 @@ def _lot_weighted_unit_price(db: Session, lot_id: int) -> Decimal | None:
             ),
             func.coalesce(func.sum(StockTransaction.qty), 0),
         )
+        .join(MaterialLot, MaterialLot.id == StockTransaction.material_lot_id)
         .filter(
-            StockTransaction.material_lot_id == lot_id,
+            MaterialLot.material_id == lot.material_id,
+            MaterialLot.lot_number == lot.lot_number,
             StockTransaction.txn_type == "RECEIPT",
         )
         .one()
@@ -449,6 +455,10 @@ def create_issue(
             status_code=400,
             detail="Cancelled BMR is a zero-stock batch marker; use /issues/batch/cancelled",
         )
+    try:
+        validate_base_uom(payload.uom_code, material.base_uom_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # qty from payload (supports current float schemas OR future Decimal schemas)
     payload_qty = _to_decimal(getattr(payload, "qty", None))
@@ -648,6 +658,10 @@ def create_issue_batch(
                     "use the Cancelled BMR action"
                 ),
             )
+        try:
+            validate_base_uom(item.uom_code, material.base_uom_code)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"{line_label} line {line_number}: {exc}") from exc
         is_packaging = _is_packaging_material(material)
         if line_type == "PACKAGING" and not is_packaging:
             raise HTTPException(
@@ -1191,6 +1205,11 @@ def update_issue(
         .one()
     )
     material = db.query(Material).filter(Material.id == lot.material_id).one()
+    if payload.uom_code is not None:
+        try:
+            validate_base_uom(payload.uom_code, material.base_uom_code)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     before_snapshots = {
         grouped_txn.id: StockTransactionEdit.snapshot_txn(grouped_txn)
@@ -1256,8 +1275,7 @@ def update_issue(
         )
 
     txn.qty = new_qty
-    if payload.uom_code:
-        txn.uom_code = payload.uom_code
+    txn.uom_code = material.base_uom_code
 
     # For grouped submissions, batch/output corrections apply to every material
     # row under one audit reason. Legacy single issues retain their current

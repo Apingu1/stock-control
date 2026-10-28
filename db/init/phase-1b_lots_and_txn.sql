@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
     material_lot_id         INTEGER NOT NULL REFERENCES material_lots(id),
     txn_type                TEXT NOT NULL,
     consumption_type        TEXT NOT NULL DEFAULT 'USAGE',  -- USAGE / WASTAGE / DESTRUCTION / R_AND_D
-    qty                     NUMERIC(18, 3) NOT NULL,
+    qty                     NUMERIC(18, 6) NOT NULL,
     uom_code                TEXT NOT NULL,
     direction               SMALLINT NOT NULL,
     unit_price              NUMERIC(18, 4),
