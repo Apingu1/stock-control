@@ -104,6 +104,19 @@ body:has(.app-shell:not(.stkflo-auth-shell)) {
   background: rgba(21, 35, 57, .72);
 }
 
+/* New panel primitive: header and actions share the same arrangement. */
+.sf-surface { padding: var(--sf-space-5); }
+.sf-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sf-space-3);
+  margin-bottom: var(--sf-space-4);
+}
+.sf-panel-heading-group { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sf-panel-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--sf-space-2); }
+
 /* Shared form language from login: outlined rounded rectangles, not pills. */
 .sf-input,
 .sf-select,

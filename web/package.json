@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prebuild": "node scripts/verify-stkflo-assets.mjs"
+    "prebuild": "node scripts/verify-stkflo-assets.mjs",
+    "check:design-system": "node scripts/verify-stkflo-design-system.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
