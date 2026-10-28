@@ -68,9 +68,10 @@ export default function SessionSecurityPanel() {
   };
 
   return (
-    <section className="card" style={{ marginBottom: 16 }}>
+    <section className="card sf-phase4-security-panel" style={{ marginBottom: 16 }}>
       <div className="card-header">
         <div>
+          <div className="sf-phase4-eyebrow">SESSION SECURITY</div>
           <div className="card-title">Automatic logout</div>
           <div className="card-subtitle">
             Users are signed out after this period without keyboard, pointer or touch activity.

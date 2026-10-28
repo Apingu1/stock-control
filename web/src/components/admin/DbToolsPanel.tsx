@@ -124,14 +124,6 @@ async function downloadResponse(response: Response, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-const sectionStyle = {
-  marginTop: 12,
-  borderRadius: 16,
-  border: "1px solid rgba(255,255,255,0.08)",
-  background: "rgba(2, 6, 23, 0.30)",
-  padding: 16,
-} as const;
-
 const fieldLabelStyle = {
   opacity: 0.85,
   marginBottom: 6,
@@ -415,13 +407,14 @@ export default function DbToolsPanel() {
   };
 
   return (
-    <div className="card">
+    <div className="card sf-phase4-backup-panel">
       <div
         className="card-header"
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}
       >
         <div>
-          <div className="card-title">Database Backup & Recovery</div>
+          <div className="sf-phase4-eyebrow">DATA PROTECTION</div>
+          <div className="card-title">Database Backup &amp; Recovery</div>
           <div className="card-subtitle">Automatic protection, verified manual backups and guided recovery.</div>
         </div>
         <button type="button" className="btn" disabled={loading || restoring} onClick={() => void refreshAll()}>
@@ -445,7 +438,7 @@ export default function DbToolsPanel() {
         </div>
       ) : null}
 
-      <div style={sectionStyle}>
+      <div className="sf-phase4-backup-section">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <div className="sf-settings-section-title">Automatic Daily Backup</div>
           <div style={{ fontSize: 12, opacity: 0.72 }}>Times use {settings?.timezone || "Europe/London"}</div>
@@ -522,7 +515,7 @@ export default function DbToolsPanel() {
         ) : null}
       </div>
 
-      <div style={sectionStyle}>
+      <div className="sf-phase4-backup-section">
         <div className="sf-settings-section-title">Backup Location</div>
         <div className="sf-settings-path">{mono(hostLocation)}</div>
         <div style={{ marginTop: 7, fontSize: 13, opacity: 0.78, lineHeight: 1.5 }}>
@@ -532,9 +525,9 @@ export default function DbToolsPanel() {
         </div>
       </div>
 
-      <div style={sectionStyle}>
+      <div className="sf-phase4-backup-section">
         <div className="sf-settings-section-title">Create a Manual Backup</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 12 }}>
+        <div className="sf-phase4-inline-form">
           <input
             className="input"
             value={manualReason}
@@ -552,7 +545,7 @@ export default function DbToolsPanel() {
         </div>
       </div>
 
-      <div style={sectionStyle}>
+      <div className="sf-phase4-backup-section">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <div className="sf-settings-section-title">Restore a Backup</div>
           <div style={{ fontSize: 12, opacity: 0.72 }}>One confirmation • automatic safety backup • automatic activation</div>
@@ -589,7 +582,7 @@ export default function DbToolsPanel() {
             </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 12 }}>
+        <div className="sf-phase4-inline-form">
           <input
             className="input"
             value={restoreReason}
@@ -611,7 +604,7 @@ export default function DbToolsPanel() {
         </div>
       </div>
 
-      <div style={sectionStyle}>
+      <div className="sf-phase4-backup-section">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <div className="sf-settings-section-title">Available Backups</div>
           <div style={{ fontSize: 12, opacity: 0.72 }}>{backupRows.length} file(s) • active dataset {mono(activeDb)}</div>
@@ -686,16 +679,16 @@ export default function DbToolsPanel() {
         </div>
       </div>
 
-      <details style={sectionStyle}>
-        <summary style={{ cursor: "pointer", fontSize: 16, fontWeight: 900 }}>Advanced Recovery Controls</summary>
+      <details className="sf-phase4-backup-section sf-phase4-advanced">
+        <summary className="sf-phase4-advanced-summary">Advanced Recovery Controls</summary>
         <div style={{ marginTop: 14, fontSize: 13, opacity: 0.8 }}>
           These controls are retained for rollback and technical recovery. Normal restores activate the verified recovery
           dataset automatically.
         </div>
 
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontWeight: 900 }}>Maintenance Mode</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, marginTop: 8 }}>
+          <div className="sf-phase4-subheading">Maintenance Mode</div>
+          <div className="sf-phase4-maintenance-form">
             <input
               className="input"
               value={maintReason}
@@ -726,7 +719,7 @@ export default function DbToolsPanel() {
         </div>
 
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontWeight: 900 }}>Recovery Datasets</div>
+          <div className="sf-phase4-subheading">Recovery Datasets</div>
           <input
             className="input"
             style={{ marginTop: 8 }}
@@ -771,7 +764,7 @@ export default function DbToolsPanel() {
         </div>
 
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontWeight: 900 }}>System Information</div>
+          <div className="sf-phase4-subheading">System Information</div>
           <div
             style={{
               display: "grid",

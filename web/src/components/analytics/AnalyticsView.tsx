@@ -270,9 +270,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   const showDateBar = page.kind !== "batch" && page.kind !== "permission_error";
 
   return (
-    <section className="content analytics-shell">
+    <section className="content analytics-shell sf-phase4-analytics">
+      <header className="sf-phase4-page-heading">
+        <div className="sf-phase4-eyebrow">OPERATIONAL INTELLIGENCE</div>
+        <h1 className="sf-phase4-page-title">Analytics &amp; Reporting</h1>
+        <p className="sf-phase4-page-description">Explore material movements, product costs and traceable batch activity.</p>
+      </header>
       {/* Command bar */}
-      <div className="analytics-commandbar">
+      <div className="analytics-commandbar sf-phase4-analytics-nav">
         <div className="analytics-crumbs">
           {crumbs.map((c, idx) => (
             <React.Fragment key={idx}>
@@ -291,14 +296,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             Traceable
           </div>
           <button className="btn-secondary" onClick={() => setSearchOpen(true)}>
-            🔎 Search / Explore
+            Search / Explore
           </button>
         </div>
       </div>
 
       {/* Global date range */}
       {showDateBar ? (
-        <div className="card analytics-card analytics-datebar">
+        <div className="card analytics-card analytics-datebar sf-phase4-analytics-dates">
           <div className="rowline" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div className="card-title">Date range</div>
@@ -308,17 +313,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             </div>
             <div className="analytics-datecontrols">
               <div className="analytics-dategroup">
-                <span className="muted">From</span>
+                <label className="sf-phase4-field-label" htmlFor="sf-analytics-from">From</label>
                 <input
                   className="analytics-input"
+                  id="sf-analytics-from"
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
                 />
               </div>
               <div className="analytics-dategroup">
-                <span className="muted">To</span>
-                <input className="analytics-input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <label className="sf-phase4-field-label" htmlFor="sf-analytics-to">To</label>
+                <input id="sf-analytics-to" className="analytics-input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
             </div>
           </div>

@@ -364,7 +364,7 @@ export default function AdminUsersView() {
   const actionBtnOnClick = isSelectedRoleInactive ? activateSelectedRole : retireSelectedRole;
 
   return (
-    <section className="content" style={{ minHeight: 0 }}>
+    <section className="content sf-phase4-admin-users" style={{ minHeight: 0 }}>
       <section
         className="card"
         style={{
@@ -377,26 +377,21 @@ export default function AdminUsersView() {
       >
         <div className="card-header" style={{ flex: "0 0 auto" }}>
           <div>
-            <div className="card-title">Admin — Users & Roles</div>
+            <div className="sf-phase4-eyebrow">ACCESS MANAGEMENT</div>
+            <div className="card-title">Users &amp; Roles</div>
             <div className="card-subtitle">Manage users, roles, and permissions (server enforced).</div>
           </div>
 
-          <div className="card-actions" style={{ gap: 10 }}>
-            <div className="chip" style={{ cursor: "pointer" }} onClick={() => setTab("users")}>
-              {tab === "users" ? "✅" : "◻️"} Users
-            </div>
-            <div className="chip" style={{ cursor: "pointer" }} onClick={() => setTab("roles")}>
-              {tab === "roles" ? "✅" : "◻️"} Roles & Permissions
-            </div>
-            <button className="btn" onClick={loadAll} disabled={loading}>
-              Refresh
-            </button>
+          <div className="card-actions sf-phase4-admin-nav" role="group" aria-label="User administration sections">
+            <button type="button" className={"sf-phase4-segment" + (tab === "users" ? " is-selected" : "")} aria-pressed={tab === "users"} onClick={() => setTab("users")}>Users</button>
+            <button type="button" className={"sf-phase4-segment" + (tab === "roles" ? " is-selected" : "")} aria-pressed={tab === "roles"} onClick={() => setTab("roles")}>Roles &amp; Permissions</button>
+            <button type="button" className="btn" onClick={loadAll} disabled={loading}>Refresh</button>
           </div>
         </div>
 
         {/* ✅ Scroll container for the whole page body (users list + permissions matrix) */}
         <div
-          className="card-body"
+          className="card-body sf-phase4-admin-body"
           style={{
             flex: "1 1 auto",
             minHeight: 0,

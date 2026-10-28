@@ -247,7 +247,7 @@ const AuditTrailView: React.FC = () => {
 
   return (
     <section
-      className="card"
+      className="card sf-phase4-audit"
       style={{
         fontSize: compactFontSize,
         lineHeight: compactLineHeight,
@@ -269,8 +269,9 @@ const AuditTrailView: React.FC = () => {
         }}
       >
         <div>
+          <div className="sf-phase4-eyebrow">GMP TRACEABILITY</div>
           <div className="card-title">Audit Trail</div>
-          <div className="card-subtitle">Append-only events (GMP)</div>
+          <div className="card-subtitle">Append-only user activity and stock-control change history.</div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -297,8 +298,8 @@ const AuditTrailView: React.FC = () => {
       </div>
 
       {/* Filters (fixed) */}
-      <form onSubmit={handleApply} style={{ marginTop: 10, flex: "0 0 auto" }}>
-        <div className="filters" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
+      <form className="sf-phase4-audit-form" onSubmit={handleApply}>
+        <div className="filters sf-phase4-audit-filters">
           <div>
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
               Date from
@@ -339,7 +340,7 @@ const AuditTrailView: React.FC = () => {
             <input className="input" style={{ fontSize: compactFontSize }} value={actor} onChange={(e) => setActor(e.target.value)} placeholder="e.g. admin" />
           </div>
 
-          <div style={{ gridColumn: "span 2" }}>
+          <div className="sf-phase4-audit-search">
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
               Search (partial match)
             </div>
@@ -404,7 +405,7 @@ const AuditTrailView: React.FC = () => {
           paddingBottom: 6,
         }}
       >
-        <div style={{ overflowX: "auto" }}>
+        <div className="sf-phase4-audit-table-wrap">
           <table className="table" style={{ width: "100%" }}>
             <thead>
               <tr>
