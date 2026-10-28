@@ -99,13 +99,12 @@ export default function QuarantineView(props: { isAdmin: boolean; hasPerm: (k: s
             </div>
           </div>
 
-          <div className="card-actions sf-ops-tabs" role="tablist" aria-label="Quarantine sections" style={{ gap: 8 }}>
+          <div className="card-actions sf-ops-tabs" role="group" aria-label="Quarantine sections" style={{ gap: 8 }}>
             <button
               type="button"
               className={"btn " + (tab === "thresholds" ? "btn-primary" : "btn-ghost")}
               onClick={() => setTab("thresholds")}
-              role="tab"
-              aria-selected={tab === "thresholds"}
+              aria-pressed={tab === "thresholds"}
             >
               Thresholds
             </button>
@@ -113,8 +112,7 @@ export default function QuarantineView(props: { isAdmin: boolean; hasPerm: (k: s
               type="button"
               className={"btn " + (tab === "log" ? "btn-primary" : "btn-ghost")}
               onClick={() => setTab("log")}
-              role="tab"
-              aria-selected={tab === "log"}
+              aria-pressed={tab === "log"}
               disabled={!canView}
               title={!canView ? "You do not have permission to view quarantine logs." : ""}
             >
