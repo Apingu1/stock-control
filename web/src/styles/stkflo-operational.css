@@ -216,10 +216,10 @@
   flex-wrap: wrap;
   gap: 8px;
 }
-.sf-ops-tabs [role="tab"] {
+.sf-ops-tabs button {
   border-radius: var(--sf-radius-control);
 }
-.sf-ops-tabs [role="tab"][aria-selected="true"] {
+.sf-ops-tabs button[aria-pressed="true"] {
   box-shadow: 0 0 0 1px rgba(165, 180, 252, .24);
 }
 .sf-ops-secondary-page .page-header {
