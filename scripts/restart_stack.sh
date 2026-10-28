@@ -58,3 +58,6 @@ for i in {1..10}; do
 done
 
 echo "✨ Done."
+echo "ℹ️ Existing database volumes do not automatically run new SQL migrations."
+echo "   For StkFlo costing / NA / AMP / UNIT fixes, run:"
+echo "   bash scripts/apply_stkflo_test_db_fix.sh"
