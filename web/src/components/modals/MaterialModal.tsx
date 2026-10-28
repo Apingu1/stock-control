@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { Material, ExpiryThresholdRow } from "../../types";
 import { apiFetch } from "../../utils/api";
+import { MATERIAL_CATEGORY_TYPES } from "../../constants";
 
 import MaterialFormFields from "./materials/MaterialFormFields";
 import ApprovedManufacturersSection from "./materials/ApprovedManufacturersSection";
@@ -131,8 +132,11 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       setError("Material name is required.");
       return;
     }
-    if (!categoryCode.trim() || !typeCode.trim() || !baseUomCode.trim()) {
-      setError("Category, type and base UOM are required.");
+    const isSystemMarker = Boolean(initial?.is_cancelled_bmr_marker);
+    const allowedTypes = MATERIAL_CATEGORY_TYPES[categoryCode] ?? [];
+    if (!categoryCode || !typeCode || !baseUomCode ||
+        (!isSystemMarker && (!allowedTypes.includes(typeCode) || baseUomCode === "NA"))) {
+      setError("Select a permitted category, type and base UOM.");
       return;
     }
 

@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..material_classification import validate_material_classification
 from ..models import (
     Material,
     MaterialApprovedManufacturer,
@@ -87,6 +88,11 @@ def create_material_with_automatic_code(
     material_name = body.name.strip()
     if not material_name:
         raise HTTPException(status_code=400, detail="Material name is required")
+
+    try:
+        validate_material_classification(body.category_code, body.type_code, body.base_uom_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     material_code = _allocate_material_code(db)
     material = Material(

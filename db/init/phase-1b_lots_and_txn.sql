@@ -58,15 +58,14 @@ INSERT INTO material_categories (code, name) VALUES
     ('CREAMS_OINTMENTS',   'Creams/Ointments'),
     ('AMPOULES',           'Ampoules'),
     ('PACKAGING',          'Packaging Materials'),
-    ('OTHER',              'OTHER')
+    ('NA',                 'Not Applicable (system record)')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO material_types (code, name) VALUES
     ('API',         'Active Pharmaceutical Ingredient'),
-    ('Licensed FP', 'Licensed FP'),
+    ('LICENSED FP', 'Licensed FP'),
     ('EXCIPIENT',   'Excipient'),
-    ('PACKAGING',   'Packaging'),
-    ('OTHER',       'Other')
+    ('NA',          'Not Applicable (system and packaging)')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO uoms (code, description) VALUES
@@ -75,7 +74,9 @@ INSERT INTO uoms (code, description) VALUES
     ('ML',   'Millilitre'),
     ('TAB',  'Tablet'),
     ('CAP',  'Capsule'),
-    ('NA',   'Not Applicable')
+    ('NA',   'Not Applicable'),
+    ('AMP',  'Ampoule'),
+    ('UNIT', 'Units')
 ON CONFLICT (code) DO NOTHING;
 
 -- Material lots ---------------------------------------------------------------

@@ -20,7 +20,7 @@ VALUES (
   'Cancelled BMR',
   'Cancelled BMR',
   'NA',
-  'OTHER',
+  'NA',
   'NA',
   NULL,
   NULL,
@@ -32,6 +32,7 @@ ON CONFLICT (material_code) DO NOTHING;
 
 UPDATE materials
 SET is_cancelled_bmr_marker = TRUE,
+    category_code = 'NA', type_code = 'NA', base_uom_code = 'NA',
     updated_at = NOW()
 WHERE material_code = 'Cancelled BMR'
   AND name = 'Cancelled BMR';

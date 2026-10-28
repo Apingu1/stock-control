@@ -45,7 +45,7 @@ VALUES
     ('AMPOULES', 'EXCIPIENT', 30, TRUE, 'seed'),
 
     -- Packaging
-    ('PACKAGING', 'PACKAGING', 1, TRUE, 'seed')
+    ('PACKAGING', 'NA', 1, TRUE, 'seed')
 
 ON CONFLICT (category_code, type_code)
 DO UPDATE SET

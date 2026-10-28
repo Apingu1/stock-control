@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..material_classification import validate_material_classification
 from ..models import (
     Material,
     MaterialCategory,
@@ -56,6 +57,13 @@ def create_material(
 
     material_code = body.material_code.strip()
     material_name = body.name.strip()
+    try:
+        validate_material_classification(
+            body.category_code, body.type_code, body.base_uom_code,
+            system_marker=material_code == "Cancelled BMR" and material_name == "Cancelled BMR",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     m = Material(
         material_code=material_code,
         name=material_name,
@@ -188,6 +196,13 @@ def update_material(
     _ensure_lookup_exists(db, MaterialCategory, body.category_code, "Category")
     _ensure_lookup_exists(db, MaterialType, body.type_code, "Type")
     _ensure_lookup_exists(db, Uom, body.base_uom_code, "UOM")
+    try:
+        validate_material_classification(
+            body.category_code, body.type_code, body.base_uom_code,
+            system_marker=bool(m.is_cancelled_bmr_marker),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     reason = (body.edit_reason or "").strip()
     if not reason:

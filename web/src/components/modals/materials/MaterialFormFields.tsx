@@ -1,6 +1,7 @@
 import React from "react";
 import {
   MATERIAL_CATEGORY_OPTIONS,
+  MATERIAL_CATEGORY_TYPES,
   MATERIAL_TYPE_OPTIONS,
   MATERIAL_UOM_OPTIONS,
 } from "../../../constants";
@@ -57,6 +58,9 @@ type Props = {
 
 const MaterialFormFields: React.FC<Props> = (props) => {
   const isEdit = props.mode === "edit";
+  const isSystemMarker = props.materialCode === "Cancelled BMR";
+  const allowedTypes = MATERIAL_CATEGORY_TYPES[props.categoryCode] ?? [];
+  const lockedType = allowedTypes.length === 1;
 
   return (
     <div className="form-grid">
@@ -93,9 +97,16 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         <select
           className="input"
           value={props.categoryCode ?? ""}
-          onChange={(e) => props.setCategoryCode(e.target.value)}
+          disabled={isSystemMarker}
+          onChange={(e) => {
+            const category = e.target.value;
+            props.setCategoryCode(category);
+            const allowed = MATERIAL_CATEGORY_TYPES[category] ?? [];
+            props.setTypeCode(allowed.length === 1 ? allowed[0] : "");
+          }}
         >
           <option value="">— Select category —</option>
+          {isSystemMarker && <option value="NA">NA (system record)</option>}
           {MATERIAL_CATEGORY_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
@@ -109,12 +120,13 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         <select
           className="input"
           value={props.typeCode ?? ""}
+          disabled={!props.categoryCode || lockedType || isSystemMarker}
           onChange={(e) => props.setTypeCode(e.target.value)}
         >
           <option value="">— Select type —</option>
           {MATERIAL_TYPE_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
+            <option key={opt} value={opt} disabled={!allowedTypes.includes(opt) && !isSystemMarker}>
+              {opt === "NA" ? "N/A" : opt}
             </option>
           ))}
         </select>
@@ -125,9 +137,11 @@ const MaterialFormFields: React.FC<Props> = (props) => {
         <select
           className="input"
           value={props.baseUomCode ?? ""}
+          disabled={isSystemMarker}
           onChange={(e) => props.setBaseUomCode(e.target.value)}
         >
           <option value="">— Select base UOM —</option>
+          {isSystemMarker && <option value="NA">N/A (system record)</option>}
           {MATERIAL_UOM_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
               {opt}

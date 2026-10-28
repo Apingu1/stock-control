@@ -5,27 +5,35 @@ export const MATERIAL_CATEGORY_OPTIONS: string[] = [
   "CREAMS_OINTMENTS",
   "AMPOULES",
   "PACKAGING",
-  "NA",
 ];
 
 export const MATERIAL_TYPE_OPTIONS: string[] = [
   "API",
   "LICENSED FP",
   "EXCIPIENT",
-  "PACKAGING",
-  "OTHER",
+  "NA", // Reserved for the automatically classified Packaging category.
 ];
+
+export const MATERIAL_CATEGORY_TYPES: Record<string, string[]> = {
+  SOLID_RAW_MAT: ["API", "EXCIPIENT"],
+  LIQUID_RAW_MAT: ["API", "LICENSED FP", "EXCIPIENT"],
+  TABLETS_CAPSULES: ["LICENSED FP"],
+  CREAMS_OINTMENTS: ["LICENSED FP", "EXCIPIENT"],
+  AMPOULES: ["API", "LICENSED FP", "EXCIPIENT"],
+  PACKAGING: ["NA"],
+};
+
+export const BATCH_SIZE_UOM_OPTIONS = ["mL", "L", "g", "mg", "Tabs", "Caps"] as const;
 
 export const MATERIAL_UOM_OPTIONS: string[] = [
   "G",
-  "KG",
   "MG",
   "ML",
   "L",
   "TAB",
   "CAP",
   "AMP",
-  "NA",
+  "UNIT",
 ];
 
 export type ConsumptionTypeCode =

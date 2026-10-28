@@ -45,7 +45,7 @@ ON CONFLICT (code) DO NOTHING;
 INSERT INTO material_types (code, name) VALUES
     ('API',       'Active Pharmaceutical Ingredient'),
     ('EXCIPIENT', 'Excipient'),
-    ('OTHER',     'Other')
+    ('NA',        'Not Applicable (system and packaging)')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO uoms (code, description) VALUES
@@ -55,5 +55,7 @@ INSERT INTO uoms (code, description) VALUES
     ('L',    'Litre'),
     ('TAB',  'Tablet'),
     ('CAP',  'Capsule'),
-    ('NA',   'Not Applicable')
+    ('NA',   'Not Applicable'),
+    ('AMP',  'Ampoule'),
+    ('UNIT', 'Units')
 ON CONFLICT (code) DO NOTHING;
