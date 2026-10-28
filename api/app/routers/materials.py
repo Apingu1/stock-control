@@ -10,6 +10,8 @@ from ..db import get_db
 from ..material_classification import validate_material_classification
 from ..models import (
     Material,
+    MaterialLot,
+    StockTransaction,
     MaterialCategory,
     MaterialType,
     Uom,
@@ -203,6 +205,17 @@ def update_material(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # The ledger stores quantities in the material's fixed base UOM.
+    if body.base_uom_code != m.base_uom_code:
+        has_transactions = (
+            db.query(StockTransaction.id)
+            .join(MaterialLot, MaterialLot.id == StockTransaction.material_lot_id)
+            .filter(MaterialLot.material_id == m.id)
+            .first()
+        )
+        if has_transactions:
+            raise HTTPException(status_code=409, detail="Cannot change base UOM after stock transactions exist")
 
     reason = (body.edit_reason or "").strip()
     if not reason:

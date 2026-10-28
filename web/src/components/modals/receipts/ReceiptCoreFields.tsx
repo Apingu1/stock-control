@@ -145,8 +145,8 @@ const ReceiptCoreFields: React.FC<Props> = ({
         <input
           className="input"
           type="number"
-          min={0}
-          step="0.001"
+          min={0.000001}
+          step="0.000001"
           placeholder="e.g. 120"
           value={qty}
           onChange={(e) => setQty(e.target.value)}

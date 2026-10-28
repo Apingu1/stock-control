@@ -226,7 +226,7 @@ class ReceiptCreate(ApiBaseModel):
     lot_number: str
     expiry_date: Optional[datetime] = None
     receipt_date: date
-    qty: Dec6
+    qty: Dec6 = Field(..., gt=0)
     uom_code: str
     unit_price: Optional[Dec6] = None
     total_value: Optional[Dec6] = None
@@ -247,7 +247,7 @@ class ReceiptUpdate(ApiBaseModel):
     Edit an existing RECEIPT transaction.
     Audit reason is mandatory.
     """
-    qty: Dec6
+    qty: Dec6 = Field(..., gt=0)
     unit_price: Optional[Dec6] = None
     total_value: Optional[Dec6] = None
     target_ref: Optional[str] = None

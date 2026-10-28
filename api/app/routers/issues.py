@@ -1,5 +1,5 @@
 # api/app/routers/issues.py
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import List, Optional, Any
 from uuid import uuid4
@@ -22,6 +22,7 @@ from ..models import (
     StockTransactionEdit,
     QuarantineEvent,  # ✅ Phase Q1: ledger rows for DESTRUCTION
     QuarantinePolicySetting,
+    ExpiryThresholdSetting,
 )
 from ..schemas import (
     CancelledBatchCreate,
@@ -148,10 +149,32 @@ def _enforce_issue_status_policy(
     material: Material,
     *,
     status_at_txn: str | None = None,
+    consumption_type: str = "USAGE",
 ) -> None:
-    """Block expired/rejected stock and apply the configured quarantine policy."""
+    """Enforce disposition for usage while retaining controlled destruction."""
+    if consumption_type == "DESTRUCTION":
+        # Expired/rejected/quarantined stock must remain destructible.
+        return
     if lot.expiry_date and lot.expiry_date < date.today():
         raise HTTPException(status_code=400, detail=f"Lot {lot.lot_number} is expired")
+    if (lot.status or "").upper() == "AVAILABLE" and lot.expiry_date:
+        threshold = (
+            db.query(ExpiryThresholdSetting)
+            .filter(
+                ExpiryThresholdSetting.category_code == material.category_code,
+                ExpiryThresholdSetting.type_code == material.type_code,
+                ExpiryThresholdSetting.is_active.is_(True),
+            )
+            .one_or_none()
+        )
+        days = (material.auto_quarantine_override_days
+                if material.auto_quarantine_override_days is not None
+                else threshold.threshold_days if threshold is not None else 0)
+        if lot.expiry_date <= date.today() + timedelta(days=days):
+            raise HTTPException(status_code=400, detail=(
+                f"Lot {lot.lot_number} is within the automatic quarantine window. "
+                "Refresh Live Lots to apply the disposition before issuing."
+            ))
     if _is_rejected_status(lot.status) or _is_rejected_status(status_at_txn):
         raise HTTPException(
             status_code=400,
@@ -517,7 +540,7 @@ def create_issue(
 
     # Authoritative quarantine control. The UI warning/checkbox must not be the
     # only protection, because requests can still be posted directly to /issues/.
-    _enforce_issue_status_policy(db, lot, material)
+    _enforce_issue_status_policy(db, lot, material, consumption_type=requested_type)
 
     # Current balance as Decimal
     current_balance = (
@@ -800,7 +823,7 @@ def create_issue_batch(
                 )
 
             try:
-                _enforce_issue_status_policy(db, lot, material)
+                _enforce_issue_status_policy(db, lot, material, consumption_type=consumption_type)
             except HTTPException as exc:
                 raise HTTPException(
                     status_code=exc.status_code,
@@ -1240,7 +1263,10 @@ def update_issue(
     # further issue from the same lot, so enforce quarantine policy before the
     # stock balance check. Reductions/corrections remain possible for audit fixes.
     if new_qty > old_qty:
-        _enforce_issue_status_policy(db, lot, material, status_at_txn=txn.material_status_at_txn)
+        _enforce_issue_status_policy(
+            db, lot, material, status_at_txn=txn.material_status_at_txn,
+            consumption_type=(txn.consumption_type or "USAGE"),
+        )
 
     balance_without_old = current_balance_dec + old_qty
     if new_qty > balance_without_old:
