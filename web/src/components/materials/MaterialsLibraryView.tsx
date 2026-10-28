@@ -91,7 +91,7 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
   };
 
   return (
-    <section className="content">
+    <section className="content stock-workspace-page">
       <section className="card">
         <div className="card-header">
           <div>

@@ -230,7 +230,7 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
   const showActions = !!canEdit;
 
   return (
-    <section className="content">
+    <section className="content stock-workspace-page">
       <section className="card">
         <div className="card-header">
           <div>

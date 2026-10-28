@@ -307,7 +307,7 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   const emptyColSpan = showActions ? 21 : 20;
 
   return (
-    <section className="content">
+    <section className="content stock-workspace-page">
       <section className="card">
         <div className="card-header">
           <div>

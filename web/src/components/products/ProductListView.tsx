@@ -61,7 +61,7 @@ export default function ProductListView({ products, materials, loading, error, c
   };
 
   return (
-    <section className="content">
+    <section className="content stock-workspace-page">
       <section className="card product-list-card">
         <div className="card-header">
           <div><div className="card-title">Product List</div><div className="card-subtitle">Controlled product master data and mandatory formulation materials.</div></div>

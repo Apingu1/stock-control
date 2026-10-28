@@ -2275,7 +2275,7 @@ section.content {
 /* StkFlo operational pages: responsive width and viewport-height tables.
    The previous 480px hard-stop left unused vertical space on tall screens. */
 .main { box-sizing: border-box; }
-.main > section.content {
+.main > section.content.stock-workspace-page {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -2286,7 +2286,7 @@ section.content {
   box-sizing: border-box;
   overflow: hidden;
 }
-.main > section.content > .card {
+.main > section.content.stock-workspace-page > .card {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -2297,28 +2297,28 @@ section.content {
   box-sizing: border-box;
   overflow: hidden;
 }
-.main > section.content > .card > .card-header {
+.main > section.content.stock-workspace-page > .card > .card-header {
   flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 12px;
   min-width: 0;
 }
-.main > section.content > .card > .card-header > * {
+.main > section.content.stock-workspace-page > .card > .card-header > * {
   min-width: 0;
   max-width: 100%;
 }
-.main > section.content > .card .card-actions {
+.main > section.content.stock-workspace-page > .card .card-actions {
   flex-wrap: wrap;
   max-width: 100%;
   min-width: 0;
 }
-.main > section.content > .card .card-actions > .input {
+.main > section.content.stock-workspace-page > .card .card-actions > .input {
   max-width: 100%;
   min-width: 0;
   margin-right: 0 !important;
 }
-.main > section.content > .card > .table-wrapper {
+.main > section.content.stock-workspace-page > .card > .table-wrapper {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -2327,12 +2327,12 @@ section.content {
   overflow: auto !important;
   scrollbar-gutter: stable;
 }
-.main > section.content > .card > .table-wrapper table {
+.main > section.content.stock-workspace-page > .card > .table-wrapper table {
   width: 100%;
   border-collapse: collapse;
 }
 /* Product List controls must wrap within the available width after sidebar. */
-.main > section.content > .product-list-card .product-filters {
+.main > section.content.stock-workspace-page > .product-list-card .product-filters {
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
@@ -2341,38 +2341,38 @@ section.content {
   min-width: 0;
   gap: 9px;
 }
-.main > section.content > .product-list-card .product-filters > .input {
+.main > section.content.stock-workspace-page > .product-list-card .product-filters > .input {
   min-width: 0;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   grid-column: auto;
 }
-.main > section.content > .product-list-card .product-filters > .product-search {
+.main > section.content.stock-workspace-page > .product-list-card .product-filters > .product-search {
   grid-column: span 2;
 }
-.main > section.content > .product-list-card .product-table-wrap {
+.main > section.content.stock-workspace-page > .product-list-card .product-table-wrap {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   max-height: none !important;
   overflow: auto;
 }
-.main > section.content > .product-list-card .product-table {
+.main > section.content.stock-workspace-page > .product-list-card .product-table {
   width: 100%;
   min-width: 760px; /* horizontal overflow is restricted to the table */
   border-collapse: collapse;
 }
-.main > section.content > .product-list-card .product-table th,
-.main > section.content > .product-list-card .product-table td {
+.main > section.content.stock-workspace-page > .product-list-card .product-table th,
+.main > section.content.stock-workspace-page > .product-list-card .product-table td {
   overflow-wrap: anywhere;
 }
 @media (max-width: 900px) {
-  .main > section.content > .product-list-card .product-filters > .product-search { grid-column: 1 / -1; }
-  .main > section.content > .card .card-actions > .input { flex: 1 1 170px; }
+  .main > section.content.stock-workspace-page > .product-list-card .product-filters > .product-search { grid-column: 1 / -1; }
+  .main > section.content.stock-workspace-page > .card .card-actions > .input { flex: 1 1 170px; }
 }
 @media (max-width: 520px) {
-  .main > section.content > .product-list-card .product-filters { grid-template-columns: 1fr; }
+  .main > section.content.stock-workspace-page > .product-list-card .product-filters { grid-template-columns: 1fr; }
 }
 
 /* Native date/calendar icons: Chromium/Edge defaults appear black on dark UI.
