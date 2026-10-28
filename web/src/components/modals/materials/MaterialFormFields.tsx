@@ -144,7 +144,7 @@ const MaterialFormFields: React.FC<Props> = (props) => {
           {isSystemMarker && <option value="NA">N/A (system record)</option>}
           {MATERIAL_UOM_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
-              {opt}
+              {opt === "UNIT" ? "Units" : opt === "AMP" ? "Ampoules" : opt}
             </option>
           ))}
         </select>
