@@ -70,6 +70,7 @@ DO $check$
 DECLARE
   missing text;
   view_sql text;
+  mismatched_lots integer;
 BEGIN
   SELECT string_agg(kind || ':' || code, ', ') INTO missing
   FROM (VALUES ('type', 'NA'), ('uom', 'UNIT'), ('uom', 'AMP')) v(kind,code)
@@ -82,7 +83,36 @@ BEGIN
   IF position('RECEIPT' in view_sql) = 0 OR position('lot_costs' in view_sql) = 0 THEN
     RAISE EXCEPTION 'Expected receipt-based lot valuation view is not installed';
   END IF;
-  RAISE NOTICE 'Required lookup codes and physical-lot valuation logic verified';
+  -- Reconcile actual Live Lots valuation with the receipt-derived cost per
+  -- base UOM. Exclude unpriced receipts because their unit cost is unknown.
+  WITH receipt_bases AS (
+    SELECT ml.material_id, ml.lot_number,
+           SUM(st.qty) received_qty,
+           SUM(COALESCE(st.total_value, st.unit_price * st.qty, 0)) receipt_cost,
+           COUNT(*) FILTER (WHERE st.total_value IS NULL AND st.unit_price IS NULL) unpriced_receipts
+    FROM stock_transactions st
+    JOIN material_lots ml ON ml.id = st.material_lot_id
+    WHERE st.txn_type = 'RECEIPT'
+    GROUP BY ml.material_id, ml.lot_number
+  ), value_comparison AS (
+    SELECT r.material_id, r.lot_number,
+           SUM(v.lot_value) actual_value,
+           SUM(v.balance_qty) * r.receipt_cost / NULLIF(r.received_qty, 0) expected_value
+    FROM receipt_bases r
+    JOIN material_lots ml ON ml.material_id = r.material_id AND ml.lot_number = r.lot_number
+    JOIN lot_balances_view v ON v.material_lot_id = ml.id
+    WHERE r.received_qty > 0 AND r.unpriced_receipts = 0
+    GROUP BY r.material_id, r.lot_number, r.received_qty, r.receipt_cost
+  )
+  SELECT COUNT(*) INTO mismatched_lots
+  FROM value_comparison
+  WHERE actual_value IS NULL OR ABS(actual_value - expected_value) > 0.01;
+  IF mismatched_lots > 0 THEN
+    RAISE EXCEPTION 'Receipt-based valuation check failed for % physical lot(s)', mismatched_lots;
+  END IF;
+  RAISE NOTICE 'Lookup codes and % receipt-valued physical lot(s) reconciled',
+    (SELECT COUNT(DISTINCT ml.material_id::text || ':' || ml.lot_number)
+     FROM material_lots ml JOIN lot_balances_view v ON v.material_lot_id = ml.id);
 END
 $check$;
 
