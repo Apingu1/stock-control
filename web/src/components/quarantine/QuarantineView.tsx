@@ -88,21 +88,24 @@ export default function QuarantineView(props: { isAdmin: boolean; hasPerm: (k: s
   }, [canView]);
 
   return (
-    <section className="content" style={{ minHeight: 0 }}>
+    <section className="content sf-operational-page sf-ops-secondary-page" style={{ minHeight: 0 }}>
       <section className="card" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <div className="card-header">
           <div>
+            <div className="sf-ops-eyebrow">STOCK DISPOSITION</div>
             <div className="card-title">Quarantine</div>
             <div className="card-subtitle">
               Auto-quarantine thresholds (policy) and the quarantine activity log (status changes + destruction issues).
             </div>
           </div>
 
-          <div className="card-actions" style={{ gap: 8 }}>
+          <div className="card-actions sf-ops-tabs" role="tablist" aria-label="Quarantine sections" style={{ gap: 8 }}>
             <button
               type="button"
               className={"btn " + (tab === "thresholds" ? "btn-primary" : "btn-ghost")}
               onClick={() => setTab("thresholds")}
+              role="tab"
+              aria-selected={tab === "thresholds"}
             >
               Thresholds
             </button>
@@ -110,6 +113,8 @@ export default function QuarantineView(props: { isAdmin: boolean; hasPerm: (k: s
               type="button"
               className={"btn " + (tab === "log" ? "btn-primary" : "btn-ghost")}
               onClick={() => setTab("log")}
+              role="tab"
+              aria-selected={tab === "log"}
               disabled={!canView}
               title={!canView ? "You do not have permission to view quarantine logs." : ""}
             >
@@ -118,7 +123,7 @@ export default function QuarantineView(props: { isAdmin: boolean; hasPerm: (k: s
           </div>
         </div>
 
-        <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
+        <div className="sf-ops-inner-scroll" style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
           {tab === "thresholds" && <ThresholdsTab isAdmin={isAdmin} />}
           {tab === "log" && <LogTab canView={canView} />}
         </div>
@@ -208,7 +213,7 @@ function ThresholdsTab(props: { isAdmin: boolean }) {
   }
 
   return (
-    <div className="page" style={{ paddingTop: 0 }}>
+    <div className="page sf-ops-subpage" style={{ paddingTop: 0 }}>
       {error && <div className="error-row">{error}</div>}
 
       <div className="info-row" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -479,7 +484,7 @@ function LogTab(props: { canView: boolean }) {
   }, [q, rows]);
 
   return (
-    <div className="page" style={{ paddingTop: 0 }}>
+    <div className="page sf-ops-subpage" style={{ paddingTop: 0 }}>
       <div className="info-row" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input
           value={q}
