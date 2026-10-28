@@ -83,7 +83,7 @@ export default function ProductListView({ products, materials, loading, error, c
           isFiltered={Boolean(search.trim()) || [status, licence, lineType, storage, controlled, exportStatus].some((value) => value !== "ALL")}
           onClear={() => { setSearch(""); setStatus("ALL"); setLicence("ALL"); setLineType("ALL"); setStorage("ALL"); setControlled("ALL"); setExportStatus("ALL"); }}
         />
-        {(error || actionError) && <div className="error-row">{actionError || error}
+        {(error || actionError) && <div className="error-row">{actionError || error}</div>}
         {loading ? <div className="info-row">Loading Product List…</div> : (
           <div className="table-wrapper product-table-wrap">
             <table className="product-table sf-ops-table">
