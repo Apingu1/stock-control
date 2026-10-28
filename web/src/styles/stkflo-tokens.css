@@ -1,0 +1,92 @@
+/**
+ * StkFlo Design System — Phase 01
+ * Canonical visual tokens extracted from the approved StkFlo login.
+ * No external font or image service: suitable for on-premises use.
+ *
+ * The legacy aliases below are temporary migration bridges.
+ * New UI must use --sf-* tokens rather than introducing new literal colours.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Foundation */
+  --sf-bg-canvas: #08132c;
+  --sf-bg-shell: #0b1428;
+  --sf-bg-surface: #14243b;
+  --sf-bg-surface-raised: #1c2a42;
+  --sf-bg-field: #0c192e;
+  --sf-bg-hover: #263752;
+  --sf-bg-table-head: #101d33;
+  --sf-surface-gradient: linear-gradient(155deg, #1c2a42, #172338 85%);
+  --sf-shell-gradient: linear-gradient(145deg, #101d35, #0b1428 68%, #081225);
+  --sf-accent-gradient: linear-gradient(100deg, #5b5ff0, #7456e9);
+
+  /* Typography */
+  --sf-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sf-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --sf-text-primary: #f8fafc;
+  --sf-text-secondary: #a1afc6;
+  --sf-text-muted: #8295b1;
+  --sf-text-placeholder: #7284a1;
+  --sf-text-accent: #a5b4fc;
+  --sf-font-xs: 11px;
+  --sf-font-sm: 12px;
+  --sf-font-md: 13px;
+  --sf-font-lg: 16px;
+  --sf-font-title: 24px;
+  --sf-line-height: 1.5;
+
+  /* Brand / meaning */
+  --sf-indigo: #6366f1;
+  --sf-violet: #8b5cf6;
+  --sf-cyan: #06b6d4;
+  --sf-success: #55d6b4;
+  --sf-warning: #fbbf24;
+  --sf-danger: #f87171;
+  --sf-info: #93c5fd;
+
+  /* Borders / radii / shadows */
+  --sf-border-muted: rgba(148, 163, 184, .14);
+  --sf-border-normal: rgba(158, 174, 204, .23);
+  --sf-border-field: #415574;
+  --sf-border-focus: #878dff;
+  --sf-radius-xs: 8px;
+  --sf-radius-control: 10px;
+  --sf-radius-card: 16px;
+  --sf-radius-panel: 20px;
+  --sf-radius-pill: 999px;
+  --sf-shadow-card: 0 16px 45px rgba(0, 0, 0, .20);
+  --sf-shadow-modal: 0 32px 90px rgba(0, 0, 0, .48);
+  --sf-shadow-focus: 0 0 0 3px rgba(99, 102, 241, .19);
+
+  /* Rhythm — phase 02 will refine density/layout per viewport */
+  --sf-space-1: 4px;
+  --sf-space-2: 8px;
+  --sf-space-3: 12px;
+  --sf-space-4: 16px;
+  --sf-space-5: 20px;
+  --sf-space-6: 24px;
+  --sf-control-min-height: 38px;
+  --sf-motion-fast: 150ms;
+
+  /* Compatibility bridges for existing dashboard / analytics CSS. */
+  --bg: var(--sf-bg-canvas);
+  --bg-dark: var(--sf-bg-shell);
+  --bg-light: var(--sf-bg-surface);
+  --text-primary: var(--sf-text-primary);
+  --text-secondary: var(--sf-text-secondary);
+  --text-faint: var(--sf-text-muted);
+  --card-bg: var(--sf-surface-gradient);
+  --card-border: var(--sf-border-muted);
+  --accent-1: var(--sf-indigo);
+  --accent-2: var(--sf-violet);
+  --red: var(--sf-danger);
+  --green: var(--sf-success);
+  --yellow: var(--sf-warning);
+  --radius: var(--sf-radius-card);
+  --radius-sm: var(--sf-radius-control);
+  --glass-bg: rgba(20, 36, 59, .92);
+  --glass-bg-2: rgba(28, 42, 66, .94);
+  --glass-border: var(--sf-border-muted);
+  --glass-border-strong: var(--sf-border-normal);
+}

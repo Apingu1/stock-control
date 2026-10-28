@@ -1,0 +1,346 @@
+/**
+ * StkFlo shared components — Phase 01
+ * Loaded after existing styles; maps existing classnames onto the same palette
+ * as the approved login, while exposing new sf-* primitives for future pages.
+ * This file intentionally does NOT change page geometry or modal state.
+ */
+
+/* Signed-in workspace only; login and sidebar retain approved styles. */
+body:has(.app-shell:not(.stkflo-auth-shell)) {
+  background: var(--sf-bg-canvas);
+  color: var(--sf-text-primary);
+  font-family: var(--sf-font-family);
+  line-height: var(--sf-line-height);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell:not(.stkflo-auth-shell) .main {
+  background: var(--sf-bg-canvas);
+  color: var(--sf-text-primary);
+}
+
+.app-shell:not(.stkflo-auth-shell) .page-title {
+  color: var(--sf-text-primary);
+  font-size: var(--sf-font-title);
+  font-weight: 750;
+  letter-spacing: -.028em;
+}
+
+.app-shell:not(.stkflo-auth-shell) .page-subtitle,
+.app-shell:not(.stkflo-auth-shell) .page-tag,
+.app-shell:not(.stkflo-auth-shell) .card-subtitle {
+  color: var(--sf-text-secondary);
+}
+
+.app-shell:not(.stkflo-auth-shell) .page-tag {
+  color: var(--sf-text-accent);
+}
+
+/* Panels. Preserve existing widths, grid positions and overflow rules. */
+.sf-surface,
+.app-shell:not(.stkflo-auth-shell) .card,
+.app-shell:not(.stkflo-auth-shell) .card.analytics-card {
+  background: var(--sf-surface-gradient);
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-card);
+  box-shadow: var(--sf-shadow-card);
+  color: var(--sf-text-primary);
+}
+
+.sf-surface--flat { background: var(--sf-bg-surface); }
+.sf-surface--raised { background: var(--sf-bg-surface-raised); }
+.sf-surface--subtle { background: rgba(20, 36, 59, .66); }
+
+.sf-panel-heading,
+.app-shell:not(.stkflo-auth-shell) .card-title {
+  font-size: var(--sf-font-lg);
+  line-height: 1.35;
+  font-weight: 740;
+  letter-spacing: -.018em;
+  color: var(--sf-text-primary);
+}
+
+.sf-panel-subtitle,
+.app-shell:not(.stkflo-auth-shell) .card-subtitle {
+  font-size: var(--sf-font-sm);
+  line-height: 1.5;
+}
+
+.sf-eyebrow {
+  color: var(--sf-text-accent);
+  font-size: var(--sf-font-xs);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  font-weight: 780;
+}
+
+/* KPI tiles retain the dashboard grid defined elsewhere. */
+.app-shell:not(.stkflo-auth-shell) .metric-card {
+  background: linear-gradient(160deg, #26334d, #1c2940);
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-card);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .13);
+  color: var(--sf-text-primary);
+}
+
+.app-shell:not(.stkflo-auth-shell) .metric-card.accent-1 {
+  background: linear-gradient(150deg, #303963, #293154);
+  border-color: rgba(165, 180, 252, .18);
+}
+
+.app-shell:not(.stkflo-auth-shell) .metric-card.accent-2 {
+  background: linear-gradient(150deg, #3b315d, #2c2c51);
+  border-color: rgba(165, 180, 252, .18);
+}
+
+.app-shell:not(.stkflo-auth-shell) .dash-widget,
+.app-shell:not(.stkflo-auth-shell) .dash-alert-item,
+.app-shell:not(.stkflo-auth-shell) .dash-batch-item {
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-control);
+}
+
+.app-shell:not(.stkflo-auth-shell) .dash-widget {
+  background: rgba(21, 35, 57, .72);
+}
+
+/* Shared form language from login: outlined rounded rectangles, not pills. */
+.sf-input,
+.sf-select,
+.sf-textarea,
+.app-shell:not(.stkflo-auth-shell) .input,
+.app-shell:not(.stkflo-auth-shell) .analytics-input,
+.modal .input,
+.modal .analytics-input {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--sf-control-min-height);
+  border-radius: var(--sf-radius-control);
+  border: 1px solid var(--sf-border-field);
+  background: var(--sf-bg-field);
+  color: var(--sf-text-primary);
+  font: inherit;
+  font-size: var(--sf-font-md);
+  line-height: 1.4;
+  outline: none;
+  transition: border-color var(--sf-motion-fast) ease, box-shadow var(--sf-motion-fast) ease;
+}
+
+.sf-input,
+.sf-select,
+.app-shell:not(.stkflo-auth-shell) .input,
+.app-shell:not(.stkflo-auth-shell) .analytics-input,
+.modal .input,
+.modal .analytics-input {
+  padding: 8px 12px;
+}
+
+.sf-textarea { padding: 10px 13px; resize: vertical; }
+.sf-input::placeholder,
+.sf-textarea::placeholder,
+.app-shell:not(.stkflo-auth-shell) .input::placeholder,
+.modal .input::placeholder {
+  color: var(--sf-text-placeholder);
+  opacity: 1;
+}
+
+.sf-input:focus,
+.sf-select:focus,
+.sf-textarea:focus,
+.app-shell:not(.stkflo-auth-shell) .input:focus,
+.app-shell:not(.stkflo-auth-shell) .analytics-input:focus,
+.modal .input:focus,
+.modal .analytics-input:focus {
+  border-color: var(--sf-border-focus);
+  box-shadow: var(--sf-shadow-focus);
+}
+
+.sf-input:disabled,
+.sf-select:disabled,
+.sf-textarea:disabled,
+.app-shell:not(.stkflo-auth-shell) .input:disabled,
+.modal .input:disabled {
+  opacity: .62;
+  cursor: not-allowed;
+}
+
+.sf-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sf-label,
+.app-shell:not(.stkflo-auth-shell) .label,
+.modal .label {
+  display: block;
+  color: #c1cee3;
+  font-size: var(--sf-font-xs);
+  font-weight: 720;
+  letter-spacing: .075em;
+  line-height: 1.45;
+}
+.sf-field-hint { color: var(--sf-text-muted); font-size: var(--sf-font-xs); }
+.sf-field-error { color: #fecaca; font-size: var(--sf-font-sm); }
+
+/* Buttons. Legacy selectors are bridged so the current application benefits
+   immediately, but business states, actions and click handlers are unchanged. */
+.sf-button,
+.app-shell:not(.stkflo-auth-shell) .btn,
+.app-shell:not(.stkflo-auth-shell) .btn-primary,
+.app-shell:not(.stkflo-auth-shell) .btn-secondary,
+.modal .btn,
+.modal .btn-primary,
+.modal .btn-secondary {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--sf-control-min-height);
+  padding: 8px 13px;
+  border-radius: var(--sf-radius-control);
+  border: 1px solid var(--sf-border-normal);
+  color: var(--sf-text-primary);
+  font-family: var(--sf-font-family);
+  font-size: var(--sf-font-md);
+  font-weight: 720;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background var(--sf-motion-fast) ease, border-color var(--sf-motion-fast) ease,
+    box-shadow var(--sf-motion-fast) ease, filter var(--sf-motion-fast) ease;
+}
+.sf-button,
+.sf-button--secondary,
+.app-shell:not(.stkflo-auth-shell) .btn,
+.app-shell:not(.stkflo-auth-shell) .btn-secondary,
+.modal .btn,
+.modal .btn-secondary {
+  background: var(--sf-bg-surface-raised);
+}
+.sf-button--primary,
+.app-shell:not(.stkflo-auth-shell) .btn-primary,
+.app-shell:not(.stkflo-auth-shell) .btn.primary,
+.modal .btn-primary,
+.modal .btn.primary {
+  background: var(--sf-accent-gradient);
+  border-color: rgba(199, 210, 254, .24);
+  box-shadow: 0 9px 20px rgba(72, 57, 209, .18);
+  color: #fff;
+}
+.sf-button--ghost,
+.app-shell:not(.stkflo-auth-shell) .btn-ghost,
+.modal .btn-ghost {
+  background: rgba(28, 42, 66, .52);
+  border-color: var(--sf-border-muted);
+}
+.sf-button--danger { background: rgba(248, 113, 113, .11); border-color: rgba(248, 113, 113, .35); color: #fecaca; }
+.sf-button--sm,
+.app-shell:not(.stkflo-auth-shell) .btn-mini,
+.modal .btn-mini { min-height: 30px; padding: 5px 9px; font-size: var(--sf-font-sm); }
+.sf-button:hover:not(:disabled),
+.app-shell:not(.stkflo-auth-shell) .btn:hover:not(:disabled),
+.app-shell:not(.stkflo-auth-shell) .btn-primary:hover:not(:disabled),
+.app-shell:not(.stkflo-auth-shell) .btn-secondary:hover:not(:disabled),
+.modal .btn:hover:not(:disabled),
+.modal .btn-primary:hover:not(:disabled) {
+  border-color: rgba(165, 180, 252, .43);
+  filter: brightness(1.10);
+}
+.sf-button:disabled,
+.app-shell:not(.stkflo-auth-shell) .btn:disabled,
+.modal .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.sf-button:focus-visible,
+.app-shell:not(.stkflo-auth-shell) button:focus-visible,
+.modal button:focus-visible {
+  outline: 2px solid var(--sf-border-focus);
+  outline-offset: 2px;
+}
+/* Preserve the existing semantic green/amber top-bar button colours. */
+.app-shell:not(.stkflo-auth-shell) .btn-accent-green {
+  background: rgba(74, 222, 128, .18);
+  border-color: rgba(74, 222, 128, .28);
+}
+.app-shell:not(.stkflo-auth-shell) .btn-accent-amber {
+  background: rgba(245, 158, 11, .18);
+  border-color: rgba(245, 158, 11, .28);
+}
+
+/* Common tables: design only, no fixed heights or layout restructuring. */
+.app-shell:not(.stkflo-auth-shell) .table-wrapper,
+.app-shell:not(.stkflo-auth-shell) .product-table-wrap {
+  border-radius: var(--sf-radius-control);
+}
+
+.app-shell:not(.stkflo-auth-shell) :is(.table, .product-table, .analytics-table) th,
+.app-shell:not(.stkflo-auth-shell) .table-wrapper th {
+  background: var(--sf-bg-table-head);
+  color: #c5d2e5;
+  font-size: var(--sf-font-xs);
+  font-weight: 740;
+  letter-spacing: .025em;
+  border-bottom: 1px solid var(--sf-border-muted);
+}
+
+.app-shell:not(.stkflo-auth-shell) :is(.table, .product-table, .analytics-table) td,
+.app-shell:not(.stkflo-auth-shell) .table-wrapper td {
+  border-bottom-color: var(--sf-border-muted);
+  color: var(--sf-text-primary);
+}
+
+.app-shell:not(.stkflo-auth-shell) :is(.table, .product-table, .analytics-table) tbody tr:hover td,
+.app-shell:not(.stkflo-auth-shell) .table-wrapper tbody tr:hover td {
+  background: rgba(126, 137, 235, .055);
+}
+
+/* Semantic status colour, unrelated to selected UI accent. */
+.sf-badge,
+.app-shell:not(.stkflo-auth-shell) .tag,
+.app-shell:not(.stkflo-auth-shell) .disposition-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--sf-radius-pill);
+  padding: 3px 9px;
+  font-size: var(--sf-font-xs);
+  font-weight: 740;
+  line-height: 1.25;
+}
+.sf-badge--neutral { background: rgba(148, 163, 184, .13); color: #cbd5e1; }
+.sf-badge--info { background: rgba(147, 197, 253, .12); color: #bfdbfe; }
+.sf-badge--success,
+.app-shell:not(.stkflo-auth-shell) .tag-success { background: rgba(85, 214, 180, .13); color: #86efc5; }
+.sf-badge--warning,
+.app-shell:not(.stkflo-auth-shell) .tag-warning { background: rgba(251, 191, 36, .13); color: #fde68a; }
+.sf-badge--danger,
+.app-shell:not(.stkflo-auth-shell) .tag-danger { background: rgba(248, 113, 113, .14); color: #fecaca; }
+
+/* Modal portals are siblings of app-shell: style the existing dialog classes
+   directly; do not change overlay position or the forms' lifecycle. */
+.modal {
+  background: var(--sf-surface-gradient);
+  border: 1px solid var(--sf-border-normal);
+  border-radius: var(--sf-radius-panel);
+  box-shadow: var(--sf-shadow-modal);
+  color: var(--sf-text-primary);
+}
+.modal-title { color: var(--sf-text-primary); font-size: 18px; font-weight: 750; letter-spacing: -.02em; }
+.modal-subtitle { color: var(--sf-text-secondary); }
+.modal-overlay, .modal-backdrop { background: rgba(3, 8, 24, .78); }
+.typeahead-dropdown {
+  background: #101d33;
+  border: 1px solid var(--sf-border-normal);
+  border-radius: var(--sf-radius-control);
+  box-shadow: var(--sf-shadow-card);
+}
+.typeahead-option:hover, .typeahead-option:focus-visible { background: rgba(99, 102, 241, .16); }
+
+/* Keyboard, contrast and motion */
+.sf-button:focus-visible, .sf-input:focus-visible, .sf-select:focus-visible, .sf-textarea:focus-visible {
+  outline: 2px solid var(--sf-border-focus);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sf-button, .sf-input, .sf-select, .sf-textarea,
+  .app-shell:not(.stkflo-auth-shell) .btn,
+  .app-shell:not(.stkflo-auth-shell) .input,
+  .modal .btn, .modal .input {
+    transition: none;
+  }
+}

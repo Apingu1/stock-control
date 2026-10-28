@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./pwa.css";
 import "./stkflo.css";
+import "./styles/stkflo-tokens.css";
+import "./styles/stkflo-components.css";
 import App from "./App.tsx";
 import PwaUpdatePrompt from "./components/system/PwaUpdatePrompt";
 import { registerPwa } from "./pwa";
