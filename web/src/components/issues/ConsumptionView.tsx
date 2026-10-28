@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type { Issue } from "../../types";
+import OperationalResultBar from "../ui/OperationalResultBar";
 import { formatDate } from "../../utils/format";
 import CsvExportModal from "../../components/modals/CsvExportModal";
 
@@ -307,14 +308,15 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
   const emptyColSpan = showActions ? 21 : 20;
 
   return (
-    <section className="content stock-workspace-page">
+    <section className="content stock-workspace-page sf-operational-page">
       <section className="card">
         <div className="card-header">
           <div>
-            <div className="card-title">Issue History</div>
-            <div className="card-subtitle">Input consumption history</div>
+            <div className="sf-ops-eyebrow">MATERIAL TRACEABILITY</div>
+            <div className="card-title">Consumption History</div>
+            <div className="card-subtitle">Review material and packaging usage, lot traceability and batch disposition.</div>
           </div>
-          <div className="card-actions card-actions-wrap">
+          <div className="card-actions card-actions-wrap sf-ops-toolbar">
             <input
               className="input"
               style={{ minWidth: 280 }}
@@ -391,12 +393,17 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
           </div>
         </div>
 
-        {loadingIssues && <div className="info-row">Loading consumption history…</div>}
+        <OperationalResultBar total={issues.length} visible={filteredIssues.length}
+          noun="consumption entries" busy={loadingIssues}
+          isFiltered={Boolean(search.trim()) || dateFilter !== "ALL" || dispositionFilter !== "ALL" || typeFilter !== "ALL" || customerFilter !== "ALL" || manufacturerFilter !== "ALL"}
+          onClear={() => { setSearch(""); setDateFilter("ALL"); setDispositionFilter("ALL"); setTypeFilter("ALL"); setCustomerFilter("ALL"); setManufacturerFilter("ALL"); }}
+        />
+        {loadingIssues && <div className="info-row">Loading consumption history…</div>
         {issuesError && !loadingIssues && <div className="error-row">{issuesError}</div>}
 
         {!loadingIssues && !issuesError && (
           <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
-            <table className="table">
+            <table className="table sf-ops-table">
               <thead style={{ position: "sticky", top: 0, zIndex: 1, background: "#050816" }}>
                 <tr>
                   <th>Issue Date</th>
@@ -463,9 +470,9 @@ const ConsumptionView: React.FC<ConsumptionViewProps> = ({
                       <td>{batchRelevant ? issue.customer_name || "—" : "N/A"}</td>
                       <td>{batchRelevant ? formatBatchOutput(issue) : "N/A"}</td>
                       <td>{formatLineType(issue)}</td>
-                      <td>{issue.material_code}</td>
+                      <td className="sf-ops-code">{issue.material_code}</td>
                       <td>{issue.material_name}</td>
-                      <td>{issue.lot_number}</td>
+                      <td className="sf-ops-code">{issue.lot_number}</td>
                       <td>{formatDate(issue.expiry_date)}</td>
                       <td className="numeric">
                         {issue.is_non_stock_record ? "N/A" : issue.qty}

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type { LotBalance } from "../../types";
+import OperationalResultBar from "../ui/OperationalResultBar";
 import { formatDate } from "../../utils/format";
 import LotStatusModal from "../modals/LotStatusModal";
 import CsvExportModal from "../modals/CsvExportModal";
@@ -246,15 +247,16 @@ const LiveLotsView: React.FC<{
   };
 
   return (
-    <section className="content stock-workspace-page">
+    <section className="content stock-workspace-page sf-operational-page">
       <section className="card">
         <div className="card-header">
           <div>
+            <div className="sf-ops-eyebrow">LIVE INVENTORY</div>
             <div className="card-title">Live Lots</div>
             <div className="card-subtitle">On-hand balances by material + lot segment (split-lot safe).</div>
           </div>
 
-          <div className="card-actions">
+          <div className="card-actions sf-ops-toolbar">
             <select
               className="input"
               style={{ width: 180, marginRight: 8 }}
@@ -323,12 +325,17 @@ const LiveLotsView: React.FC<{
           </div>
         </div>
 
-        {loadingLots && <div className="info-row">Loading lot balances…</div>}
+        <OperationalResultBar total={lotBalances.length} visible={filteredLots.length}
+          noun="lot segments" busy={loadingLots}
+          isFiltered={Boolean(materialsSearch.trim()) || categoryFilter !== "ALL" || typeFilter !== "ALL" || statusFilter !== "ALL" || dateFilter !== "ALL"}
+          onClear={() => { setMaterialsSearch(""); setCategoryFilter("ALL"); setTypeFilter("ALL"); setStatusFilter("ALL"); setDateFilter("ALL"); }}
+        />
+        {loadingLots && <div className="info-row">Loading lot balances…</div>
         {lotsError && !loadingLots && <div className="error-row">{lotsError}</div>}
 
         {!loadingLots && !lotsError && (
           <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
-            <table className="table">
+            <table className="table sf-ops-table">
               <thead style={{ position: "sticky", top: 0, zIndex: 1, background: "#050816" }}>
                 <tr>
                   <th>Material code</th>
@@ -380,11 +387,11 @@ const LiveLotsView: React.FC<{
 
                   return (
                     <tr key={lot.material_lot_id}>
-                      <td>{lot.material_code}</td>
+                      <td className="sf-ops-code">{lot.material_code}</td>
                       <td>{lot.material_name}</td>
                       <td>{lot.category_code}</td>
                       <td>{lot.type_code}</td>
-                      <td>{lot.lot_number}</td>
+                      <td className="sf-ops-code">{lot.lot_number}</td>
 
                       {/* ✅ Phase D3 hover tooltip */}
                       <td>

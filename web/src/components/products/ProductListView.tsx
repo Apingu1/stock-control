@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import type { Material, Product } from "../../types";
+import OperationalResultBar from "../ui/OperationalResultBar";
 import { apiFetch } from "../../utils/api";
 import ProductModal from "./ProductModal";
 
@@ -61,14 +62,14 @@ export default function ProductListView({ products, materials, loading, error, c
   };
 
   return (
-    <section className="content stock-workspace-page">
+    <section className="content stock-workspace-page sf-operational-page">
       <section className="card product-list-card">
         <div className="card-header">
-          <div><div className="card-title">Product List</div><div className="card-subtitle">Controlled product master data and mandatory formulation materials.</div></div>
+          <div><div className="sf-ops-eyebrow">PRODUCT MASTER</div><div className="card-title">Product List</div><div className="card-subtitle">Controlled product master data and mandatory formulation materials.</div></div>
           {canCreate && <button className="btn btn-primary" onClick={() => { setEditing(null); setModalOpen(true); }}>＋ New Product</button>}
         </div>
 
-        <div className="product-filters">
+        <div className="product-filters sf-ops-toolbar">
           <input className="input product-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search product, reference, version, or material…" />
           <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}><option value="ALL">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></select>
           <select className="input" value={licence} onChange={(e) => setLicence(e.target.value)}><option value="ALL">All licences</option><option value="LICENSED">Licensed</option><option value="UNLICENSED">Unlicensed</option></select>
@@ -78,10 +79,14 @@ export default function ProductListView({ products, materials, loading, error, c
           <select className="input" value={exportStatus} onChange={(e) => setExportStatus(e.target.value)}><option value="ALL">All export statuses</option><option value="EXPORT_LINE">Export line</option><option value="N_A">Export N/A</option></select>
         </div>
 
-        {(error || actionError) && <div className="error-row">{actionError || error}</div>}
+        <OperationalResultBar total={products.length} visible={filtered.length} noun="products" busy={loading}
+          isFiltered={Boolean(search.trim()) || [status, licence, lineType, storage, controlled, exportStatus].some((value) => value !== "ALL")}
+          onClear={() => { setSearch(""); setStatus("ALL"); setLicence("ALL"); setLineType("ALL"); setStorage("ALL"); setControlled("ALL"); setExportStatus("ALL"); }}
+        />
+        {(error || actionError) && <div className="error-row">{actionError || error}
         {loading ? <div className="info-row">Loading Product List…</div> : (
           <div className="table-wrapper product-table-wrap">
-            <table className="product-table">
+            <table className="product-table sf-ops-table">
               <thead><tr><th></th><th>Product</th><th>Reference / version</th><th>Shelf life</th><th>Classifications</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map((product) => {

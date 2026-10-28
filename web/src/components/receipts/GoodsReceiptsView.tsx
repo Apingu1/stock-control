@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type { Receipt } from "../../types";
+import OperationalResultBar from "../ui/OperationalResultBar";
 import { formatDate } from "../../utils/format";
 import CsvExportModal from "../../components/modals/CsvExportModal";
 
@@ -230,17 +231,18 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
   const showActions = !!canEdit;
 
   return (
-    <section className="content stock-workspace-page">
+    <section className="content stock-workspace-page sf-operational-page">
       <section className="card">
         <div className="card-header">
           <div>
+            <div className="sf-ops-eyebrow">INBOUND STOCK</div>
             <div className="card-title">Goods Receipts</div>
             <div className="card-subtitle">
               Log and review incoming goods.
             </div>
           </div>
 
-          <div className="card-actions card-actions-wrap">
+          <div className="card-actions card-actions-wrap sf-ops-toolbar">
             <input
               className="input"
               style={{ minWidth: 260 }}
@@ -295,12 +297,17 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
           </div>
         </div>
 
-        {loadingReceipts && <div className="info-row">Loading goods receipts…</div>}
+        <OperationalResultBar total={receipts.length} visible={filteredReceipts.length}
+          noun="receipts" busy={loadingReceipts}
+          isFiltered={Boolean(search.trim()) || dateFilter !== "ALL" || supplierFilter !== "ALL" || manufacturerFilter !== "ALL"}
+          onClear={() => { setSearch(""); setDateFilter("ALL"); setSupplierFilter("ALL"); setManufacturerFilter("ALL"); }}
+        />
+        {loadingReceipts && <div className="info-row">Loading goods receipts…</div>
         {receiptsError && !loadingReceipts && <div className="error-row">{receiptsError}</div>}
 
         {!loadingReceipts && !receiptsError && (
           <div className="table-wrapper" style={{ maxHeight: 480, overflowY: "auto" }}>
-            <table className="table">
+            <table className="table sf-ops-table">
               <thead
                 style={{
                   position: "sticky",
@@ -357,9 +364,9 @@ const GoodsReceiptsView: React.FC<GoodsReceiptsViewProps> = ({
                   return (
                     <tr key={r.id}>
                       <td>{formatDate(r.created_at)}</td>
-                      <td>{r.material_code}</td>
+                      <td className="sf-ops-code">{r.material_code}</td>
                       <td>{r.material_name}</td>
-                      <td>{r.lot_number}</td>
+                      <td className="sf-ops-code">{r.lot_number}</td>
                       <td>{formatDate(r.expiry_date)}</td>
                       <td className="numeric">{r.qty}</td>
                       <td>{r.uom_code}</td>

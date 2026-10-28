@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type { Material } from "../../types";
+import OperationalResultBar from "../ui/OperationalResultBar";
 import {
   MATERIAL_CATEGORY_OPTIONS,
   MATERIAL_TYPE_OPTIONS,
@@ -91,17 +92,17 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
   };
 
   return (
-    <section className="content stock-workspace-page">
+    <section className="content stock-workspace-page sf-operational-page">
       <section className="card">
         <div className="card-header">
           <div>
-            <div className="card-title">ES Materials Library</div>
+            <div className="sf-ops-eyebrow">MATERIAL MASTER</div>
+            <div className="card-title">Materials Library</div>
             <div className="card-subtitle">
-              Master data for all raw materials, APIs and excipients used in
-              ES Specials.
+              Controlled master data for raw materials, APIs, excipients and packaging.
             </div>
           </div>
-          <div className="card-actions">
+          <div className="card-actions sf-ops-toolbar">
             <select
               className="input"
               style={{ width: 180, marginRight: 8 }}
@@ -144,11 +145,16 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
           </div>
         </div>
 
+        <OperationalResultBar total={materials.length} visible={libraryFilteredMaterials.length}
+          noun="materials"
+          isFiltered={Boolean(materialsSearch.trim()) || categoryFilter !== "ALL" || typeFilter !== "ALL"}
+          onClear={() => { setMaterialsSearch(""); setCategoryFilter("ALL"); setTypeFilter("ALL"); }}
+        />
         <div
           className="table-wrapper"
           style={{ maxHeight: 480, overflowY: "auto" }}
         >
-          <table className="table">
+          <table className="table sf-ops-table">
             <thead
               style={{
                 position: "sticky",
