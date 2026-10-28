@@ -93,6 +93,7 @@
 .app-shell:not(.stkflo-auth-shell) .top-bar {
   flex: 0 0 auto;
   align-items: center;
+  grid-template-columns: minmax(170px, 1fr) auto minmax(0, auto);
   margin-bottom: var(--sf-header-gap);
   min-width: 0;
 }
@@ -260,9 +261,27 @@
   .app-shell:not(.stkflo-auth-shell) .metrics-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* Narrow content must scroll rather than clip either alert or batch panel. */
+  .app-shell:not(.stkflo-auth-shell) .main > .content:has(> .grid-top) {
+    overflow-y: auto;
+  }
+  .app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top {
+    height: auto;
+    min-height: 100%;
+  }
+  .app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top > .card {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
   .app-shell:not(.stkflo-auth-shell) .dash-widgets {
+    flex: 0 0 auto;
     grid-template-columns: minmax(0, 1fr);
-    overflow: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .app-shell:not(.stkflo-auth-shell) .dash-widget {
+    overflow: visible;
   }
 }
 @container sf-workspace (max-width: 560px) {
@@ -280,6 +299,12 @@
   .app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top { height: auto; min-height: 100%; }
   .app-shell:not(.stkflo-auth-shell) .main > .content > .grid-top > .card { height: auto; overflow: visible; }
   .app-shell:not(.stkflo-auth-shell) .dash-widgets { min-height: 230px; }
+}
+@media (min-width: 901px) and (max-width: 1450px) {
+  /* Fit the clock + view control beside the three top-bar shortcuts. */
+  .sf-density-label { display: none; }
+  .sf-density-control { padding: 2px 6px; }
+  .app-shell:not(.stkflo-auth-shell) .top-bar-right .btn { padding-inline: 9px; font-size: 12px; }
 }
 @media (max-width: 900px) {
   /* Respect the existing mobile drawer rather than clipping its trigger. */
