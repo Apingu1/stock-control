@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "prebuild": "node scripts/verify-stkflo-assets.mjs",
     "check:design-system": "node scripts/verify-stkflo-design-system.mjs",
-    "check:adaptive-layout": "node scripts/verify-stkflo-adaptive-layout.mjs"
+    "check:adaptive-layout": "node scripts/verify-stkflo-adaptive-layout.mjs",
+    "check:operational-ui": "node scripts/verify-stkflo-operational-ui.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
