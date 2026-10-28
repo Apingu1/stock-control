@@ -35,7 +35,7 @@ check("Responsive CSS blocks balanced",
 check("No resizing browser zoom or native date picker changes",
   !/\bzoom\s*:|transform\s*:\s*scale\s*\(|calendar-picker-indicator/.test(css));
 check("Shared result summary and explicit filter reset", resultBar.includes('aria-live="polite"')
-  && resultBar.includes('onClear()') && resultBar.includes('type="button"'));
+  && resultBar.includes('onClick={onClear}') && resultBar.includes('type="button"'));
 for (const key of ["materials", "receipts", "consumption", "lots", "products"]) {
   const page = pages[key];
   check(key + " uses unified operational styling", page.includes("sf-operational-page")
