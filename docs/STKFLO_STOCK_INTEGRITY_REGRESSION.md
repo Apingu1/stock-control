@@ -15,6 +15,35 @@ WHERE table_name = 'stock_transactions' AND column_name = 'qty';
 -- Expected: numeric_precision=18, numeric_scale=6
 ```
 
+## Applying this fix to an EXISTING Codespaces test database
+
+Switch to this branch and use:
+
+```bash
+cd /workspaces/stock-control
+git pull --ff-only origin feature/stkflo-stock-integrity-validation
+bash scripts/apply_stkflo_test_db_fix.sh
+```
+
+This runs **in place** against the dataset that the running API has selected.
+Unlike `scripts/rebuild_db.sh`, it does not drop database volumes.
+A Docker `restart_stack.sh` alone does **not** apply new SQL scripts to an
+existing database, because PostgreSQL's `/docker-entrypoint-initdb.d` runs
+only on the first initialization of a fresh volume.
+
+The command verifies NA/AMP/UNIT lookups, re-installs the receipt-only
+`lot_balances_view`, and prints the unit cost calculated from Goods Receipt
+value divided by Goods Receipt quantity in the material's **base UOM**.
+
+**Original reported test:** MAT0001 received 100 MG costing £100. Expected:
+£1 per MG, remaining Available value £70 after moving 30 MG to Quarantine,
+and £100 after transferring all 30 MG back. Quarantine transfers must not
+count as goods receipts or change unit cost.
+
+If the command warns that the active dataset's qty column still has 3 decimal
+places, the cost/lookup repair still applies, but six-decimal quantities must
+be migrated separately. Do not delete your test DB to resolve this warning.
+
 ## Functional acceptance matrix
 
 | ID | Test | Expected outcome |
