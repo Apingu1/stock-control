@@ -3,8 +3,8 @@
  *
  * Fit to the AVAILABLE viewport, not the physical monitor or browser zoom.
  * "Auto" responds to height & width while Compact/Comfortable are user
- * overrides. Never transform:scale() or zoom: this preserves native inputs,
- * pointer targets, calendar controls and text accessibility.
+ * overrides. Browser zoom remains untouched, as do CSS transform scales.
+ * This preserves native inputs, pointer targets and text accessibility.
  *
  * The original login/sidebar appearance is deliberately excluded.
  */
