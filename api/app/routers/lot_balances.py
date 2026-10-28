@@ -4,7 +4,7 @@ import logging
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy import text, func
+from sqlalchemy import text, func, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -117,10 +117,11 @@ def _run_auto_quarantine_low_expiry(db: Session) -> None:
         )
         .filter(func.upper(MaterialLot.status) == "AVAILABLE")
         .filter(MaterialLot.expiry_date.isnot(None))
-        .filter(
+        .filter(or_(
+            MaterialLot.expiry_date < func.current_date(),
             (MaterialLot.expiry_date - func.current_date())
-            <= func.coalesce(Material.auto_quarantine_override_days, ExpiryThresholdSetting.threshold_days)
-        )
+            <= func.coalesce(Material.auto_quarantine_override_days, ExpiryThresholdSetting.threshold_days),
+        ))
         .all()
     )
 

@@ -1,5 +1,5 @@
 # app/routers/receipts.py
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from typing import List
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -8,6 +8,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..material_classification import validate_base_uom
 from ..models import (
     Material,
     MaterialLotEdit,
@@ -17,6 +18,7 @@ from ..models import (
     MaterialApprovedManufacturer,
     User,
     StockTransactionEdit,
+    ExpiryThresholdSetting,
 )
 from ..schemas import ReceiptCreate, ReceiptOut, ReceiptUpdate
 from ..security import require_permission, user_has_permission
@@ -106,6 +108,10 @@ def create_receipt(
             status_code=400,
             detail="Cancelled BMR is a non-stock marker and cannot receive goods, quantity or value",
         )
+    try:
+        validate_base_uom(payload.uom_code, material.base_uom_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if material.category_code == "TABLETS_CAPSULES":
         approved_rows = (
@@ -134,12 +140,36 @@ def create_receipt(
                     ),
                 )
 
+    # Apply expiry disposition immediately rather than relying on a later
+    # Live Lots refresh. The material-specific threshold takes precedence.
+    threshold = (
+        db.query(ExpiryThresholdSetting)
+        .filter(
+            ExpiryThresholdSetting.category_code == material.category_code,
+            ExpiryThresholdSetting.type_code == material.type_code,
+            ExpiryThresholdSetting.is_active.is_(True),
+        )
+        .one_or_none()
+    )
+    threshold_days = (
+        material.auto_quarantine_override_days
+        if material.auto_quarantine_override_days is not None
+        else threshold.threshold_days if threshold is not None else 0
+    )
+    expiry = payload.expiry_date.date() if isinstance(payload.expiry_date, datetime) else payload.expiry_date
+    quarantine_required = expiry is not None and expiry <= date.today() + timedelta(days=threshold_days)
+    receipt_status = "QUARANTINE" if quarantine_required else "AVAILABLE"
+
+    # Status-separated records may share a physical lot number. Reuse only the
+    # matching status segment, avoiding ambiguous one_or_none() queries.
     lot = (
         db.query(MaterialLot)
         .filter(
             MaterialLot.material_id == material.id,
             MaterialLot.lot_number == payload.lot_number,
+            MaterialLot.status == receipt_status,
         )
+        .with_for_update()
         .one_or_none()
     )
 
@@ -147,8 +177,8 @@ def create_receipt(
         lot = MaterialLot(
             material_id=material.id,
             lot_number=payload.lot_number,
-            expiry_date=payload.expiry_date,
-            status="AVAILABLE",
+            expiry_date=expiry,
+            status=receipt_status,
             manufacturer=payload.manufacturer,
             supplier=payload.supplier,
             created_by=created_by,

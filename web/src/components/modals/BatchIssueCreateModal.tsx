@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LotBalance, Product } from "../../types";
+import { BATCH_SIZE_UOM_OPTIONS } from "../../constants";
 import { CONSUMPTION_TYPES } from "../../constants";
 import { apiFetch } from "../../utils/api";
 import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
@@ -290,7 +291,8 @@ export default function BatchIssueCreateModal({
     const stock =
       section === "packaging" ? selectablePackagingLots : selectableMaterialLots;
     return stock
-      .filter((lot) => lot.lot_number.toLowerCase().includes(query))
+      .filter((lot) => [lot.lot_number, lot.material_code, lot.material_name]
+        .some((text) => text.toLowerCase().includes(query)))
       .slice(0, 18);
   };
 
@@ -825,11 +827,16 @@ export default function BatchIssueCreateModal({
                     <label className="label">
                       Batch size unit {usageRequired ? "(required)" : ""}
                     </label>
-                    <input
+                    <select
                       className="input"
                       value={batchSizeUom}
                       onChange={(e) => setBatchSizeUom(e.target.value)}
-                    />
+                    >
+                      <option value="">— Select batch size unit —</option>
+                      {BATCH_SIZE_UOM_OPTIONS.map((unit) => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="form-group">
                     <label className="label">

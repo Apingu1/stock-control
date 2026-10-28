@@ -1,4 +1,5 @@
 import React from "react";
+import { BATCH_SIZE_UOM_OPTIONS } from "../../../constants";
 import type { ConsumptionTypeCode } from "./issueHelpers";
 import type { Product } from "../../../types";
 
@@ -167,12 +168,16 @@ const IssueProductFields: React.FC<Props> = ({
           <label className="label">
             Batch size unit {isBatchRequired ? "(required)" : "(optional)"}
           </label>
-          <input
+          <select
             className="input"
             value={batchSizeUom}
             onChange={(event) => setBatchSizeUom(event.target.value)}
-            placeholder="e.g. mL, tablets, capsules"
-          />
+          >
+            <option value="">— Select batch size unit —</option>
+            {BATCH_SIZE_UOM_OPTIONS.map((unit) => (
+              <option key={unit} value={unit}>{unit}</option>
+            ))}
+          </select>
         </div>
 
         <div className="form-group">

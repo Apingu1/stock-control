@@ -326,7 +326,7 @@ class IssueBatchCreate(ApiBaseModel):
     product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[date] = None
     total_batch_size: Optional[Dec6] = Field(None, gt=0)
-    batch_size_uom: Optional[str] = None
+    batch_size_uom: Optional[Literal["mL", "L", "g", "mg", "Tabs", "Caps"]] = None
     number_of_units: Optional[int] = Field(None, gt=0)
     target_ref: Optional[str] = None
     comment: Optional[str] = None
@@ -364,7 +364,7 @@ class IssueUpdate(ApiBaseModel):
     product_batch_no: Optional[str] = None
     product_manufacture_date: Optional[date] = None
     total_batch_size: Optional[Dec6] = Field(None, gt=0)
-    batch_size_uom: Optional[str] = None
+    batch_size_uom: Optional[Literal["mL", "L", "g", "mg", "Tabs", "Caps"]] = None
     number_of_units: Optional[int] = Field(None, gt=0)
     consumption_type: str = "USAGE"
     target_ref: Optional[str] = None
@@ -403,7 +403,7 @@ class IssueOut(ApiBaseModel):
     # Shared submission/output fields. Null for historical transactions.
     consumption_group_id: Optional[str] = None
     total_batch_size: Optional[Dec6] = None
-    batch_size_uom: Optional[str] = None
+    batch_size_uom: Optional[Literal["mL", "L", "g", "mg", "Tabs", "Caps"]] = None
     number_of_units: Optional[int] = None
     product_name_snapshot: Optional[str] = None
     product_reference_snapshot: Optional[str] = None
