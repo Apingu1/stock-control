@@ -1,0 +1,24 @@
+{
+  "manifest_version": 2,
+  "filename": "StockControl_Auto_2026-10-27_15-15-00.dump",
+  "backup_type": "AUTO",
+  "reason": "Scheduled daily backup at 02:30 Europe/London",
+  "created_at_utc": "2026-10-27T15:15:00+00:00",
+  "created_at_local": "2026-10-27T15:15:00+00:00",
+  "completed_at_utc": "2026-10-27T15:15:03+00:00",
+  "created_by": "SYSTEM_SCHEDULER",
+  "database": "stock",
+  "db": {
+    "host": "db",
+    "port": "5432",
+    "name": "stock",
+    "user": "stock"
+  },
+  "app_version": "—",
+  "schema_version": "—",
+  "timezone": "Europe/London",
+  "backup_dir_label": "Configured server backup folder",
+  "size_bytes": 110117,
+  "sha256": "C790CC4A48A7168C39E047B7CE291AAB1AD5B74F109FA910C3934C7A3C758A60",
+  "result": "SUCCESS"
+}
