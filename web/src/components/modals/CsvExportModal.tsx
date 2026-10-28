@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { StkFloButton, StkFloInput } from "../ui";
 
 export type CsvExportParams = {
   fromDate: string | null;
@@ -71,7 +72,7 @@ const CsvExportModal: React.FC<CsvExportModalProps> = ({
           >
             <label className="field">
               <span className="field-label">{fromLabel}</span>
-              <input
+              <StkFloInput
                 type="date"
                 className="input"
                 value={fromDate}
@@ -80,7 +81,7 @@ const CsvExportModal: React.FC<CsvExportModalProps> = ({
             </label>
             <label className="field">
               <span className="field-label">{toLabel}</span>
-              <input
+              <StkFloInput
                 type="date"
                 className="input"
                 value={toDate}
@@ -103,12 +104,12 @@ const CsvExportModal: React.FC<CsvExportModalProps> = ({
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-ghost" type="button" onClick={onClose}>
+          <StkFloButton variant="ghost" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" type="button" onClick={handleConfirm}>
+          </StkFloButton>
+          <StkFloButton variant="primary" type="button" onClick={handleConfirm}>
             Export CSV
-          </button>
+          </StkFloButton>
         </div>
       </div>
     </div>

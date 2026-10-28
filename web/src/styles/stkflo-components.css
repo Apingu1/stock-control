@@ -357,3 +357,19 @@ body:has(.app-shell:not(.stkflo-auth-shell)) {
     transition: none;
   }
 }
+
+/* PWA update notice: same surface and action hierarchy as other StkFlo dialogs. */
+.pwa-update-prompt {
+  background: rgba(20, 36, 59, .97);
+  border: 1px solid var(--sf-border-normal);
+  border-radius: var(--sf-radius-card);
+  box-shadow: var(--sf-shadow-modal);
+  color: var(--sf-text-primary);
+}
+.pwa-update-prompt span { color: var(--sf-text-secondary); }
+.pwa-update-prompt button:not(.pwa-update-prompt__dismiss) {
+  background: var(--sf-accent-gradient);
+  border: 1px solid rgba(199, 210, 254, .24);
+  border-radius: var(--sf-radius-control);
+}
+.pwa-update-prompt button:not(.pwa-update-prompt__dismiss):hover { filter: brightness(1.1); }
