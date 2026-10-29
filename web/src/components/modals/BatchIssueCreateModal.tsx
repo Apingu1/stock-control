@@ -720,6 +720,10 @@ export default function BatchIssueCreateModal({
                 {cancelledMode ? "Standard consumption" : "Cancelled BMR"}
               </button>
             )}
+            {onMinimize && (
+              <button type="button" className="sf-draft-minimise" aria-label="Minimise Consumption draft"
+                title="Minimise to Workspace Dock" onClick={onMinimize} disabled={submitting}>−</button>
+            )}
             <button
               className="icon-btn"
               type="button"
