@@ -582,8 +582,6 @@ const App: React.FC = () => {
           <div key={draft.id}
             className={"sf-draft-slot " + (active ? "sf-active-draft" : "sf-minimised-draft") + (validating ? " is-refreshing" : "")}
             aria-hidden={!active}
-            // Bubble AFTER each controlled field has processed its own change.
-            // Updating App during capture can interfere with typed values.
             onChange={() => markDraftDirty(draft.id)}
             onClick={(event) => {
               const target = event.target as HTMLElement;
