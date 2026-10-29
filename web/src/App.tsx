@@ -38,6 +38,7 @@ import MaterialModal from "./components/modals/MaterialModal";
 import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
 import AdminSettingsView from "./components/admin/AdminSettingsView";
+import OpeningStockMigrationPanel from "./components/admin/OpeningStockMigrationPanel";
 
 const App: React.FC = () => {
   // --- Auth -----------------------------------------------------------------
@@ -450,6 +451,7 @@ const App: React.FC = () => {
 
         {view === "admin" && isAdmin && <AdminUsersView />}
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
+        {view === "admin-migration" && isAdmin && <OpeningStockMigrationPanel />}
       </main>
 
       {/* MODALS */}
