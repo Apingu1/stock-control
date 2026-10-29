@@ -63,6 +63,8 @@ check("Draft resume requires fresh successful API response", source.app.includes
   source.app.includes("sf-draft-validation-mask") && source.app.includes("Retry refresh"));
 check("Stale post-logout refresh discarded", source.app.includes("draftSessionEpoch.current += 1") &&
   source.app.includes("epoch !== draftSessionEpoch.current"));
+check("Stale submission callbacks ignored after logout", source.app.includes("if (!liveDraftIds.current.has(id)) return") &&
+  source.app.includes("liveDraftIds.current.clear()"));
 check("All drafts cleared on session expiry/logout", source.app.includes("setDrafts([])") &&
   source.app.includes("completedDraftIds.current.clear()"));
 check("Beforeunload warning for unsaved work", source.app.includes('window.addEventListener("beforeunload", warn)'));
