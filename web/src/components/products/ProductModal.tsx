@@ -7,6 +7,7 @@ type Props = {
   product: Product | null;
   materials: Material[];
   onClose: () => void;
+  onMinimize?: () => void;
   onSaved: () => Promise<void> | void;
 };
 
@@ -23,7 +24,7 @@ const initialFields = {
   export_status: "N_A",
 };
 
-export default function ProductModal({ open, product, materials, onClose, onSaved }: Props) {
+export default function ProductModal({ open, product, materials, onClose, onSaved, onMinimize }: Props) {
   const [fields, setFields] = useState(initialFields);
   const [materialIds, setMaterialIds] = useState<Set<number>>(new Set());
   const [materialSearch, setMaterialSearch] = useState("");
@@ -136,12 +137,15 @@ export default function ProductModal({ open, product, materials, onClose, onSave
       <form className="modal product-modal" onSubmit={submit}>
         <div className="modal-header">
           <div>
-            <div className="modal-title">{product ? "Edit Product" : "New Product"}</div>
+            <div className="modal-title">{product ? "Edit Product BMR" : "New Product BMR"}</div>
             <div className="modal-subtitle">
               Product details and mandatory material membership are audit-trailed.
             </div>
           </div>
-          <button className="icon-btn" type="button" onClick={onClose} disabled={saving}>✕</button>
+          <div className="sf-draft-actions">
+            {onMinimize && !product && <button type="button" className="sf-draft-minimise" onClick={onMinimize} disabled={saving} title="Minimise to Workspace Dock" aria-label="Minimise New Product BMR">−</button>}
+            <button className="icon-btn" type="button" onClick={onClose} disabled={saving}>✕</button>
+          </div>
         </div>
 
         <div className="product-modal-scroll">

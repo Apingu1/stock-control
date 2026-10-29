@@ -38,6 +38,7 @@ import QuarantineView from "./components/quarantine/QuarantineView";
 import NewReceiptModal from "./components/modals/NewReceiptModal";
 import IssueModal from "./components/modals/IssueModal";
 import MaterialModal from "./components/modals/MaterialModal";
+import ProductModal from "./components/products/ProductModal";
 
 import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
@@ -175,6 +176,8 @@ const App: React.FC = () => {
     try {
       const urls = kind === "material"
         ? ["/materials/", "/materials/expiry-thresholds"]
+        : kind === "product"
+          ? ["/materials/", "/products/"]
         : kind === "receipt"
           ? ["/materials/", "/lot-balances/"]
           : ["/materials/", "/products/", "/lot-balances/"];
@@ -185,6 +188,7 @@ const App: React.FC = () => {
       perms.setMyPermissions(latestPermissions.permissions || []);
       stock.setMaterials(values[0]);
       if (kind === "material") stock.setExpiryThresholds(values[1]);
+      if (kind === "product") stock.setProducts(values[1]);
       if (kind === "receipt") stock.setLotBalances(values[1]);
       if (kind === "consumption") {
         stock.setProducts(values[1]);
@@ -200,6 +204,10 @@ const App: React.FC = () => {
   }, [perms.setMyPermissions, stock.setMaterials, stock.setExpiryThresholds, stock.setLotBalances, stock.setProducts]);
 
   const createDraft = (kind: WorkspaceDraftKind) => {
+    if (kind === "product" && !canCreateProducts) {
+      window.alert("You do not have permission to create Product BMRs.");
+      return;
+    }
     if (drafts.length >= WORKSPACE_DRAFT_LIMIT) {
       window.alert("Workspace has reached its limit of " + WORKSPACE_DRAFT_LIMIT + " drafts. Complete or discard one first.");
       return;
@@ -248,7 +256,8 @@ const App: React.FC = () => {
     if (!liveDraftIds.current.has(id)) return; // completed after logout/discard
     completedDraftIds.current.add(id);
     removeDraft(id);
-    if (kind === "material") void Promise.all([stock.loadMaterials(), stock.loadProducts(), stock.loadExpiryThresholds()]);
+    if (kind === "product") void stock.loadProducts();
+    else if (kind === "material") void Promise.all([stock.loadMaterials(), stock.loadProducts(), stock.loadExpiryThresholds()]);
     else if (kind === "receipt") void Promise.all([stock.loadLotBalances(), stock.loadReceipts()]);
     else void Promise.all([stock.loadLotBalances(), stock.loadIssues()]);
   };
@@ -475,6 +484,8 @@ const App: React.FC = () => {
           onDensityChange={handleDensityChange}
           header={header}
           isSignedIn={!!auth.me}
+          onNewProduct={() => createDraft("product")}
+          canCreateProduct={!!canCreateProducts}
           onNewMaterial={() => createDraft("material")}
           onNewReceipt={() => createDraft("receipt")}
           onNewIssue={() => createDraft("consumption")}
@@ -506,6 +517,7 @@ const App: React.FC = () => {
             loading={stock.loadingProducts}
             error={stock.productsError}
             canCreate={canCreateProducts}
+            onNewProduct={() => createDraft("product")}
             canEdit={canEditProducts}
             canChangeStatus={canChangeProductStatus}
             reload={stock.loadProducts}
@@ -593,6 +605,15 @@ const App: React.FC = () => {
             {/* React keeps forms mounted; inert blocks keyboard AND pointer input
                 while live stock and permissions are being checked. */}
             <div className="sf-draft-form-body" inert={Boolean(validating)} aria-hidden={Boolean(validating)}>
+            {draft.kind === "product" && (
+              <ProductModal open={true}
+                product={null}
+                materials={stock.materials}
+                onMinimize={() => setActiveDraftId(null)}
+                onClose={() => discardDraft(draft.id)}
+                onSaved={() => completeDraft(draft.id, "product")}
+              />
+            )}
             {draft.kind === "receipt" && (
               <NewReceiptModal open={true}
                 onMinimize={() => setActiveDraftId(null)}

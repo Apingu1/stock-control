@@ -15,6 +15,8 @@ type Props = {
   onDensityChange: (density: WorkspaceDensity) => void;
   isSignedIn: boolean;
   onNewMaterial: () => void;
+  onNewProduct: () => void;
+  canCreateProduct: boolean;
   onNewReceipt: () => void;
   onNewIssue: () => void;
 };
@@ -25,6 +27,8 @@ const TopBar: React.FC<Props> = ({
   onDensityChange,
   isSignedIn,
   onNewMaterial,
+  onNewProduct,
+  canCreateProduct,
   onNewReceipt,
   onNewIssue,
 }) => {
@@ -130,6 +134,12 @@ const TopBar: React.FC<Props> = ({
 
       {/* Primary actions */}
       <div className="top-bar-right">
+        <button type="button" className="btn sf-bmr-top-button"
+          onClick={onNewProduct}
+          disabled={!isSignedIn || !canCreateProduct}
+          title={!canCreateProduct ? "Requires products.create permission" : "Create a new Product BMR"}>
+          🧾 New Product BMR
+        </button>
         <button
           className="btn btn-accent-green"
           type="button"

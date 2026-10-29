@@ -102,7 +102,7 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
       >
         <span className="stkflo-nav-icon stkflo-nav-icon-colour" aria-hidden="true">{colouredNavIcons[icon]}</span>
         <span className="stkflo-nav-label">{label}</span>
-        {opts.badge !== undefined && <span className="stkflo-nav-badge">{opts.badge}</span>}
+        {opts.badge !== undefined && <span className={"stkflo-nav-badge" + (destination === "alerts" ? " is-alert-count" : "")}>{opts.badge}</span>}
         <span className="stkflo-nav-chevron"><Icon name="chevron" size={13} /></span>
       </button>
     </li>
@@ -134,11 +134,11 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
           <ul className="nav-list">
             {item("dashboard", "Dashboard", "dashboard", { badge: "Today" })}
             {canViewProducts && item("products", "Product List", "products")}
-            {item("analytics", "Analytics", "analytics")}
-            {item("materials", "Materials Library", "materials")}
+                        {item("materials", "Materials Library", "materials")}
             {item("receipts", "Goods Receipts", "receipts")}
             {item("consumption", "Consumption", "consumption")}
             {item("lots", "Live Lots", "lots")}
+            {item("analytics", "Analytics", "analytics")}
           </ul>
           {isAdmin && <>
             <div className="sidebar-section-label sidebar-section-label-admin">Admin</div>

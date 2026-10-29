@@ -1,5 +1,5 @@
 /** Transient per-tab drafts. Form state stays mounted, never in browser storage. */
-export type WorkspaceDraftKind = "material" | "receipt" | "consumption";
+export type WorkspaceDraftKind = "material" | "receipt" | "consumption" | "product";
 export interface WorkspaceDraft {
   id: string;
   kind: WorkspaceDraftKind;
@@ -11,6 +11,7 @@ export const DRAFT_LABELS: Record<WorkspaceDraftKind, string> = {
   material: "New Material",
   receipt: "Goods Receipt",
   consumption: "Consumption",
+  product: "New Product BMR",
 };
 export function nextWorkspaceDraft(current: WorkspaceDraft[], kind: WorkspaceDraftKind, id: string): WorkspaceDraft | null {
   if (current.length >= WORKSPACE_DRAFT_LIMIT) return null;

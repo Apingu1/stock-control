@@ -10,6 +10,7 @@ type Props = {
   loading: boolean;
   error: string | null;
   canCreate: boolean;
+  onNewProduct: () => void;
   canEdit: boolean;
   canChangeStatus: boolean;
   reload: () => Promise<void>;
@@ -17,7 +18,7 @@ type Props = {
 
 const label = (value: string) => value.replaceAll("_", " ").replace("N A", "N/A");
 
-export default function ProductListView({ products, materials, loading, error, canCreate, canEdit, canChangeStatus, reload }: Props) {
+export default function ProductListView({ products, materials, loading, error, canCreate, onNewProduct, canEdit, canChangeStatus, reload }: Props) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [licence, setLicence] = useState("ALL");
@@ -66,7 +67,7 @@ export default function ProductListView({ products, materials, loading, error, c
       <section className="card product-list-card">
         <div className="card-header">
           <div><div className="sf-ops-eyebrow">PRODUCT MASTER</div><div className="card-title">Product List</div><div className="card-subtitle">Controlled product master data and mandatory formulation materials.</div></div>
-          {canCreate && <button className="btn btn-primary" onClick={() => { setEditing(null); setModalOpen(true); }}>＋ New Product</button>}
+          {canCreate && <button className="btn btn-primary" onClick={onNewProduct}>＋ New Product BMR</button>}
         </div>
 
         <div className="product-filters sf-ops-toolbar">
