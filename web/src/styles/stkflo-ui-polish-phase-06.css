@@ -1,0 +1,319 @@
+/**
+ * StkFlo Phase 06 — premium UI refinement.
+ * Visual rules only; business behaviour and server validation unchanged.
+ * Loaded after the Phase 05 design and responsive workspace layers.
+ */
+
+/* Navigation: visible alert count uses the same amber priority used for
+   stock and expiry warnings, not the ordinary indigo menu counter. */
+.stkflo-sidebar .stkflo-nav-badge.is-alert-count {
+  color: #ffd18a;
+  background: rgba(245, 158, 11, .20);
+  border: 1px solid rgba(245, 158, 11, .34);
+  box-shadow: inset 0 0 0 1px rgba(252, 211, 77, .04);
+}
+
+/* The newly approved primary creation action is intentionally white. */
+.app-shell:not(.stkflo-auth-shell) .top-bar-right .sf-bmr-top-button {
+  background: #f8fafc;
+  color: #111d35;
+  border: 1px solid rgba(255, 255, 255, .92);
+  border-radius: var(--sf-radius-control);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .16);
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-right .sf-bmr-top-button:hover:not(:disabled) {
+  background: #e7edff;
+  border-color: #c7d2fe;
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-right .sf-bmr-top-button:disabled {
+  opacity: .48;
+  color: #334155;
+}
+
+/* Occupy only remaining space between page identity and the four actions:
+   the clock and density selector are centred within the FREE middle column. */
+.app-shell:not(.stkflo-auth-shell) .top-bar {
+  grid-template-columns: minmax(160px, 1fr) minmax(175px, 1fr) max-content;
+  gap: clamp(8px, .85vw, 15px);
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-center {
+  width: 100%;
+  justify-self: center;
+  justify-content: center;
+  align-content: center;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 6px;
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-right {
+  justify-self: end;
+  gap: clamp(5px, .45vw, 9px);
+  flex-wrap: nowrap;
+}
+.app-shell:not(.stkflo-auth-shell) .top-bar-right .btn {
+  padding-inline: clamp(7px, .65vw, 12px);
+  font-size: clamp(11px, .75vw, 13px);
+}
+@media (min-width: 901px) and (max-width: 1580px) {
+  .app-shell:not(.stkflo-auth-shell) .top-bar {
+    grid-template-columns: minmax(155px, 1fr) auto;
+  }
+  .app-shell:not(.stkflo-auth-shell) .top-bar-center {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: center;
+  }
+  .app-shell:not(.stkflo-auth-shell) .top-bar-right { grid-column: 2; grid-row: 1; }
+}
+@media (max-width: 900px) {
+  .app-shell:not(.stkflo-auth-shell) .top-bar-right {
+    justify-self: stretch;
+    flex-wrap: wrap;
+  }
+  .app-shell:not(.stkflo-auth-shell) .top-bar-center {
+    width: auto;
+    justify-content: center;
+  }
+}
+@media (max-width: 520px) {
+  .app-shell:not(.stkflo-auth-shell) .top-bar-center { width: 100%; }
+}
+
+/* Bright white calendar-picker affordance for all signed-in form dates.
+   Chromium / Edge / Chrome share this native indicator pseudo-element.
+   Deliberately preserve native date controls and date validation. */
+.app-shell:not(.stkflo-auth-shell) input[type="date"],
+.modal input[type="date"],
+.analytics-modal input[type="date"] {
+  color-scheme: dark;
+}
+.app-shell:not(.stkflo-auth-shell) input[type="date"]::-webkit-calendar-picker-indicator,
+.modal input[type="date"]::-webkit-calendar-picker-indicator,
+.analytics-modal input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) invert(1);
+  cursor: pointer;
+  opacity: 1;
+  width: 15px;
+  height: 15px;
+}
+.app-shell:not(.stkflo-auth-shell) input[type="date"]::-webkit-calendar-picker-indicator:hover,
+.modal input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: .8;
+}
+
+/* Analytics is ONE substantial panel, starting at the same vertical position
+   as the other workspaces. Breadcrumbs, Search and the date range occupy a
+   compact shared header; report cards become internal sections. */
+.sf-analytics-compact-page {
+  gap: 0;
+  padding-bottom: 0 !important;
+}
+.sf-analytics-unified-panel {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  min-height: 100%;
+  padding: var(--sf-panel-pad);
+  background: var(--sf-surface-gradient);
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-card);
+  box-shadow: var(--sf-shadow-card);
+}
+.sf-analytics-compact-page .sf-analytics-combined-header {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--sf-border-muted);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0 0 10px;
+  margin: 0;
+  min-height: 37px;
+}
+.sf-analytics-compact-page .sf-analytics-inline-dates {
+  margin: 0 0 14px;
+  padding: 10px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--sf-border-muted);
+  border-radius: 0;
+  box-shadow: none;
+}
+.sf-analytics-compact-page .sf-analytics-inline-dates > .rowline {
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 10px 18px;
+}
+.sf-analytics-compact-page .sf-analytics-inline-dates .card-title {
+  font-size: var(--sf-font-md);
+}
+.sf-analytics-compact-page .sf-analytics-inline-dates .card-subtitle {
+  font-size: var(--sf-font-xs);
+}
+.sf-analytics-compact-page .analytics-datecontrols {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.sf-analytics-compact-page .analytics-dategroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+}
+.sf-analytics-compact-page .analytics-dategroup .analytics-input {
+  min-width: 120px;
+  width: 148px;
+  min-height: 34px;
+}
+.sf-analytics-compact-page .analytics-stack { gap: 12px; }
+.sf-analytics-compact-page .card.analytics-card {
+  border: 1px solid rgba(148, 163, 184, .12);
+  background: linear-gradient(150deg, rgba(18, 34, 56, .55), rgba(11, 25, 45, .40));
+  box-shadow: none;
+}
+.sf-analytics-compact-page .analytics-metricgrid { margin-top: 10px; }
+.sf-analytics-compact-page .analytics-stack .analytics-card:first-child {
+  padding-top: 12px;
+}
+.sf-analytics-compact-page .analytics-crumbs { flex: 1 1 auto; }
+.sf-analytics-compact-page .analytics-command-actions { flex: 0 0 auto; }
+.sf-analytics-compact-page .analytics-cardhead .analytics-chip-green {
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 750;
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 4px 10px;
+}
+@container sf-workspace (max-width: 850px) {
+  .sf-analytics-compact-page .sf-analytics-inline-dates > .rowline {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+  .sf-analytics-compact-page .analytics-datecontrols {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 530px) {
+  .sf-analytics-compact-page .analytics-dategroup {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+}
+
+/* Settings: its first full-width control surface starts level with the other
+   pages, without an extra pre-card hero heading. */
+.app-shell:not(.stkflo-auth-shell) .main > .sf-phase4-settings {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.sf-phase4-settings .sf-phase4-settings-stack {
+  gap: var(--sf-dashboard-gap);
+}
+
+/* Audit: compact date/actor fields and use a fifth column for search,
+   all on one row on large screens. */
+.sf-phase4-audit .sf-phase4-audit-filters {
+  display: grid;
+  grid-template-columns: minmax(125px, .9fr) minmax(125px, .9fr) minmax(145px, 1.05fr) minmax(120px, .9fr) minmax(210px, 1.7fr);
+  gap: 8px;
+  align-items: end;
+}
+.sf-phase4-audit .sf-phase4-audit-filters > div { min-width: 0; }
+.sf-phase4-audit .sf-phase4-audit-filters .sf-phase4-audit-search {
+  grid-column: auto;
+}
+.sf-phase4-audit .sf-phase4-audit-filters .input {
+  width: 100%;
+  min-width: 0;
+  min-height: 35px;
+  max-height: 35px;
+  padding: 7px 10px;
+  font-size: 12px !important;
+}
+.sf-phase4-audit .sf-phase4-audit-filters .label {
+  font-size: 11px !important;
+  white-space: nowrap;
+}
+.sf-phase4-audit .sf-phase4-audit-form { margin-top: 8px; }
+@container sf-workspace (max-width: 1150px) {
+  .sf-phase4-audit .sf-phase4-audit-filters {
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+  }
+  .sf-phase4-audit .sf-phase4-audit-filters .sf-phase4-audit-search {
+    grid-column: 1 / -1;
+  }
+}
+@container sf-workspace (max-width: 690px) {
+  .sf-phase4-audit .sf-phase4-audit-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sf-phase4-audit .sf-phase4-audit-filters .sf-phase4-audit-search { grid-column: 1 / -1; }
+}
+@container sf-workspace (max-width: 380px) {
+  .sf-phase4-audit .sf-phase4-audit-filters { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Alerts: a single, stable vertical scroll surface. Do not mount a fresh
+   component type for each polling/alert update; React must preserve the node. */
+.app-shell:not(.stkflo-auth-shell) .main > .sf-alerts-contained {
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+.sf-alerts-contained > .sf-alerts-contained-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--sf-panel-pad);
+  overflow: hidden;
+}
+.sf-alerts-contained .sf-alerts-scroll-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.sf-alerts-contained .sf-alerts-page { min-width: 0; }
+.sf-alerts-contained .table-wrap {
+  max-height: none !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+.sf-alerts-contained .sf-alerts-heading { flex-wrap: wrap; }
+.sf-alerts-contained .sf-alerts-filter-row { flex-wrap: wrap; }
+
+/* Consumption's old nearly-black header/footer are replaced with the same
+   slate-blue surface and border language as the material/receipt dialogs. */
+.modal.issue-batch-modal {
+  background: var(--sf-surface-gradient);
+  border-color: var(--sf-border-normal);
+  box-shadow: var(--sf-shadow-modal);
+}
+.modal.issue-batch-modal .issue-batch-header,
+.modal.issue-batch-modal .issue-batch-footer {
+  background: #1c2a42;
+  border-color: var(--sf-border-muted);
+  color: var(--sf-text-primary);
+}
+.modal.issue-batch-modal .issue-batch-scroll {
+  background: transparent;
+  color: var(--sf-text-primary);
+}
+.modal.issue-batch-modal .issue-batch-header {
+  border-radius: var(--sf-radius-panel) var(--sf-radius-panel) 0 0;
+}
+.modal.issue-batch-modal .issue-batch-footer {
+  border-radius: 0 0 var(--sf-radius-panel) var(--sf-radius-panel);
+}
+
+/* Product BMR dock tile gets its own distinctive brand blue, not amber. */
+.sf-workspace-dock-glyph.sf-draft-product { background: linear-gradient(145deg, #5665ab, #5449a6); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-bmr-top-button, .sf-phase4-audit .input { transition: none; }
+}
