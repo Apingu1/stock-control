@@ -390,3 +390,60 @@
 @media (prefers-reduced-motion: reduce) {
   .sf-phase4-segment, .sf-phase4-analytics .analytics-crumb { transition: none; }
 }
+
+
+/* High-impact restore is never styled like a routine Save button. */
+.sf-phase4-backup-panel .sf-phase4-restore-section {
+  border-color: rgba(251,191,36,.31);
+  background: linear-gradient(145deg, rgba(54,43,36,.48), rgba(19,30,48,.91));
+}
+.sf-phase4-backup-panel .sf-phase4-restore-action.btn.primary {
+  background: linear-gradient(120deg, #a55724, #bd6736);
+  color: #fff;
+  border-color: rgba(251,191,36,.46);
+  box-shadow: 0 6px 18px rgba(100,55,24,.2);
+}
+.sf-phase4-backup-panel .sf-phase4-restore-action.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.13);
+}
+.sf-phase4-backup-panel .sf-phase4-restore-action.btn.primary:disabled {
+  opacity: .55;
+}
+/* Permission matrix remains editable; only its column layout responds. */
+.sf-phase4-permissions { min-width: 0; }
+.sf-phase4-permissions .form-grid { min-width: 0; max-width: 100%; }
+.sf-phase4-permissions .form-group { min-width: 0; }
+.sf-phase4-permissions input,
+.sf-phase4-permissions select { max-width: 100%; }
+@media (max-width: 1180px) {
+  .sf-phase4-permissions .form-grid[style*="grid-template-columns"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 800px) {
+  .sf-phase4-permissions .form-grid[style*="grid-template-columns"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 560px) {
+  .sf-phase4-permissions .form-grid[style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .sf-phase4-admin-users .card-header { flex-wrap: wrap; }
+  .sf-phase4-admin-nav { justify-content: flex-start; }
+}
+/* Search/explore modal is portalled outside analytics-shell. */
+.modal.analytics-modal {
+  background: var(--sf-surface-gradient);
+  color: var(--sf-text-primary);
+  border: 1px solid var(--sf-border-normal);
+  border-radius: var(--sf-radius-panel);
+  box-shadow: var(--sf-shadow-modal);
+}
+.modal.analytics-modal .analytics-input,
+.modal.analytics-modal .input {
+  color: var(--sf-text-primary);
+  background: var(--sf-bg-field);
+  border-color: var(--sf-border-field);
+  border-radius: var(--sf-radius-control);
+}
