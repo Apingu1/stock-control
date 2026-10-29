@@ -56,4 +56,21 @@ check("Audit filter search joins row", css.includes("grid-template-columns: minm
 check("Alerts scroll wrapper stable across rerenders", source.alerts.indexOf("const AlertsShell") >= 0 && source.alerts.indexOf("const AlertsShell") < source.alerts.indexOf("const LowStockExpiryView") && !source.alerts.includes("const Shell: React.FC"));
 check("Alerts single vertical scroller", css.includes(".sf-alerts-scroll-container") && source.alerts.includes("<AlertsShell>"));
 check("Consumption modal header/footer match slate", css.includes(".modal.issue-batch-modal .issue-batch-header") && css.includes(".modal.issue-batch-modal .issue-batch-footer"));
+// Migration preview/approval expands beyond the viewport: it must not inherit
+// the fixed-table stock-workspace-page overflow:hidden rule.
+const migrationCss = read("src/components/admin/OpeningStockMigrationPanel.css");
+check("Migration page uses dedicated scrolling instead of fixed table clipping",
+  source.app.includes('className="content stkflo-migration-workspace"') &&
+  !source.app.includes('className="content stock-workspace-page stkflo-migration-workspace"'));
+check("Migration page scrolls vertically for expanded preview and approvals",
+  migrationCss.includes("section.content.stkflo-migration-workspace") &&
+  migrationCss.includes("overflow-y: auto") &&
+  migrationCss.includes("scrollbar-gutter: stable") &&
+  migrationCss.includes("overscroll-behavior-y: contain"));
+check("Migration page keeps compact scrollbar and rounded panel",
+  migrationCss.includes("::-webkit-scrollbar-thumb") &&
+  migrationCss.includes("--sf-radius-card") &&
+  migrationCss.includes("min-height: calc(100% - 2px)"));
+check("Migration CSS blocks balanced",
+  (migrationCss.match(/\{/g) ?? []).length === (migrationCss.match(/\}/g) ?? []).length);
 process.exitCode = failures ? 1 : 0;

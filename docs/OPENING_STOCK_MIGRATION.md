@@ -162,3 +162,9 @@ This implementation is integrated directly into `feature/stkflo-ui-polish-produc
 The importer is browser-driven in Codespaces and on Windows VM deployments: no separate Python installation is required on the operator workstation. The Codespaces API gateway allows 8 MB HTTP bodies to accommodate the 5 MB CSV limit plus JSON framing. Existing production nginx already provides an adequate request limit.
 
 **Important:** The included example uses fictitious material, supplier lot and QA identifiers. It is designed to test preview, not to be posted as real stock. Actual workbook-derived quantities and cost bases must be verified before importing opening receipts.
+
+## Expanded preview and approval scrolling
+
+On the Phase 06 Data Migration page, the entire opening-stock panel scrolls vertically inside StkFlo's main workspace when the preview, QA approval and migration history make the content taller than the available display. This preserves the responsive panel width, rounded corners and bottom margin rather than clipping the approval fields. The upload, validation and commit operations remain unchanged.
+
+**Verify in Codespaces:** upload the preview-only sample, select **Validate & preview**, then scroll down within Data Migration. Confirm step 03 (Approve & commit), the confirmation field, the commit control and the Previous migrations section are reachable at 100% browser zoom. Repeat with the Workspace Dock visible and on the narrow laptop monitor. Do not commit the fictional example stock.
