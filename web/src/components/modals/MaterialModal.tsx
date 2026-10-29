@@ -252,10 +252,8 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
   };
 
   const handleCancel = () => {
-    am.setPendingRemoveIds(new Set());
-    am.setPendingAddNames([]);
-    am.setApprovedError(null);
-    setError(null);
+    // Do not mutate draft state before the Workspace Dock discard confirmation.
+    // If the operator declines, every pending entry must remain intact.
     onClose();
   };
 

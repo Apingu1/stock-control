@@ -78,6 +78,7 @@ const App: React.FC = () => {
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [draftValidation, setDraftValidation] = useState<{id: string; error: string | null} | null>(null);
   const nextDraftId = useRef(1);
+  const draftSessionEpoch = useRef(0);
   const completedDraftIds = useRef(new Set<string>());
   const activeDraftKind = drafts.find((draft) => draft.id === activeDraftId)?.kind ?? null;
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -168,6 +169,7 @@ const App: React.FC = () => {
   // Active drafts must use fresh API data before they can be posted.
   // Unlike background stock loaders, these requests throw on failed refresh.
   const refreshDraft = useCallback(async (id: string, kind: WorkspaceDraftKind) => {
+    const epoch = draftSessionEpoch.current;
     setDraftValidation({ id, error: null });
     try {
       const urls = kind === "material"
@@ -177,6 +179,7 @@ const App: React.FC = () => {
           : ["/materials/", "/products/", "/lot-balances/"];
       const replies = await Promise.all(urls.map((url) => apiFetch(url)));
       const values = await Promise.all(replies.map((reply) => reply.json()));
+      if (epoch !== draftSessionEpoch.current) return; // logout/inactivity invalidated this request
       stock.setMaterials(values[0]);
       if (kind === "material") stock.setExpiryThresholds(values[1]);
       if (kind === "receipt") stock.setLotBalances(values[1]);
@@ -186,6 +189,7 @@ const App: React.FC = () => {
       }
       setDraftValidation((current) => current?.id === id ? null : current);
     } catch (error) {
+      if (epoch !== draftSessionEpoch.current) return;
       setDraftValidation((current) => current?.id === id ? {
         id, error: error instanceof Error ? error.message : "Stock/reference data refresh failed",
       } : current);
@@ -240,6 +244,16 @@ const App: React.FC = () => {
     else void Promise.all([stock.loadLotBalances(), stock.loadIssues()]);
   };
 
+  useEffect(() => {
+    if (!drafts.some((draft) => draft.dirty)) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = ""; // browser-standard unsaved form warning
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [drafts]);
+
   const setAuthenticatedUser = auth.setMe;
   const setLoginOpen = auth.setShowLogin;
   const setCurrentPermissions = perms.setMyPermissions;
@@ -272,6 +286,7 @@ const App: React.FC = () => {
       clearExpiryThresholds([]);
       // GMP draft state is transient and must be destroyed on logout,
       // including session timeout and authentication expiry.
+      draftSessionEpoch.current += 1;
       setDrafts([]);
       setActiveDraftId(null);
       setDraftValidation(null);
