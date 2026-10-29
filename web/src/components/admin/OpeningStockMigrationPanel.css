@@ -1,75 +1,348 @@
+/**
+ * Opening Stock Migration — StkFlo Design System (Phase 06).
+ * Same tokens, density, typography and card surfaces as the signed-in workspace.
+ * No external fonts/assets; browser upload works identically in Windows and Codespaces.
+ */
+.stkflo-migration-workspace {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding-bottom: 0;
+}
 .stkflo-migration-panel {
-  padding: 24px;
-  border: 1px solid var(--border, #dce3e9);
-  border-radius: 16px;
-  background: var(--surface, #fff);
-  color: var(--text, inherit);
-  margin: 20px 0 28px;
-  box-shadow: 0 10px 30px rgba(16, 28, 44, .045);
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 2px;
+  min-height: calc(100% - 2px);
+  min-width: 0;
+  padding: clamp(14px, 1.65vw, 24px);
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-card);
+  background: var(--sf-surface-gradient);
+  color: var(--sf-text-primary);
+  font: 400 var(--sf-font-md)/var(--sf-line-height) var(--sf-font-family);
+  box-shadow: var(--sf-shadow-card);
+}
+.stkflo-migration-panel :is(button, input, textarea, select, label, table) {
+  font-family: var(--sf-font-family);
+}
+.stkflo-migration-panel :is(button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--sf-border-focus);
+  outline-offset: 2px;
 }
 .stkflo-migration-header {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  align-items: center;
   flex-wrap: wrap;
+  min-width: 0;
+  gap: 10px 18px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--sf-border-muted);
 }
-.stkflo-migration-header h2 { margin: 6px 0; font-size: 21px; letter-spacing: -.02em; }
-.stkflo-migration-header p { line-height: 1.55; max-width: 650px; opacity: .82; }
-.stkflo-migration-eyebrow { letter-spacing: .13em; font-weight: 800; font-size: 10px; opacity: .65; }
+.stkflo-migration-header > div { flex: 1 1 330px; min-width: 0; }
+.stkflo-migration-header h2 {
+  margin: 3px 0 5px;
+  font: 760 var(--sf-font-lg)/1.35 var(--sf-font-family);
+  letter-spacing: -.02em;
+  color: var(--sf-text-primary);
+}
+.stkflo-migration-header p {
+  font: 400 var(--sf-font-sm)/1.5 var(--sf-font-family);
+  color: var(--sf-text-secondary);
+  margin: 0;
+  max-width: 90ch;
+}
+.stkflo-migration-eyebrow {
+  font: 800 10px/1.4 var(--sf-font-family);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--sf-text-accent);
+}
+.stkflo-migration-header .btn {
+  white-space: nowrap;
+  min-height: var(--sf-workspace-control, 38px);
+  border-radius: var(--sf-radius-control);
+}
 .stkflo-migration-warning {
-  margin: 18px 0;
-  border-left: 4px solid #bd8b2c;
-  background: rgba(189, 139, 44, .085);
-  padding: 13px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  line-height: 1.55;
+  display: block;
+  margin: 14px 0;
+  padding: 12px 15px;
+  border: 1px solid rgba(251,191,36,.27);
+  border-left: 3px solid var(--sf-warning);
+  border-radius: var(--sf-radius-control);
+  background: linear-gradient(120deg, rgba(251,191,36,.11), rgba(251,191,36,.025));
+  color: #fce8ad;
+  font: 450 var(--sf-font-sm)/1.6 var(--sf-font-family);
 }
-.stkflo-migration-steps { display: grid; gap: 14px; }
+.stkflo-migration-warning strong { font-weight: 770; }
+.stkflo-migration-steps {
+  display: grid;
+  grid-template-columns: minmax(0,1fr);
+  gap: clamp(10px, 1.1vw, 14px);
+  min-width: 0;
+}
 .stkflo-migration-step {
-  border: 1px solid rgba(128,145,163,.28);
-  border-radius: 12px;
-  padding: 18px;
+  min-width: 0;
+  padding: clamp(13px, 1.4vw, 18px);
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-card);
+  background: linear-gradient(150deg, rgba(15,31,53,.75), rgba(10,24,45,.58));
+  box-shadow: inset 0 1px 0 rgba(210,220,255,.025);
 }
-.stkflo-migration-step h3 { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; font-size: 16px; }
+.stkflo-migration-step h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  color: var(--sf-text-primary);
+  font: 740 var(--sf-font-md)/1.4 var(--sf-font-family);
+}
 .stkflo-migration-step h3 span {
-  display: inline-grid; place-items: center; width: 30px; height: 30px;
-  border-radius: 9px; background: rgba(90,125,185,.13); font-size: 12px;
+  flex: 0 0 30px;
+  display: inline-grid;
+  place-items: center;
+  height: 30px;
+  border: 1px solid rgba(165,180,252,.25);
+  border-radius: var(--sf-radius-control);
+  background: rgba(99,102,241,.15);
+  color: var(--sf-text-accent);
+  font: 790 var(--sf-font-xs)/1.3 var(--sf-font-family);
 }
-.stkflo-migration-step p { font-size: 13px; opacity: .85; line-height: 1.6; }
-.stkflo-migration-step input[type="file"] { max-width: 100%; display: block; margin: 13px 0; }
-.stkflo-migration-step button { margin: 9px 0 0; }
-.stkflo-migration-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 15px 0; }
-.stkflo-migration-metrics > div { padding: 15px 10px; border-radius: 9px; background: rgba(121,142,163,.095); }
-.stkflo-migration-metrics strong { display: block; font-size: 19px; overflow-wrap: anywhere; }
-.stkflo-migration-metrics span { font-size: 11px; opacity: .72; }
-.stkflo-migration-blocked, .stkflo-migration-ok { padding: 10px 13px; border-radius: 8px; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
-.stkflo-migration-blocked { border: 1px solid #c76969; background: rgba(196,81,81,.085); }
-.stkflo-migration-ok { border: 1px solid #52956e; background: rgba(75,143,94,.085); }
-.stkflo-migration-step details { margin: 13px 0; font-size: 13px; }
-.stkflo-migration-step details summary { cursor: pointer; font-weight: 700; }
-.stkflo-migration-step details ul { max-height: 240px; overflow-y: auto; padding-left: 22px; line-height: 1.7; }
-.stkflo-migration-small { font-size: 11px !important; overflow-wrap: anywhere; opacity: .65 !important; }
-.stkflo-migration-fields { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin: 17px 0; }
-.stkflo-migration-fields label, .stkflo-migration-confirm { display: grid; gap: 7px; font-size: 12px; font-weight: 700; }
-.stkflo-migration-fields input, .stkflo-migration-confirm input {
-  width: 100%; padding: 10px 12px; border: 1px solid #adbccc;
-  border-radius: 8px; background: var(--surface, #fff); color: inherit;
+.stkflo-migration-step p {
+  font: 400 var(--sf-font-sm)/1.65 var(--sf-font-family);
+  color: var(--sf-text-secondary);
+  margin: 5px 0 11px;
 }
-.stkflo-migration-check { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; font-size: 13px; cursor: pointer; }
-.stkflo-migration-check input { margin-top: 2px; }
-.stkflo-migration-confirm { margin-top: 20px; max-width: 530px; }
-.stkflo-migration-commit { font-weight: 800; }
-.stkflo-migration-history { margin-top: 23px; border-top: 1px solid rgba(128,145,163,.3); padding-top: 16px; }
-.stkflo-migration-history-head { display: flex; justify-content: space-between; align-items: center; }
-.stkflo-migration-history-head h3 { margin: 0 0 12px; }
-.stkflo-migration-history-head button { cursor: pointer; }
-.stkflo-migration-history-scroll { overflow-x: auto; }
-.stkflo-migration-history table { border-collapse: collapse; width: 100%; text-align: left; font-size: 12px; }
-.stkflo-migration-history td, .stkflo-migration-history th { border-bottom: 1px solid rgba(128,145,163,.25); padding: 9px; }
-@media (max-width: 760px) {
-  .stkflo-migration-panel { padding: 14px; }
-  .stkflo-migration-fields { grid-template-columns: 1fr; }
+.stkflo-migration-step code, .stkflo-migration-history code,
+.stkflo-migration-small code {
+  font-family: var(--sf-font-mono);
+  color: #bfccfc;
+  background: rgba(99,102,241,.09);
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+  padding: 1px 4px;
+}
+.stkflo-migration-panel input:not([type="checkbox"]):not([type="file"]),
+.stkflo-migration-panel select,
+.stkflo-migration-panel textarea {
+  box-sizing: border-box;
+  display: block;
+  background: var(--sf-bg-field);
+  color: var(--sf-text-primary);
+  border: 1px solid var(--sf-border-field);
+  border-radius: var(--sf-radius-control);
+  min-height: var(--sf-workspace-control, 38px);
+  width: 100%;
+  min-width: 0;
+  padding: 8px 11px;
+  font: 500 var(--sf-font-md)/1.35 var(--sf-font-family);
+}
+.stkflo-migration-panel input::placeholder { color: var(--sf-text-placeholder); }
+.stkflo-migration-panel input[type="date"] { color-scheme: dark; }
+.stkflo-migration-panel input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) invert(1); opacity: 1; cursor: pointer;
+}
+.stkflo-migration-panel input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--sf-indigo);
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+}
+.stkflo-migration-panel input[type="file"] {
+  display: block;
+  box-sizing: border-box;
+  width: min(680px, 100%);
+  margin: 10px 0 12px;
+  padding: 10px;
+  background: var(--sf-bg-field);
+  border: 1px dashed var(--sf-border-field);
+  border-radius: var(--sf-radius-control);
+  color: var(--sf-text-secondary);
+  font-size: var(--sf-font-sm);
+}
+.stkflo-migration-panel input[type="file"]::file-selector-button {
+  border: 1px solid var(--sf-border-normal);
+  padding: 7px 11px;
+  margin-right: 11px;
+  border-radius: var(--sf-radius-xs);
+  color: var(--sf-text-primary);
+  background: var(--sf-bg-hover);
+  cursor: pointer;
+}
+.stkflo-migration-panel input[type="file"]::file-selector-button:hover {
+  border-color: var(--sf-border-focus);
+}
+.stkflo-migration-step button { margin-top: 6px; }
+.stkflo-migration-panel .btn {
+  border-radius: var(--sf-radius-control);
+  font: 710 var(--sf-font-md)/1.25 var(--sf-font-family);
+}
+.stkflo-migration-panel .btn-primary {
+  background: var(--sf-accent-gradient);
+  border: 1px solid rgba(165,180,252,.4);
+  color: var(--sf-text-primary);
+  box-shadow: 0 4px 15px rgba(89,85,217,.13);
+}
+.stkflo-migration-panel .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.stkflo-migration-panel button:disabled { opacity: .5; cursor: not-allowed; }
+.stkflo-migration-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.stkflo-migration-metrics > div {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-control);
+  background: var(--sf-bg-surface-raised);
+}
+.stkflo-migration-metrics strong {
+  display: block;
+  font: 760 clamp(17px, 1.6vw, 23px)/1.25 var(--sf-font-family);
+  color: var(--sf-text-primary);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.stkflo-migration-metrics span {
+  display: block;
+  margin-top: 6px;
+  color: var(--sf-text-secondary);
+  font: 600 var(--sf-font-xs)/1.3 var(--sf-font-family);
+}
+.stkflo-migration-blocked, .stkflo-migration-ok {
+  border-radius: var(--sf-radius-control);
+  border: 1px solid;
+  padding: 10px 13px;
+  font: 680 var(--sf-font-sm)/1.5 var(--sf-font-family);
+  overflow-wrap: anywhere;
+}
+.stkflo-migration-blocked {
+  border-color: rgba(248,113,113,.45);
+  color: #fecaca;
+  background: rgba(248,113,113,.08);
+}
+.stkflo-migration-ok {
+  border-color: rgba(85,214,180,.4);
+  color: #b1ffe9;
+  background: rgba(85,214,180,.08);
+}
+.stkflo-migration-step details {
+  margin: 12px 0;
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-control);
+  padding: 9px 12px;
+  background: rgba(12,25,46,.5);
+  color: var(--sf-text-secondary);
+  font-size: var(--sf-font-sm);
+}
+.stkflo-migration-step details summary {
+  color: var(--sf-text-primary);
+  cursor: pointer; font-weight: 740;
+}
+.stkflo-migration-step details ul {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-left: 20px;
+  line-height: 1.7;
+}
+.stkflo-migration-small {
+  color: var(--sf-text-muted) !important;
+  font-size: var(--sf-font-xs) !important;
+  overflow-wrap: anywhere;
+}
+.stkflo-migration-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 10px;
+  margin: 15px 0;
+}
+.stkflo-migration-fields label, .stkflo-migration-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: #c6d2e6;
+  font: 710 var(--sf-font-xs)/1.35 var(--sf-font-family);
+}
+.stkflo-migration-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0;
+  color: #c6d2e6;
+  font: 470 var(--sf-font-sm)/1.5 var(--sf-font-family);
+  cursor: pointer;
+}
+.stkflo-migration-confirm { margin: 15px 0 10px; max-width: 590px; }
+.stkflo-migration-confirm strong { color: var(--sf-warning); }
+.stkflo-migration-panel .stkflo-migration-commit { margin-top: 10px; min-height: 42px; }
+.stkflo-migration-history {
+  min-width: 0;
+  margin-top: 17px;
+  padding-top: 13px;
+  border-top: 1px solid var(--sf-border-muted);
+}
+.stkflo-migration-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-bottom: 7px;
+}
+.stkflo-migration-history-head h3 {
+  margin: 0;
+  font: 730 var(--sf-font-lg)/1.3 var(--sf-font-family);
+  color: var(--sf-text-primary);
+}
+.stkflo-migration-history-head button {
+  cursor: pointer;
+  border: 1px solid var(--sf-border-normal);
+  border-radius: var(--sf-radius-control);
+  background: var(--sf-bg-surface-raised);
+  color: var(--sf-text-primary);
+  padding: 7px 11px;
+}
+.stkflo-migration-history-scroll {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--sf-border-muted);
+  border-radius: var(--sf-radius-control);
+  background: rgba(9,22,42,.4);
+}
+.stkflo-migration-history table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 610px;
+  text-align: left;
+  font: 500 var(--sf-font-sm)/1.5 var(--sf-font-family);
+}
+.stkflo-migration-history th, .stkflo-migration-history td {
+  padding: 10px;
+  border-bottom: 1px solid var(--sf-border-muted);
+}
+.stkflo-migration-history th {
+  background: var(--sf-bg-table-head);
+  color: #c5d2e5;
+  font-weight: 740;
+  position: sticky; top: 0;
+}
+.stkflo-migration-history td { color: var(--sf-text-secondary); }
+.stkflo-migration-history tbody tr:hover td { background: rgba(99,102,241,.06); }
+@container sf-workspace (max-width: 820px) {
+  .stkflo-migration-fields { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .stkflo-migration-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@container sf-workspace (max-width: 560px) {
+  .stkflo-migration-fields { grid-template-columns: minmax(0,1fr); }
+  .stkflo-migration-header { align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stkflo-migration-panel button { transition: none; }
 }
