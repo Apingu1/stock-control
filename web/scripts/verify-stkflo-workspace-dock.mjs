@@ -49,6 +49,8 @@ check("Drafts stay mounted while hidden", source.app.includes("drafts.map((draft
   source.app.includes("<MaterialModal open={true}"));
 check("Dirty tracking bubbles after controlled inputs", source.app.includes('onChange={() => markDraftDirty(draft.id)}') &&
   !source.app.includes("onChangeCapture") && !source.app.includes("onInputCapture"));
+check("Dirty state does not trigger a parent render per keystroke",
+  source.app.includes("if (current.some((draft) => draft.id === id && draft.dirty)) return current;"));
 check("Workspace Dock is rendered inside main viewport", source.app.indexOf("<WorkspaceDock drafts={drafts}") <
   source.app.indexOf("</main>"));
 check("Dock supports restore, close and multiple copies", source.dock.includes("onRestore(draft.id)") &&
