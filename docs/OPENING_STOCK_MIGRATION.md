@@ -7,7 +7,7 @@ wastage or manufacturing consumption are imported. Opening stock becomes a
 clearly identified StkFlo goods receipt per verified physical supplier lot /
 disposition segment, with the remaining **quantity** and **GBP value**.
 
-The same browser-based Admin → Settings → Opening Stock Migration panel is
+The same browser-based Admin → Data Migration panel is
 available in both developer Codespaces and a Windows-hosted production VM. The
 CSV is uploaded from the operator's browser; it does **not** need to be placed
 inside a container or a shared Windows folder. No workbook password is needed.
@@ -24,7 +24,7 @@ docker compose -f infra/docker-compose.yml up -d --build
 \`\`\`
 
 Sign in with a user who has \`admin.full\`, then navigate to
-**Admin → Settings → Opening Stock Migration**.
+**Admin → Data Migration**.
 
 Windows VM: install or update StkFlo from a build that includes this branch,
 using the application's normal Windows/VM deployment procedure. If the VM
