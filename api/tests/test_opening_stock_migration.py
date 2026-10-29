@@ -45,6 +45,26 @@ class OpeningStockMigrationTests(unittest.TestCase):
         self.assertEqual(result["total_value_gbp"], "70.00")
         self.assertEqual(str(lots[0]["unit"]), "0.200000")
 
+    def test_remaining_stock_revalued_from_original_goods_receipt(self):
+        # Original: 100 mg @ GBP 1/mg = GBP 100.00.
+        # After 30 mg historical consumption, opening is 70 mg @ GBP 70.
+        # No historical ISSUE events are imported.
+        result, _, lots = _evaluate(
+            make_csv(qty="70", unit="1.000000", value="70.00"), EmptyDB()
+        )
+        self.assertFalse(result["blocked"], result["issues"])
+        self.assertEqual(result["total_value_gbp"], "70.00")
+        self.assertEqual(str(lots[0]["qty"]), "70")
+        self.assertEqual(str(lots[0]["unit"]), "1.000000")
+
+    def test_cost_must_be_in_base_uom_not_historic_pack_total(self):
+        # 70 mg @ GBP 1/mg cannot be valued at original GBP 100.
+        result, _, _ = _evaluate(
+            make_csv(qty="70", unit="1.000000", value="100.00"), EmptyDB()
+        )
+        self.assertTrue(result["blocked"])
+        self.assertTrue(any("disagrees" in x["message"] for x in result["issues"]))
+
     def test_bad_valuation_is_rejected(self):
         result, _, _ = _evaluate(make_csv(value="200.00"), EmptyDB())
         self.assertTrue(result["blocked"])
