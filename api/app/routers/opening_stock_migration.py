@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..material_classification import validate_material_classification
 from ..models import (
-    ExpiryThresholdSetting, Material, MaterialLot, StockTransaction, User,
+    ExpiryThresholdSetting, Material, MaterialApprovedManufacturer, MaterialLot, StockTransaction, User,
 )
 from ..security import require_admin_access
 
@@ -338,6 +338,16 @@ def commit_opening_stock(
             )
             db.add(m)
             db.flush()
+            # Mirror the Materials Library behaviour for licensed tablet
+            # manufacturers, so newly migrated products retain approved
+            # manufacturer metadata as well as the displayed default.
+            if m.category_code == "TABLETS_CAPSULES" and m.manufacturer:
+                db.add(MaterialApprovedManufacturer(
+                    material_id=m.id,
+                    manufacturer_name=m.manufacturer,
+                    is_active=True,
+                    created_by=user.username,
+                ))
             existing[code] = m
 
         migration_id = db.execute(text("""
@@ -384,6 +394,55 @@ def commit_opening_stock(
                 "cost": v["cost_ref"], "verify": v["verify_ref"],
                 "who": v["verified_by"],
             })
+        # Material creation normally uses material_code_seq. Bulk insertion of
+        # verified legacy MAT codes must not leave that sequence behind; after
+        # migration, New Material must continue from the highest recorded code.
+        # Sequence gaps after a failed transaction are harmless and expected.
+        if any(
+            code.startswith("MAT") and code[3:].isdigit()
+            for code in material_rows
+        ):
+            db.execute(text("""
+              SELECT setval(
+                'material_code_seq',
+                GREATEST(
+                  (SELECT last_value FROM material_code_seq),
+                  COALESCE((
+                    SELECT MAX(SUBSTRING(material_code FROM 4)::BIGINT)
+                    FROM materials WHERE material_code ~ '^MAT[0-9]{1,12}
+            "materials_added": result["materials_to_create"],
+            "lots_created": len(selected),
+            "total_value_gbp": result["total_value_gbp"],
+            "source_sha256": result["source_sha256"],
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.get("/history")
+def opening_migration_history(
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_admin_access),
+):
+    if db.execute(text("SELECT to_regclass('public.opening_stock_migrations')")).scalar() is None:
+        return []
+    records = db.execute(text("""
+      SELECT id, source_sha256, cutover_date, approval_reference, approved_by,
+             imported_by, imported_at, material_count, lot_count, total_value_gbp
+      FROM opening_stock_migrations ORDER BY id DESC LIMIT 50
+    """)).mappings().all()
+    return [{k: (v.isoformat() if isinstance(v, (date, datetime)) else str(v) if isinstance(v, Decimal) else v)
+             for k, v in row.items()} for row in records]
+
+                  ), 1)
+                ),
+                TRUE
+              )
+            """))
         db.commit()
         return {
             "ok": True, "migration_id": migration_id,
