@@ -43,6 +43,7 @@ import ProductModal from "./components/products/ProductModal";
 import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
 import AdminSettingsView from "./components/admin/AdminSettingsView";
+import OpeningStockMigrationPanel from "./components/admin/OpeningStockMigrationPanel";
 
 const App: React.FC = () => {
   // --- Auth -----------------------------------------------------------------
@@ -432,6 +433,8 @@ const App: React.FC = () => {
         return { tag: "Admin", title: "Users & Roles", subtitle: signed };
       case "admin-settings":
         return { tag: "Admin", title: "Settings", subtitle: signed };
+      case "admin-migration":
+        return { tag: "Admin", title: "Data Migration", subtitle: signed };
       default:
         return { tag: "Workspace", title: "Dashboard", subtitle: signed };
     }
@@ -581,6 +584,11 @@ const App: React.FC = () => {
 
         {view === "admin" && isAdmin && <AdminUsersView />}
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
+        {view === "admin-migration" && isAdmin && (
+          <section className="content stock-workspace-page stkflo-migration-workspace">
+            <OpeningStockMigrationPanel />
+          </section>
+        )}
         {activeDraftId === null && editingMaterial === null && editingReceipt === null && editingIssue === null && (
           <WorkspaceDock drafts={drafts} onRestore={activateDraft} onDiscard={discardDraft} onNew={createDraft} canCreateProduct={!!canCreateProducts} />
         )}

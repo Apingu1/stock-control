@@ -12,6 +12,7 @@ export type ViewMode =
   | "quarantine"
   | "admin"
   | "admin-settings"
+  | "admin-migration"
   | "audit";
 
 export type Role = string;

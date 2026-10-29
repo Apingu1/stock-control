@@ -17,7 +17,7 @@ type Props = {
 type IconName =
   | "dashboard" | "products" | "analytics" | "materials" | "receipts"
   | "consumption" | "lots" | "users" | "settings" | "quarantine"
-  | "alerts" | "audit" | "menu" | "close" | "logout" | "chevron";
+  | "alerts" | "audit" | "migration" | "menu" | "close" | "logout" | "chevron";
 
 function Icon({ name, size = 19 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true as const };
@@ -34,6 +34,7 @@ function Icon({ name, size = 19 }: { name: IconName; size?: number }) {
     quarantine: <><path d="m12 2 8 4v6c0 5-3.2 8-8 10-4.8-2-8-5-8-10V6l8-4Z"/><path d="M12 7v6m0 3v.5"/></>,
     alerts: <><path d="M10 3.5a2 2 0 0 1 4 0c3 .8 5 3.2 5 6.5v5l2 3H3l2-3v-5c0-3.3 2-5.7 5-6.5ZM10 21h4"/></>,
     audit: <><path d="M7 3h8l4 4v14H5V3h2Zm8 0v5h4M8 12h8M8 16h7"/></>,
+    migration: <><path d="M12 3v12m-5-5 5 5 5-5M4 18v3h16v-3M3 5h5M3 9h5"/></>,
     menu: <path d="M4 7h16M4 12h16M4 17h16"/>,
     close: <path d="M5 5 19 19M19 5 5 19"/>,
     logout: <><path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5M13 7l5 5-5 5M18 12H9"/></>,
@@ -55,6 +56,7 @@ const colouredNavIcons: Record<Exclude<IconName, "menu" | "close" | "logout" | "
   quarantine: "📦",
   alerts: "🚨",
   audit: "📑",
+  migration: "📥",
 };
 
 function savedCollapsed(): boolean {
@@ -145,6 +147,7 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
             <ul className="nav-list">
               {item("admin", "Users & Roles", "users")}
               {item("admin-settings", "Settings", "settings")}
+              {item("admin-migration", "Data Migration", "migration")}
             </ul>
           </>}
           <div className="sidebar-section-label">Risk &amp; Quality</div>
