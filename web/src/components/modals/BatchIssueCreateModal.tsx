@@ -197,6 +197,7 @@ export default function BatchIssueCreateModal({
       try {
         const response = await apiFetch("/quarantine/policy");
         const policy = (await response.json()) as { allow_issue_from_quarantine: boolean };
+        setPolicyError(null);
         setAllowQuarantine(Boolean(policy.allow_issue_from_quarantine));
       } catch {
         setAllowQuarantine(false);
