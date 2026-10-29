@@ -177,9 +177,11 @@ const App: React.FC = () => {
         : kind === "receipt"
           ? ["/materials/", "/lot-balances/"]
           : ["/materials/", "/products/", "/lot-balances/"];
-      const replies = await Promise.all(urls.map((url) => apiFetch(url)));
+      const replies = await Promise.all([...urls, "/auth/my-permissions"].map((url) => apiFetch(url)));
       const values = await Promise.all(replies.map((reply) => reply.json()));
       if (epoch !== draftSessionEpoch.current) return; // logout/inactivity invalidated this request
+      const latestPermissions = values[values.length - 1] as { permissions?: string[] };
+      perms.setMyPermissions(latestPermissions.permissions || []);
       stock.setMaterials(values[0]);
       if (kind === "material") stock.setExpiryThresholds(values[1]);
       if (kind === "receipt") stock.setLotBalances(values[1]);
@@ -194,7 +196,7 @@ const App: React.FC = () => {
         id, error: error instanceof Error ? error.message : "Stock/reference data refresh failed",
       } : current);
     }
-  }, [stock.setMaterials, stock.setExpiryThresholds, stock.setLotBalances, stock.setProducts]);
+  }, [perms.setMyPermissions, stock.setMaterials, stock.setExpiryThresholds, stock.setLotBalances, stock.setProducts]);
 
   const createDraft = (kind: WorkspaceDraftKind) => {
     if (drafts.length >= WORKSPACE_DRAFT_LIMIT) {
