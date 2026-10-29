@@ -580,6 +580,9 @@ const App: React.FC = () => {
               }
             }}
           >
+            {/* React keeps forms mounted; inert blocks keyboard AND pointer input
+                while live stock and permissions are being checked. */}
+            <div className="sf-draft-form-body" inert={Boolean(validating)} aria-hidden={Boolean(validating)}>
             {draft.kind === "receipt" && (
               <NewReceiptModal open={true}
                 onMinimize={() => setActiveDraftId(null)}
@@ -615,6 +618,7 @@ const App: React.FC = () => {
                 canSuperEditLockedFields={canSuperEditMaterials}
               />
             )}
+            </div>
             {validating && (
               <div className="sf-draft-validation-mask" role="status" aria-live="polite">
                 <div className="sf-draft-validation-card">
