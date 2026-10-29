@@ -57,6 +57,7 @@ const apiErrorMessage = (error: unknown) => {
 type Props = {
   open: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
   onIssuePosted: () => void;
   lotBalances: LotBalance[];
   products: Product[];
@@ -68,6 +69,7 @@ type Props = {
 export default function BatchIssueCreateModal({
   open,
   onClose,
+  onMinimize,
   onIssuePosted,
   lotBalances,
   products,

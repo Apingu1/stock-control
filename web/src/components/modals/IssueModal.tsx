@@ -10,6 +10,7 @@ import BatchIssueCreateModal from "./BatchIssueCreateModal";
 export default function IssueModal({
   open,
   onClose,
+  onMinimize,
   onIssuePosted,
   materials,
   lotBalances,
@@ -23,6 +24,7 @@ export default function IssueModal({
 }: {
   open: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
   onIssuePosted: () => void;
   materials: Material[];
   lotBalances: LotBalance[];
@@ -53,6 +55,7 @@ export default function IssueModal({
       <BatchIssueCreateModal
         open={open}
         onClose={onClose}
+        onMinimize={onMinimize}
         onIssuePosted={onIssuePosted}
         lotBalances={lotBalances}
         createdBy={createdBy}

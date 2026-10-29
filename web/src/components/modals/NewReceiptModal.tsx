@@ -10,6 +10,7 @@ import ReceiptComplianceFields from "./receipts/ReceiptComplianceFields";
 type NewReceiptModalProps = {
   open: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
   materials: Material[];
   onReceiptPosted: () => void;
 
@@ -23,6 +24,7 @@ type NewReceiptModalProps = {
 const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
   open,
   onClose,
+  onMinimize,
   materials,
   onReceiptPosted,
   mode = "create",
@@ -161,9 +163,15 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
             </div>
           </div>
 
+          <div className="sf-draft-actions">
+            {onMinimize && !form.isEdit && (
+              <button type="button" className="sf-draft-minimise" aria-label="Minimise Goods Receipt draft"
+                title="Minimise to Workspace Dock" onClick={onMinimize} disabled={submitting}>−</button>
+            )}
           <button
             type="button"
             className="icon-btn"
+            disabled={submitting}
             onClick={() => {
               setSubmitError(null);
               onClose();
@@ -171,6 +179,7 @@ const NewReceiptModal: React.FC<NewReceiptModalProps> = ({
           >
             ✕
           </button>
+          </div>
         </div>
 
         <form className="modal-body" onSubmit={handleSubmit}>

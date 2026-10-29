@@ -11,6 +11,7 @@ import { isOverrideEnabledFromInitial, toNumOrEmpty } from "./materials/material
 type MaterialFormProps = {
   open: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
   initial?: Partial<Material>;
   mode: "create" | "edit";
   onSaved: () => void;
@@ -21,6 +22,7 @@ type MaterialFormProps = {
 const MaterialModal: React.FC<MaterialFormProps> = ({
   open,
   onClose,
+  onMinimize,
   initial,
   mode,
   onSaved,
@@ -291,9 +293,15 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
                 : "Register a new material. Its controlled MAT code is assigned automatically."}
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={handleCancel}>
-            ✕
-          </button>
+          <div className="sf-draft-actions">
+            {onMinimize && !isEdit && (
+              <button type="button" className="sf-draft-minimise" aria-label="Minimise Material draft"
+                title="Minimise to Workspace Dock" onClick={onMinimize} disabled={submitting}>−</button>
+            )}
+            <button type="button" className="icon-btn" onClick={handleCancel} disabled={submitting}>
+              ✕
+            </button>
+          </div>
         </div>
 
         <form className="modal-body" onSubmit={handleSubmit}>
