@@ -18,11 +18,17 @@
 .sf-draft-minimise:focus-visible { outline: 2px solid var(--sf-border-focus); outline-offset: 2px; }
 .sf-draft-minimise:disabled { opacity: .5; cursor: not-allowed; }
 .sf-draft-actions { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Main content and dock now share the same containing block and max-width.
+   Account for the page's reserved scrollbar gutter on desktop. */
+.app-shell:not(.stkflo-auth-shell) .main { position: relative; }
 .sf-workspace-dock {
-  position: fixed; z-index: 700;
-  left: clamp(16px, 19vw, 300px); right: clamp(16px, 2vw, 30px);
+  position: absolute; z-index: 700;
+  left: var(--sf-page-gutter-x);
+  right: calc(var(--sf-page-gutter-x) + 16px);
+  margin-inline: auto;
   bottom: max(12px, env(safe-area-inset-bottom));
-  max-width: min(1120px, calc(100vw - 32px));
+  width: auto;
+  max-width: var(--sf-content-max-width);
   max-height: min(38dvh, 270px); overflow: auto; box-sizing: border-box;
   border: 1px solid rgba(165,180,252,.28);
   border-radius: var(--sf-radius-card);
@@ -100,9 +106,12 @@
 .sf-draft-validation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sf-draft-validation-actions button { min-height: 36px; }
 @media (max-width: 900px) {
-  .sf-workspace-dock { left: 13px; right: 13px; bottom: 10px; max-width: none; }
+  /* Match the narrower 14px main-content gutters. */
+  .sf-workspace-dock { left: 14px; right: 30px; bottom: 10px; }
 }
 @media (max-width: 520px) {
+  /* Main uses 11px gutters below 520px. */
+  .sf-workspace-dock { left: 11px; right: 27px; }
   .sf-workspace-dock-item { flex: 1 1 100%; }
   .sf-workspace-dock-new button { flex: 1 1 auto; }
 }
