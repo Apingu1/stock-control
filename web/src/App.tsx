@@ -221,9 +221,12 @@ const App: React.FC = () => {
   };
 
   const markDraftDirty = (id: string) => {
-    setDrafts((current) => current.map((draft) => draft.id === id && !draft.dirty
-      ? { ...draft, dirty: true }
-      : draft));
+    // Only the first genuine change updates App state. A parent render on
+    // every keystroke is unnecessary and can disrupt controlled fields.
+    setDrafts((current) => {
+      if (current.some((draft) => draft.id === id && draft.dirty)) return current;
+      return current.map((draft) => draft.id === id ? { ...draft, dirty: true } : draft);
+    });
   };
 
   const removeDraft = (id: string) => {
