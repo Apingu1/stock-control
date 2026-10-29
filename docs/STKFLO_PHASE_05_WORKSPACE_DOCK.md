@@ -81,3 +81,20 @@ npm run build
 This is **not** a server-side persistent draft system. Refreshing or closing the browser discards unfinished values after the browser's warning. Existing-record edit forms, Product List modals, lot-status change dialogs, Analytics search and backup/recovery dialogs are deliberately not included in the multi-draft dock. Additional form types can be added after validating this controlled workflow.
 
 The browser holds each draft component while minimised. Its background requests and resource use may continue, but the Consumption quarantine-policy polling is paused while hidden and resumed when restored.
+
+## Phase 05 follow-up — modal input and dock width
+
+Reported after initial testing (29 October 2026): New Material, Goods Receipt and Consumption create forms were unable to accept typed values. Phase 05 had added two capture-phase handlers (`onInputCapture` and `onChangeCapture`) on every draft wrapper, which could update the parent while React controlled inputs were processing their own events. Dirty tracking now uses a single bubbling `onChange` handler, so it runs after the input's own handler. The click handler for selection buttons also uses the bubbling phase.
+
+The Workspace Dock was originally positioned relative to the window, with an independent 1120px maximum width. It is now rendered **inside the responsive main workspace**, positioned relative to that workspace and capped by the same `--sf-content-max-width` variable as page panels. The right inset also accounts for the content panel's reserved 16px scrollbar gutter, keeping its outer edges aligned with the main rounded page card.
+
+### Focused acceptance checks
+
+- New Material: type name, manufacturer, supplier, numeric thresholds. Ensure every keystroke appears, dropdowns remain selectable and the draft is marked Unsaved changes.
+- Goods Receipt: type a lot number, quantity and total cost, select dates, minimise and restore. Confirm fields retain values.
+- Consumption: enter batch identifiers, search lot numbers, add a material/packaging line, type quantities and minimise/restore. Confirm typed text is not lost.
+- Compare left/right edges of Workspace Dock with the Dashboard's main panel at 100% Chrome zoom on laptop, square screen and widescreen.
+- Test dirty-draft Cancel confirmation both accepted and declined.
+- Run `npm run check:workspace-dock` and `npm run build` before merging.
+
+These corrections have been committed, but runtime testing in Codespaces remains required.

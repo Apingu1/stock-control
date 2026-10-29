@@ -47,6 +47,10 @@ check("Separate per-instance drafts capped at eight", source.types.includes('WOR
 check("Drafts stay mounted while hidden", source.app.includes("drafts.map((draft)") && source.app.includes("sf-minimised-draft") &&
   source.app.includes("<NewReceiptModal open={true}") && source.app.includes("<IssueModal open={true}") &&
   source.app.includes("<MaterialModal open={true}"));
+check("Dirty tracking bubbles after controlled inputs", source.app.includes('onChange={() => markDraftDirty(draft.id)}') &&
+  !source.app.includes("onChangeCapture") && !source.app.includes("onInputCapture"));
+check("Workspace Dock is rendered inside main viewport", source.app.indexOf("<WorkspaceDock drafts={drafts}") <
+  source.app.indexOf("</main>"));
 check("Dock supports restore, close and multiple copies", source.dock.includes("onRestore(draft.id)") &&
   source.dock.includes("onDiscard(draft.id)") && source.dock.includes('onNew("receipt")'));
 check("No browser storage for form drafts", !source.types.includes("localStorage") && !source.types.includes("sessionStorage"));
@@ -75,4 +79,10 @@ check("Existing lot-number-only consumption prediction retained", source.batch.i
 check("Backend posting endpoints untouched", source.batch.includes('apiFetch("/issues/batch"') &&
   source.receipt.includes('apiFetch("/receipts/"') && source.material.includes('apiFetch("/materials/"'));
 check("Footer dock reserves space in existing workspace", css.includes(".app-shell:has(.sf-workspace-dock) .main"));
+check("Dock matches primary panel width", css.includes("position: absolute; z-index: 700") &&
+  css.includes("max-width: var(--sf-content-max-width)") &&
+  css.includes("left: var(--sf-page-gutter-x)") &&
+  css.includes("right: calc(var(--sf-page-gutter-x) + 16px)") &&
+  css.includes(".app-shell:not(.stkflo-auth-shell) .main { position: relative; }"));
+
 process.exitCode = errors ? 1 : 0;
