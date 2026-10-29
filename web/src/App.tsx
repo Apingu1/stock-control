@@ -79,6 +79,7 @@ const App: React.FC = () => {
   const [draftValidation, setDraftValidation] = useState<{id: string; error: string | null} | null>(null);
   const nextDraftId = useRef(1);
   const draftSessionEpoch = useRef(0);
+  const liveDraftIds = useRef(new Set<string>());
   const completedDraftIds = useRef(new Set<string>());
   const activeDraftKind = drafts.find((draft) => draft.id === activeDraftId)?.kind ?? null;
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -206,6 +207,7 @@ const App: React.FC = () => {
     const id = "draft-" + nextDraftId.current++;
     const draft = nextWorkspaceDraft(drafts, kind, id);
     if (!draft) return;
+    liveDraftIds.current.add(id);
     setDrafts((current) => [...current, draft]);
     setActiveDraftId(id);
     void refreshDraft(id, kind);
@@ -225,6 +227,7 @@ const App: React.FC = () => {
   };
 
   const removeDraft = (id: string) => {
+    liveDraftIds.current.delete(id);
     setDrafts((current) => current.filter((draft) => draft.id !== id));
     setActiveDraftId((current) => current === id ? null : current);
     setDraftValidation((current) => current?.id === id ? null : current);
@@ -239,6 +242,7 @@ const App: React.FC = () => {
   };
 
   const completeDraft = (id: string, kind: WorkspaceDraftKind) => {
+    if (!liveDraftIds.current.has(id)) return; // completed after logout/discard
     completedDraftIds.current.add(id);
     removeDraft(id);
     if (kind === "material") void Promise.all([stock.loadMaterials(), stock.loadProducts(), stock.loadExpiryThresholds()]);
@@ -289,6 +293,7 @@ const App: React.FC = () => {
       // GMP draft state is transient and must be destroyed on logout,
       // including session timeout and authentication expiry.
       draftSessionEpoch.current += 1;
+      liveDraftIds.current.clear();
       setDrafts([]);
       setActiveDraftId(null);
       setDraftValidation(null);
