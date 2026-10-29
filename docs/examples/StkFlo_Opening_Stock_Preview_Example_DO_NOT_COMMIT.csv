@@ -1,0 +1,3 @@
+record_type,material_code,material_name,category_code,type_code,uom_code,material_status,material_manufacturer,material_supplier,lot_number,lot_status,expiry_date,lot_manufacturer,lot_supplier,include_opening,confirmed_qty,original_unit_cost_gbp,current_stock_value_gbp,cost_source_reference,qa_verification_reference,qa_verified_by
+MATERIAL,TEST1001,Test excipient,SOLID_RAW_MAT,EXCIPIENT,G,ACTIVE,Test Manufacturer,Test Supplier,,,,,,,,,,,,
+LOT,TEST1001,,,,,,,,T-010,QUARANTINE,2028-12-31,Test Manufacturer,Test Supplier,YES,350,0.20,70.00,TEST-INVOICE-NOT-REAL,TEST-QA-NOT-REAL,Test only
