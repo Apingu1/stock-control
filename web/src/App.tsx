@@ -311,6 +311,8 @@ const App: React.FC = () => {
         return { tag: "Admin", title: "Users & Roles", subtitle: signed };
       case "admin-settings":
         return { tag: "Admin", title: "Settings", subtitle: signed };
+      case "admin-migration":
+        return { tag: "Admin", title: "Opening Stock Migration", subtitle: signed };
       default:
         return { tag: "Workspace", title: "Dashboard", subtitle: signed };
     }
