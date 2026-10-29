@@ -1,5 +1,5 @@
 // web/src/App.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readDensityPreference, saveDensityPreference, type WorkspaceDensity } from "./utils/workspaceDensity";
 import type { Issue, Material, Receipt, UserMe, ViewMode } from "./types";
 import {
@@ -8,6 +8,7 @@ import {
   fetchMe,
   getToken,
   logoutSession,
+  apiFetch,
 } from "./utils/api";
 
 import { useAuth } from "./hooks/useAuth";
@@ -19,6 +20,8 @@ import { useIdleLogout } from "./hooks/useIdleLogout";
 
 import Sidebar from "./components/layout/Sidebar";
 import TopBar from "./components/layout/TopBar";
+import WorkspaceDock from "./components/layout/WorkspaceDock";
+import { draftLabel, nextWorkspaceDraft, WORKSPACE_DRAFT_LIMIT, type WorkspaceDraft, type WorkspaceDraftKind } from "./utils/workspaceDrafts";
 
 import DashboardView from "./components/dashboard/DashboardView";
 import MaterialsLibraryView from "./components/materials/MaterialsLibraryView";
@@ -69,9 +72,14 @@ const App: React.FC = () => {
   const stock = useStockData();
 
   // Modals
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [showIssueModal, setShowIssueModal] = useState(false);
-  const [showNewMaterialModal, setShowNewMaterialModal] = useState(false);
+  // The dock owns independently mounted CREATE drafts; existing-record edits
+  // remain single-instance and do not participate in multi-draft workflows.
+  const [drafts, setDrafts] = useState<WorkspaceDraft[]>([]);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [draftValidation, setDraftValidation] = useState<{id: string; error: string | null} | null>(null);
+  const nextDraftId = useRef(1);
+  const completedDraftIds = useRef(new Set<string>());
+  const activeDraftKind = drafts.find((draft) => draft.id === activeDraftId)?.kind ?? null;
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
 
   // Editing states
@@ -93,8 +101,8 @@ const App: React.FC = () => {
 
   const operationalPollingEnabled =
     !!auth.me &&
-    (showReceiptModal ||
-      showIssueModal ||
+    (activeDraftKind === "receipt" ||
+      activeDraftKind === "consumption" ||
       view === "dashboard" ||
       view === "alerts" ||
       view === "lots" ||
@@ -103,7 +111,7 @@ const App: React.FC = () => {
       view === "quarantine");
 
   const operationalIntervalMs =
-    showReceiptModal || showIssueModal
+    activeDraftKind === "receipt" || activeDraftKind === "consumption"
       ? 2_500
       : view === "dashboard" || view === "alerts"
         ? 5_000
@@ -112,8 +120,8 @@ const App: React.FC = () => {
   const refreshOperationalData = useCallback(async () => {
     const jobs: Promise<void>[] = [];
     const needsLots =
-      showReceiptModal ||
-      showIssueModal ||
+      activeDraftKind === "receipt" ||
+      activeDraftKind === "consumption" ||
       view === "dashboard" ||
       view === "alerts" ||
       view === "lots" ||
@@ -122,16 +130,15 @@ const App: React.FC = () => {
       view === "quarantine";
 
     if (needsLots) jobs.push(stock.loadLotBalances({ silent: true }));
-    if (showReceiptModal || view === "receipts") {
+    if (activeDraftKind === "receipt" || view === "receipts") {
       jobs.push(stock.loadReceipts({ silent: true }));
     }
-    if (showIssueModal || view === "consumption") {
+    if (activeDraftKind === "consumption" || view === "consumption") {
       jobs.push(stock.loadIssues({ silent: true }));
     }
     await Promise.all(jobs);
   }, [
-    showIssueModal,
-    showReceiptModal,
+    activeDraftKind,
     stock.loadIssues,
     stock.loadLotBalances,
     stock.loadReceipts,
@@ -157,6 +164,81 @@ const App: React.FC = () => {
     intervalMs: 10_000,
     label: "reference data refresh",
   });
+
+  // Active drafts must use fresh API data before they can be posted.
+  // Unlike background stock loaders, these requests throw on failed refresh.
+  const refreshDraft = useCallback(async (id: string, kind: WorkspaceDraftKind) => {
+    setDraftValidation({ id, error: null });
+    try {
+      const urls = kind === "material"
+        ? ["/materials/", "/materials/expiry-thresholds"]
+        : kind === "receipt"
+          ? ["/materials/", "/lot-balances/"]
+          : ["/materials/", "/products/", "/lot-balances/"];
+      const replies = await Promise.all(urls.map((url) => apiFetch(url)));
+      const values = await Promise.all(replies.map((reply) => reply.json()));
+      stock.setMaterials(values[0]);
+      if (kind === "material") stock.setExpiryThresholds(values[1]);
+      if (kind === "receipt") stock.setLotBalances(values[1]);
+      if (kind === "consumption") {
+        stock.setProducts(values[1]);
+        stock.setLotBalances(values[2]);
+      }
+      setDraftValidation((current) => current?.id === id ? null : current);
+    } catch (error) {
+      setDraftValidation((current) => current?.id === id ? {
+        id, error: error instanceof Error ? error.message : "Stock/reference data refresh failed",
+      } : current);
+    }
+  }, [stock.setMaterials, stock.setExpiryThresholds, stock.setLotBalances, stock.setProducts]);
+
+  const createDraft = (kind: WorkspaceDraftKind) => {
+    if (drafts.length >= WORKSPACE_DRAFT_LIMIT) {
+      window.alert("Workspace has reached its limit of " + WORKSPACE_DRAFT_LIMIT + " drafts. Complete or discard one first.");
+      return;
+    }
+    const id = "draft-" + nextDraftId.current++;
+    const draft = nextWorkspaceDraft(drafts, kind, id);
+    if (!draft) return;
+    setDrafts((current) => [...current, draft]);
+    setActiveDraftId(id);
+    void refreshDraft(id, kind);
+  };
+
+  const activateDraft = (id: string) => {
+    const draft = drafts.find((item) => item.id === id);
+    if (!draft) return;
+    setActiveDraftId(id);
+    void refreshDraft(id, draft.kind);
+  };
+
+  const markDraftDirty = (id: string) => {
+    setDrafts((current) => current.map((draft) => draft.id === id && !draft.dirty
+      ? { ...draft, dirty: true }
+      : draft));
+  };
+
+  const removeDraft = (id: string) => {
+    setDrafts((current) => current.filter((draft) => draft.id !== id));
+    setActiveDraftId((current) => current === id ? null : current);
+    setDraftValidation((current) => current?.id === id ? null : current);
+  };
+
+  const discardDraft = (id: string) => {
+    if (completedDraftIds.current.delete(id)) return;
+    const draft = drafts.find((item) => item.id === id);
+    if (!draft) return;
+    if (draft.dirty && !window.confirm("Discard " + draftLabel(draft) + "? All unsaved entries in this draft will be lost.")) return;
+    removeDraft(id);
+  };
+
+  const completeDraft = (id: string, kind: WorkspaceDraftKind) => {
+    completedDraftIds.current.add(id);
+    removeDraft(id);
+    if (kind === "material") void Promise.all([stock.loadMaterials(), stock.loadProducts(), stock.loadExpiryThresholds()]);
+    else if (kind === "receipt") void Promise.all([stock.loadLotBalances(), stock.loadReceipts()]);
+    else void Promise.all([stock.loadLotBalances(), stock.loadIssues()]);
+  };
 
   const setAuthenticatedUser = auth.setMe;
   const setLoginOpen = auth.setShowLogin;
@@ -188,9 +270,12 @@ const App: React.FC = () => {
       clearReceipts([]);
       clearIssues([]);
       clearExpiryThresholds([]);
-      setShowReceiptModal(false);
-      setShowIssueModal(false);
-      setShowNewMaterialModal(false);
+      // GMP draft state is transient and must be destroyed on logout,
+      // including session timeout and authentication expiry.
+      setDrafts([]);
+      setActiveDraftId(null);
+      setDraftValidation(null);
+      completedDraftIds.current.clear();
       setEditingMaterial(null);
       setEditingReceipt(null);
       setEditingIssue(null);
@@ -268,19 +353,16 @@ const App: React.FC = () => {
 
   // --- Modal handlers -------------------------------------------------------
   const handleMaterialSaved = async () => {
-    setShowNewMaterialModal(false);
     setEditingMaterial(null);
     await Promise.all([stock.loadMaterials(), stock.loadProducts(), stock.loadExpiryThresholds()]);
   };
 
   const handleReceiptPosted = async () => {
-    setShowReceiptModal(false);
     setEditingReceipt(null);
     await Promise.all([stock.loadLotBalances(), stock.loadReceipts()]);
   };
 
   const handleIssuePosted = async () => {
-    setShowIssueModal(false);
     setEditingIssue(null);
     await Promise.all([stock.loadLotBalances(), stock.loadIssues()]);
   };
@@ -355,7 +437,11 @@ const App: React.FC = () => {
         canViewAudit={canViewAudit}
         canViewProducts={canViewProducts}
         alertsCounts={alertsCounts}
-        onLogout={() => logout()}
+        onLogout={() => {
+          if (drafts.some((draft) => draft.dirty) &&
+              !window.confirm("Sign out and discard all unsaved Workspace Dock drafts?")) return;
+          logout();
+        }}
       />
 
       <main className="main">
@@ -364,9 +450,9 @@ const App: React.FC = () => {
           onDensityChange={handleDensityChange}
           header={header}
           isSignedIn={!!auth.me}
-          onNewMaterial={() => setShowNewMaterialModal(true)}
-          onNewReceipt={() => setShowReceiptModal(true)}
-          onNewIssue={() => setShowIssueModal(true)}
+          onNewMaterial={() => createDraft("material")}
+          onNewReceipt={() => createDraft("receipt")}
+          onNewIssue={() => createDraft("consumption")}
         />
 
         {view === "dashboard" && (
@@ -384,7 +470,7 @@ const App: React.FC = () => {
         {view === "materials" && (
           <MaterialsLibraryView
             materials={stock.materials}
-            onEditMaterial={(m) => setEditingMaterial(m)}
+            onEditMaterial={(m) => { setActiveDraftId(null); setEditingMaterial(m); }}
           />
         )}
 
@@ -406,11 +492,11 @@ const App: React.FC = () => {
             receipts={stock.receipts}
             loadingReceipts={stock.loadingReceipts}
             receiptsError={stock.receiptsError}
-            onNewReceipt={() => setShowReceiptModal(true)}
+            onNewReceipt={() => createDraft("receipt")}
             canEdit={!!canEditReceipts}
             onEditReceipt={(r) => {
+              setActiveDraftId(null);
               setEditingReceipt(r);
-              setShowReceiptModal(true);
             }}
           />
         )}
@@ -420,11 +506,11 @@ const App: React.FC = () => {
             issues={stock.issues}
             loadingIssues={stock.loadingIssues}
             issuesError={stock.issuesError}
-            onNewIssue={() => setShowIssueModal(true)}
+            onNewIssue={() => createDraft("consumption")}
             canEdit={!!canEditIssues}
             onEditIssue={(i) => {
+              setActiveDraftId(null);
               setEditingIssue(i);
-              setShowIssueModal(true);
             }}
           />
         )}
@@ -460,45 +546,106 @@ const App: React.FC = () => {
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
       </main>
 
-      {/* MODALS */}
+      {/* Only one CREATE draft is visible; all are mounted to preserve form state. */}
+      {drafts.map((draft) => {
+        const active = draft.id === activeDraftId;
+        const validating = active && draftValidation?.id === draft.id;
+        return (
+          <div key={draft.id}
+            className={"sf-draft-slot " + (active ? "sf-active-draft" : "sf-minimised-draft") + (validating ? " is-refreshing" : "")}
+            aria-hidden={!active}
+            onChangeCapture={() => markDraftDirty(draft.id)}
+            onInputCapture={() => markDraftDirty(draft.id)}
+            onClickCapture={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest(".issue-batch-scroll button, .modal-body button[type='button']")) {
+                markDraftDirty(draft.id);
+              }
+            }}
+          >
+            {draft.kind === "receipt" && (
+              <NewReceiptModal open={true}
+                onMinimize={() => setActiveDraftId(null)}
+                onClose={() => discardDraft(draft.id)}
+                materials={stock.materials}
+                onReceiptPosted={() => completeDraft(draft.id, "receipt")}
+                mode="create"
+                canSuperEditLockedFields={canSuperEditReceipts}
+              />
+            )}
+            {draft.kind === "consumption" && (
+              <IssueModal open={true} active={active}
+                onMinimize={() => setActiveDraftId(null)}
+                onClose={() => discardDraft(draft.id)}
+                materials={stock.materials}
+                lotBalances={stock.lotBalances}
+                products={stock.products}
+                onIssuePosted={() => completeDraft(draft.id, "consumption")}
+                createdBy={auth.me?.username || ""}
+                mode="create"
+                canSuperEditLockedFields={canSuperEditIssues}
+                canApproveRejectedBatch={canApproveRejectedBatch}
+                canRecordCancelledBmr={canRecordCancelledBmr}
+              />
+            )}
+            {draft.kind === "material" && (
+              <MaterialModal open={true}
+                onMinimize={() => setActiveDraftId(null)}
+                onClose={() => discardDraft(draft.id)}
+                mode="create"
+                onSaved={() => completeDraft(draft.id, "material")}
+                expiryThresholds={stock.expiryThresholds}
+                canSuperEditLockedFields={canSuperEditMaterials}
+              />
+            )}
+            {validating && (
+              <div className="sf-draft-validation-mask" role="status" aria-live="polite">
+                <div className="sf-draft-validation-card">
+                  <strong>{draftValidation?.error ? "Unable to refresh stock data" : "Checking current inventory and permissions…"}</strong>
+                  <p>{draftValidation?.error
+                    ? draftValidation.error + ". This draft remains saved in memory; retry before posting."
+                    : "Refreshing current materials, quantities and lot statuses before this draft can be used."}</p>
+                  {draftValidation?.error && (
+                    <div className="sf-draft-validation-actions">
+                      <button className="btn btn-primary" type="button" onClick={() => void refreshDraft(draft.id, draft.kind)}>Retry refresh</button>
+                      <button className="btn" type="button" onClick={() => { setActiveDraftId(null); setDraftValidation(null); }}>Minimise</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {activeDraftId === null && editingMaterial === null && editingReceipt === null && editingIssue === null && (
+        <WorkspaceDock drafts={drafts} onRestore={activateDraft} onDiscard={discardDraft} onNew={createDraft} />
+      )}
+
+      {/* EXISTING-RECORD EDIT MODALS: deliberately excluded from the multi-draft dock. */}
       <NewReceiptModal
-        open={showReceiptModal}
-        onClose={() => {
-          setShowReceiptModal(false);
-          setEditingReceipt(null);
-        }}
+        open={!!editingReceipt}
+        onClose={() => setEditingReceipt(null)}
         materials={stock.materials}
         onReceiptPosted={handleReceiptPosted}
-        mode={editingReceipt ? "edit" : "create"}
+        mode="edit"
         initial={editingReceipt || undefined}
         canSuperEditLockedFields={canSuperEditReceipts}
       />
 
       <IssueModal
-        open={showIssueModal}
-        onClose={() => {
-          setShowIssueModal(false);
-          setEditingIssue(null);
-        }}
+        open={!!editingIssue}
+        onClose={() => setEditingIssue(null)}
         materials={stock.materials}
         lotBalances={stock.lotBalances}
         products={stock.products}
         onIssuePosted={handleIssuePosted}
         createdBy={auth.me?.username || ""}
-        mode={editingIssue ? "edit" : "create"}
+        mode="edit"
         initial={editingIssue || undefined}
         canSuperEditLockedFields={canSuperEditIssues}
         canApproveRejectedBatch={canApproveRejectedBatch}
         canRecordCancelledBmr={canRecordCancelledBmr}
-      />
-
-      <MaterialModal
-        open={showNewMaterialModal}
-        onClose={() => setShowNewMaterialModal(false)}
-        mode="create"
-        onSaved={handleMaterialSaved}
-        expiryThresholds={stock.expiryThresholds}
-        canSuperEditLockedFields={canSuperEditMaterials}
       />
 
       <MaterialModal
