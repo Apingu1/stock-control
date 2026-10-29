@@ -50,6 +50,16 @@ type Props = {
   lotBalances: LotBalance[];
 };
 
+/** Stable component identity: do not declare this inside LowStockExpiryView.
+ * Frequent alert refreshes would remount the scroll container and jump to top. */
+const AlertsShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <section className="content sf-operational-page sf-ops-secondary-page sf-alerts-contained">
+    <section className="card sf-alerts-contained-card">
+      <div className="sf-alerts-scroll-container">{children}</div>
+    </section>
+  </section>
+);
+
 const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
   const [q, setQ] = useState("");
   const [actionsLoaded, setActionsLoaded] = useState(false);
