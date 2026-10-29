@@ -3,12 +3,13 @@ name: Opening stock migration checks
 on:
   push:
     branches:
-      - feature/stkflo-opening-stock-migration
+      - feature/stkflo-ui-polish-product-bmr-phase-06
   pull_request:
     paths:
       - "api/app/routers/opening_stock_migration.py"
       - "api/tests/test_opening_stock_migration.py"
       - "web/src/**"
+      - "infra/nginx.conf"
 
 jobs:
   backend-unit-tests:

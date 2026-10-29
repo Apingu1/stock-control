@@ -18,8 +18,8 @@ Codespaces:
 
 \`\`\`bash
 cd /workspaces/stock-control
-git fetch origin feature/stkflo-opening-stock-migration
-git switch --track origin/feature/stkflo-opening-stock-migration
+git fetch origin feature/stkflo-ui-polish-product-bmr-phase-06
+git switch feature/stkflo-ui-polish-product-bmr-phase-06
 docker compose -f infra/docker-compose.yml up -d --build
 \`\`\`
 
@@ -86,10 +86,7 @@ Do not upload the password-protected original workbook to this importer.
 - MATERIAL rows can be included for zero-stock materials; they do not
   generate zero-quantity receipts.
 
-Use the older preflight exception file and the physical stocktake to
-reconcile selected quantities to the frozen legacy workbook. The old workbook
-contains overlapping baseline, stocktake and transaction calculations; the
-preflight current-quantity estimate is **not** an authoritative lot balance.
+Use a signed physical stocktake and QA-approved reconciliation to the frozen legacy workbook. The original spreadsheet may mix historical receipts, consumption and stocktake adjustments; any calculated balance is **not automatically an authoritative lot quantity**. The app does not independently verify the legacy workbook.
 
 ## 2. Test in Codespaces — no live posting
 
@@ -156,3 +153,12 @@ tested against a non-production dataset and validated before regulated use.
 A stock migration cannot be trivially reversed by deleting receipts: if a
 wrong live cutover is committed, restore the verified backup under a
 controlled recovery/change process.
+
+
+## Compatibility with the latest StkFlo interface
+
+This implementation is integrated directly into `feature/stkflo-ui-polish-product-bmr-phase-06`, not the earlier migration branch. The migration view uses the same signed-in shell, typography, responsive panel dimensions, dark surfaces and permissions as the current StkFlo application. New Product BMR, Workspace Dock and Phase 06 layouts remain intact.
+
+The importer is browser-driven in Codespaces and on Windows VM deployments: no separate Python installation is required on the operator workstation. The Codespaces API gateway allows 8 MB HTTP bodies to accommodate the 5 MB CSV limit plus JSON framing. Existing production nginx already provides an adequate request limit.
+
+**Important:** The included example uses fictitious material, supplier lot and QA identifiers. It is designed to test preview, not to be posted as real stock. Actual workbook-derived quantities and cost bases must be verified before importing opening receipts.

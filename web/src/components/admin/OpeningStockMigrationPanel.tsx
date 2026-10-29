@@ -137,11 +137,11 @@ export default function OpeningStockMigrationPanel() {
     <section className="stkflo-migration-panel" aria-labelledby="opening-migration-title">
       <div className="stkflo-migration-header">
         <div>
-          <div className="stkflo-migration-eyebrow">CONTROLLED DATA CUTOVER</div>
+          <div className="stkflo-migration-eyebrow">STOCK INTEGRITY / CONTROLLED DATA CUTOVER</div>
           <h2 id="opening-migration-title">Opening Stock Migration</h2>
           <p>Import verified current quantities and remaining GBP values as opening goods receipts. Historic consumption is not imported.</p>
         </div>
-        <button className="btn secondary" type="button" onClick={downloadTemplate}>Download CSV template</button>
+        <button className="btn btn-ghost" type="button" onClick={downloadTemplate}>Download CSV template</button>
       </div>
 
       <div className="stkflo-migration-warning">
@@ -159,7 +159,7 @@ export default function OpeningStockMigrationPanel() {
             onChange={e => { void chooseFile(e.target.files?.[0]); }}
           />
           {fileName && <p className="stkflo-migration-small">Selected: {fileName}</p>}
-          <button className="btn" type="button" disabled={busy || !csv} onClick={() => { void previewFile(); }}>
+          <button className="btn btn-primary" type="button" disabled={busy || !csv} onClick={() => { void previewFile(); }}>
             {busy ? "Checking…" : "Validate & preview"}
           </button>
         </div>
@@ -202,7 +202,7 @@ export default function OpeningStockMigrationPanel() {
           <label className="stkflo-migration-confirm">Type <strong>IMPORT OPENING STOCK</strong> to authorise the irreversible posting:
             <input value={confirmation} onChange={e => setConfirmation(e.target.value)} autoComplete="off" spellCheck={false} />
           </label>
-          <button className="btn stkflo-migration-commit" type="button" disabled={!canPost} onClick={() => { void post(); }}>
+          <button className="btn btn-primary stkflo-migration-commit" type="button" disabled={!canPost} onClick={() => { void post(); }}>
             {busy ? "Importing…" : "Commit opening stock"}
           </button>
         </div>}
