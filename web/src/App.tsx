@@ -585,7 +585,7 @@ const App: React.FC = () => {
         {view === "admin" && isAdmin && <AdminUsersView />}
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
         {view === "admin-migration" && isAdmin && (
-          <section className="content stock-workspace-page stkflo-migration-workspace">
+          <section className="content stkflo-migration-workspace">
             <OpeningStockMigrationPanel />
           </section>
         )}

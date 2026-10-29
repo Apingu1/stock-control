@@ -3,12 +3,35 @@
  * Same tokens, density, typography and card surfaces as the signed-in workspace.
  * No external fonts/assets; browser upload works identically in Windows and Codespaces.
  */
-.stkflo-migration-workspace {
+/* Migration has variable-height validation/approval/history sections.
+   Unlike stock-workspace-page (fixed height tables), the entire migration
+   content scrolls, without clipping the lower actions. Keep one scrollbar. */
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stkflo-migration-workspace {
+  display: block;
+  flex: 1 1 auto;
+  height: auto;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   scrollbar-gutter: stable;
-  padding-bottom: 0;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 12px;
+  padding: 0 2px 4px 0;
+  scrollbar-color: rgba(155, 171, 207, .55) transparent;
+  scrollbar-width: thin;
+}
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stkflo-migration-workspace::-webkit-scrollbar {
+  width: 10px;
+}
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stkflo-migration-workspace::-webkit-scrollbar-thumb {
+  background: rgba(155, 171, 207, .50);
+  border: 2px solid var(--sf-bg-canvas);
+  border-radius: var(--sf-radius-pill);
+}
+.app-shell:not(.stkflo-auth-shell) .main > section.content.stkflo-migration-workspace::-webkit-scrollbar-track {
+  background: transparent;
 }
 .stkflo-migration-panel {
   box-sizing: border-box;
