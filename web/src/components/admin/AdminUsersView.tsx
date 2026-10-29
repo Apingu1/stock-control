@@ -585,7 +585,7 @@ export default function AdminUsersView() {
                 </div>
               </div>
 
-              <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card sf-phase4-permissions" style={{ marginBottom: 16 }}>
                 <div className="card-header">
                   <div>
                     <div className="card-title">Permission matrix</div>

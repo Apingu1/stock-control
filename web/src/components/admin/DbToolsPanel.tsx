@@ -545,7 +545,7 @@ export default function DbToolsPanel() {
         </div>
       </div>
 
-      <div className="sf-phase4-backup-section">
+      <div className="sf-phase4-backup-section sf-phase4-restore-section">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <div className="sf-settings-section-title">Restore a Backup</div>
           <div style={{ fontSize: 12, opacity: 0.72 }}>One confirmation • automatic safety backup • automatic activation</div>
@@ -591,7 +591,7 @@ export default function DbToolsPanel() {
           />
           <button
             type="button"
-            className="btn primary"
+            className="btn primary sf-phase4-restore-action"
             disabled={restoring || creatingBackup}
             onClick={() => void runRestore()}
           >

@@ -7,6 +7,7 @@ import "./styles/stkflo-tokens.css";
 import "./styles/stkflo-components.css";
 import "./styles/stkflo-adaptive.css";
 import "./styles/stkflo-operational.css";
+import "./styles/stkflo-admin-analytics.css";
 import App from "./App.tsx";
 import PwaUpdatePrompt from "./components/system/PwaUpdatePrompt";
 import { registerPwa } from "./pwa";
