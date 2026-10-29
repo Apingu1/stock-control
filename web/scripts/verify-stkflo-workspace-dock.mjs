@@ -57,6 +57,7 @@ check("No minimise while posting", ["receipt","material","batch"].every((key) =>
   source[key].includes("onMinimize") && source[key].includes("disabled={submitting}")));
 check("Consumption refreshes policy without resetting lines", source.batch.includes("if (!open || !active) return;") &&
   source.batch.includes("enabled: open && active"));
+check("Form is inert throughout mandatory refresh", source.app.includes('inert={Boolean(validating)}') && source.app.includes('aria-hidden={Boolean(validating)}'));
 check("Draft resume requires fresh successful API response", source.app.includes("const refreshDraft") &&
   source.app.includes('await Promise.all([...urls, "/auth/my-permissions"].map((url) => apiFetch(url)))') &&
   source.app.includes("sf-draft-validation-mask") && source.app.includes("Retry refresh"));

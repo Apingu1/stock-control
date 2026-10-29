@@ -24,6 +24,7 @@ Each draft has an identity and independently mounted React component instance. M
 - An in-flight refresh from a prior authenticated session cannot repopulate new-session stock state.
 - **Before new or restored draft interaction**, the app calls the existing API to refresh the relevant material/expiry/lot/product data. It blocks the form behind a verification mask until successful.
 - If a refresh fails, the user can **Retry refresh** or minimise the draft. The draft cannot be posted using unchecked stale data via the UI.
+- The form is marked **inert** while checking, preventing mouse clicks, keyboard submission and assistive-technology access to controls beneath the refresh overlay.
 - Quarantine policy is refreshed on Consumption restore; selected lot objects follow fresh lot-balances responses.
 - The backend remains authoritative on expiry, status, stock availability, permissions, duplicate batch prevention and inventory ledger posting at submission time.
 - The dock does not bypass existing submit handlers, prompts or compliance checks.
