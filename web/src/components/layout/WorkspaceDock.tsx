@@ -6,11 +6,12 @@ type Props = {
   onRestore: (id: string) => void;
   onDiscard: (id: string) => void;
   onNew: (kind: WorkspaceDraftKind) => void;
+  canCreateProduct: boolean;
 };
 const glyph: Record<WorkspaceDraftKind, string> = { material: "M", receipt: "R", consumption: "C", product: "P" };
 
 /** A dock does not save, submit or persist any form. */
-export default function WorkspaceDock({ drafts, onRestore, onDiscard, onNew }: Props) {
+export default function WorkspaceDock({ drafts, onRestore, onDiscard, onNew, canCreateProduct }: Props) {
   if (!drafts.length) return null;
   return (
     <aside className="sf-workspace-dock" aria-label="Minimised workspace drafts">
@@ -20,7 +21,7 @@ export default function WorkspaceDock({ drafts, onRestore, onDiscard, onNew }: P
           Workspace drafts <span className="sf-workspace-dock-count">{drafts.length}</span>
         </div>
         <div className="sf-workspace-dock-new" aria-label="Start another draft">
-          <button type="button" onClick={() => onNew("product")}>+ Product BMR</button>
+          {canCreateProduct && <button type="button" onClick={() => onNew("product")}>+ Product BMR</button>}
           <button type="button" onClick={() => onNew("material")}>+ Material</button>
           <button type="button" onClick={() => onNew("receipt")}>+ Receipt</button>
           <button type="button" onClick={() => onNew("consumption")}>+ Consumption</button>

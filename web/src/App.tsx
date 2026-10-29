@@ -582,7 +582,7 @@ const App: React.FC = () => {
         {view === "admin" && isAdmin && <AdminUsersView />}
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
         {activeDraftId === null && editingMaterial === null && editingReceipt === null && editingIssue === null && (
-          <WorkspaceDock drafts={drafts} onRestore={activateDraft} onDiscard={discardDraft} onNew={createDraft} />
+          <WorkspaceDock drafts={drafts} onRestore={activateDraft} onDiscard={discardDraft} onNew={createDraft} canCreateProduct={!!canCreateProducts} />
         )}
       </main>
 

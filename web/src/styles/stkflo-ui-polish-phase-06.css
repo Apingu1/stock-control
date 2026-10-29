@@ -54,7 +54,7 @@
   padding-inline: clamp(7px, .65vw, 12px);
   font-size: clamp(11px, .75vw, 13px);
 }
-@media (min-width: 901px) and (max-width: 1580px) {
+@media (min-width: 901px) and (max-width: 1270px) {
   .app-shell:not(.stkflo-auth-shell) .top-bar {
     grid-template-columns: minmax(155px, 1fr) auto;
   }
