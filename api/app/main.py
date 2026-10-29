@@ -78,6 +78,7 @@ from .routers import audit
 from .routers import alerts
 from .routers import quarantine
 from .routers import admin_db_tools
+from .routers import opening_stock_migration
 
 # Enhanced routes are registered first so their exact paths take precedence.
 # Existing routers remain intact as the fallback for every unaffected endpoint.
@@ -98,6 +99,7 @@ app.include_router(audit.router)
 app.include_router(alerts.router)
 app.include_router(quarantine.router)
 app.include_router(admin_db_tools.router)
+app.include_router(opening_stock_migration.router)
 
 
 @app.get("/health")
