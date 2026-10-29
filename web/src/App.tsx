@@ -566,6 +566,9 @@ const App: React.FC = () => {
 
         {view === "admin" && isAdmin && <AdminUsersView />}
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
+        {activeDraftId === null && editingMaterial === null && editingReceipt === null && editingIssue === null && (
+          <WorkspaceDock drafts={drafts} onRestore={activateDraft} onDiscard={discardDraft} onNew={createDraft} />
+        )}
       </main>
 
       {/* Only one CREATE draft is visible; all are mounted to preserve form state. */}
@@ -576,9 +579,10 @@ const App: React.FC = () => {
           <div key={draft.id}
             className={"sf-draft-slot " + (active ? "sf-active-draft" : "sf-minimised-draft") + (validating ? " is-refreshing" : "")}
             aria-hidden={!active}
-            onChangeCapture={() => markDraftDirty(draft.id)}
-            onInputCapture={() => markDraftDirty(draft.id)}
-            onClickCapture={(event) => {
+            // Bubble AFTER each controlled field has processed its own change.
+            // Updating App during capture can interfere with typed values.
+            onChange={() => markDraftDirty(draft.id)}
+            onClick={(event) => {
               const target = event.target as HTMLElement;
               if (target.closest(".issue-batch-scroll button, .modal-body button[type='button']")) {
                 markDraftDirty(draft.id);
@@ -643,10 +647,6 @@ const App: React.FC = () => {
           </div>
         );
       })}
-
-      {activeDraftId === null && editingMaterial === null && editingReceipt === null && editingIssue === null && (
-        <WorkspaceDock drafts={drafts} onRestore={activateDraft} onDiscard={discardDraft} onNew={createDraft} />
-      )}
 
       {/* EXISTING-RECORD EDIT MODALS: deliberately excluded from the multi-draft dock. */}
       <NewReceiptModal
