@@ -13,7 +13,8 @@
     "check:adaptive-layout": "node scripts/verify-stkflo-adaptive-layout.mjs",
     "check:operational-ui": "node scripts/verify-stkflo-operational-ui.mjs",
     "check:admin-analytics-ui": "node scripts/verify-stkflo-admin-analytics-ui.mjs",
-    "check:workspace-dock": "node scripts/verify-stkflo-workspace-dock.mjs"
+    "check:workspace-dock": "node scripts/verify-stkflo-workspace-dock.mjs",
+    "check:ui-polish": "node scripts/verify-stkflo-ui-polish-phase-06.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
