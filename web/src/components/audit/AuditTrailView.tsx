@@ -340,7 +340,7 @@ const AuditTrailView: React.FC = () => {
             <input className="input" style={{ fontSize: compactFontSize }} value={actor} onChange={(e) => setActor(e.target.value)} placeholder="e.g. admin" />
           </div>
 
-          <div className="sf-phase4-audit-search">
+          <div className="sf-phase4-audit-search sf-audit-filter-search">
             <div className="label" style={{ fontSize: compactFontSize - 1 }}>
               Search (partial match)
             </div>

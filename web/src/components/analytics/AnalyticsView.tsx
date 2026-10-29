@@ -270,14 +270,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   const showDateBar = page.kind !== "batch" && page.kind !== "permission_error";
 
   return (
-    <section className="content analytics-shell sf-phase4-analytics">
-      <header className="sf-phase4-page-heading">
-        <div className="sf-phase4-eyebrow">OPERATIONAL INTELLIGENCE</div>
-        <h1 className="sf-phase4-page-title">Analytics &amp; Reporting</h1>
-        <p className="sf-phase4-page-description">Explore material movements, product costs and traceable batch activity.</p>
-      </header>
+    <section className="content analytics-shell sf-phase4-analytics sf-analytics-compact-page">
+      <div className="sf-analytics-unified-panel">
       {/* Command bar */}
-      <div className="analytics-commandbar sf-phase4-analytics-nav">
+      <div className="analytics-commandbar sf-phase4-analytics-nav sf-analytics-combined-header">
         <div className="analytics-crumbs">
           {crumbs.map((c, idx) => (
             <React.Fragment key={idx}>
@@ -291,10 +287,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         </div>
 
         <div className="analytics-command-actions">
-          <div className="chip">
-            <span className="chip-dot" />
-            Traceable
-          </div>
           <button className="btn-secondary" onClick={() => setSearchOpen(true)}>
             Search / Explore
           </button>
@@ -303,7 +295,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
       {/* Global date range */}
       {showDateBar ? (
-        <div className="card analytics-card analytics-datebar sf-phase4-analytics-dates">
+        <div className="analytics-datebar sf-phase4-analytics-dates sf-analytics-inline-dates">
           <div className="rowline" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div className="card-title">Date range</div>
@@ -415,6 +407,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         />
       ) : null}
 
+      </div>
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} onPick={pickSearch} />
     </section>
   );

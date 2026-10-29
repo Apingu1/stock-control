@@ -287,15 +287,9 @@ export const MaterialPanel: React.FC<{
         <div className="analytics-cardhead">
           <div>
             <div className="card-title">
-              Material Analytics <Chip variant="green">{materialCode}</Chip>
+              Material Analytics <Chip variant="green">{title ? `${materialCode} — ${title}` : materialCode}</Chip>
             </div>
             <div className="card-subtitle">
-              {title ? (
-                <>
-                  <span className="muted">{title}</span>
-                  <span className="muted"> • </span>
-                </>
-              ) : null}
               Date range filtered totals + monthly breakdown.
             </div>
           </div>

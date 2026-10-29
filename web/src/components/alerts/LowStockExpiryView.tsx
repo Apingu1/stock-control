@@ -604,34 +604,9 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
 
   const totalFlagged = lowStockRows.length + lowExpiryRows.length;
 
-  // ✅ Scroll-capable shell wrapper (so alerts page isn't "stuck")
-  const Shell: React.FC<{ title?: string; children: React.ReactNode }> = ({ children }) => (
-    <section className="content sf-operational-page sf-ops-secondary-page" style={{ minHeight: 0 }}>
-      <section
-        className="card"
-        style={{
-          height: "100%",
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            flex: "1 1 auto",
-            minHeight: 0,
-            overflow: "auto",
-          }}
-        >
-          {children}
-        </div>
-      </section>
-    </section>
-  );
-
   if (!actionsLoaded) {
     return (
-      <Shell>
+      <AlertsShell>
         <div className="page">
           <div className="page-header" style={{ gap: 10 }}>
             <div />
@@ -649,12 +624,12 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
             </div>
           </div>
         </div>
-      </Shell>
+      </AlertsShell>
     );
   }
 
   return (
-    <Shell>
+    <AlertsShell>
       <div className="page sf-alerts-page">
         <div className="page-header sf-alerts-heading" style={{ gap: 10 }}>
           <div className="sf-ops-page-heading"><div className="sf-ops-eyebrow">STOCK MONITORING</div><div className="card-title">Low Stock &amp; Expiry Alerts</div><div className="card-subtitle">Review, prioritise and manage active stock alerts.</div></div>
@@ -757,7 +732,7 @@ const LowStockExpiryView: React.FC<Props> = ({ materials, lotBalances }) => {
           onDelete={(k: string) => void removeAction(k)}
         />
       </div>
-    </Shell>
+    </AlertsShell>
   );
 };
 
