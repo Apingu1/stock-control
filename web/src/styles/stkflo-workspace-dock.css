@@ -1,4 +1,10 @@
 /* Phase 05 workspace dock. Minimise retains React state without storing GMP data. */
+/* Reserve real space beneath the rounded content panel while the dock exists,
+   so a minimised tray doesn't cover the final table rows or page actions. */
+.app-shell:has(.sf-workspace-dock) .main { padding-bottom: max(124px, env(safe-area-inset-bottom)); }
+.app-shell:has(.sf-workspace-dock-item:nth-child(4)) .main { padding-bottom: min(30dvh, 205px); }
+.app-shell:has(.sf-workspace-dock-item:nth-child(7)) .main { padding-bottom: min(38dvh, 270px); }
+
 .sf-draft-slot { position: fixed; inset: 0; z-index: 900; }
 .sf-minimised-draft { display: none !important; }
 .sf-draft-minimise {
