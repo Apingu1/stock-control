@@ -58,7 +58,7 @@ check("No minimise while posting", ["receipt","material","batch"].every((key) =>
 check("Consumption refreshes policy without resetting lines", source.batch.includes("if (!open || !active) return;") &&
   source.batch.includes("enabled: open && active"));
 check("Draft resume requires fresh successful API response", source.app.includes("const refreshDraft") &&
-  source.app.includes("await Promise.all(urls.map((url) => apiFetch(url)))") &&
+  source.app.includes('await Promise.all([...urls, "/auth/my-permissions"].map((url) => apiFetch(url)))') &&
   source.app.includes("sf-draft-validation-mask") && source.app.includes("Retry refresh"));
 check("Stale post-logout refresh discarded", source.app.includes("draftSessionEpoch.current += 1") &&
   source.app.includes("epoch !== draftSessionEpoch.current"));
