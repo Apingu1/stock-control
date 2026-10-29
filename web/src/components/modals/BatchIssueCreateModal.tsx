@@ -58,6 +58,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onMinimize?: () => void;
+  active?: boolean;
   onIssuePosted: () => void;
   lotBalances: LotBalance[];
   products: Product[];
@@ -70,6 +71,7 @@ export default function BatchIssueCreateModal({
   open,
   onClose,
   onMinimize,
+  active = true,
   onIssuePosted,
   lotBalances,
   products,
@@ -186,6 +188,11 @@ export default function BatchIssueCreateModal({
     setComplianceReviewed(false);
     setPolicyError(null);
     setAllowQuarantine(null);
+  }, [open]);
+
+  // Quarantine policy re-checks on restore without resetting the draft fields.
+  useEffect(() => {
+    if (!open || !active) return;
     void (async () => {
       try {
         const response = await apiFetch("/quarantine/policy");
@@ -196,7 +203,7 @@ export default function BatchIssueCreateModal({
         setPolicyError("Quarantine policy could not be checked. Quarantined lots are disabled.");
       }
     })();
-  }, [open]);
+  }, [open, active]);
 
   useEffect(() => {
     if (!open) return;
@@ -230,7 +237,7 @@ export default function BatchIssueCreateModal({
       const policy = (await response.json()) as { allow_issue_from_quarantine: boolean };
       setAllowQuarantine(Boolean(policy.allow_issue_from_quarantine));
     },
-    { enabled: open, intervalMs: 5_000, label: "consumption quarantine policy refresh" }
+    { enabled: open && active, intervalMs: 5_000, label: "consumption quarantine policy refresh" }
   );
 
   if (!open) return null;

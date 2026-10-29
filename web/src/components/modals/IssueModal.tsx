@@ -11,6 +11,7 @@ export default function IssueModal({
   open,
   onClose,
   onMinimize,
+  active = true,
   onIssuePosted,
   materials,
   lotBalances,
@@ -25,6 +26,7 @@ export default function IssueModal({
   open: boolean;
   onClose: () => void;
   onMinimize?: () => void;
+  active?: boolean;
   onIssuePosted: () => void;
   materials: Material[];
   lotBalances: LotBalance[];
@@ -56,6 +58,7 @@ export default function IssueModal({
         open={open}
         onClose={onClose}
         onMinimize={onMinimize}
+        active={active}
         onIssuePosted={onIssuePosted}
         lotBalances={lotBalances}
         createdBy={createdBy}
