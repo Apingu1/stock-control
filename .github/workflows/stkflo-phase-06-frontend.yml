@@ -1,0 +1,37 @@
+name: StkFlo Phase 06 Frontend Validation
+
+on:
+  push:
+    branches:
+      - feature/stkflo-ui-polish-product-bmr-phase-06
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install locked dependencies
+        working-directory: web
+        run: npm ci
+      - name: Phase 01-06 UI checks
+        working-directory: web
+        run: |
+          npm run check:design-system
+          npm run check:adaptive-layout
+          npm run check:operational-ui
+          npm run check:admin-analytics-ui
+          npm run check:workspace-dock
+          npm run check:ui-polish
+      - name: Compile TypeScript and build Vite
+        working-directory: web
+        run: npm run build
