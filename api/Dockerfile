@@ -12,6 +12,7 @@ WORKDIR /app
 # server, so use the matching PGDG client rather than Debian's moving default.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    libreoffice-writer \
     curl \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
