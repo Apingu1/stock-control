@@ -18,6 +18,17 @@ if [[ "$marker_exists" == "1" ]]; then
     echo "Database schema bootstrap ${BOOTSTRAP_VERSION} is already applied."
     exit 0
   fi
+
+  # Upgrading a running v6 database to v7 is an additive BMR schema change.
+  # Do not rerun old installation scripts or drop/recreate operational views.
+  previous_v6="$("${PSQL[@]}" -tAc "SELECT COUNT(*) FROM deployment_schema_bootstrap WHERE version='production-schema-v6-stkflo-inventory-integrity';")"
+  if [[ "$previous_v6" == "1" ]]; then
+    echo "Existing production v6 schema detected; applying the BMR-only upgrade..."
+    "${PSQL[@]}" --single-transaction -f /sql/130_product_formula_import.sql
+    "${PSQL[@]}" -c "INSERT INTO deployment_schema_bootstrap(version) VALUES ('${BOOTSTRAP_VERSION}') ON CONFLICT (version) DO NOTHING;"
+    echo "Additive BMR migration completed; existing product and inventory records preserved."
+    exit 0
+  fi
 fi
 
 apply_sql() {
