@@ -73,7 +73,7 @@ async def start(
 
 
 @router.get("/{job_id}")
-def status(job_id: str,user:User=Depends(require_permission("data_migration.view"))):
+def status(job_id: str,user:User=Depends(require_any_permission("admin.full", "data_migration.view"))):
     with _lock:
         _purge()
         job=_jobs.get(job_id)
