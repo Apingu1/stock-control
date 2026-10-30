@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import Material, Product, ProductAuditEvent, ProductMaterial, User
-from ..security import require_permission
+from ..security import require_any_permission
 
 router = APIRouter(prefix="/admin/bmr-migration", tags=["migration"])
 MAX_BYTES = 12_000_000
@@ -230,14 +230,14 @@ def _validate(payload: ImportPreview, db: Session):
 @router.post("/preview")
 def preview(payload: ImportPreview,
             db: Session = Depends(get_db),
-            _user: User = Depends(require_permission("data_migration.view"))):
+            _user: User = Depends(require_any_permission("admin.full", "data_migration.view"))):
     return _validate(payload, db)[0]
 
 
 @router.post("/commit")
 def commit(payload: ImportCommit,
            db: Session = Depends(get_db),
-           user: User = Depends(require_permission("data_migration.commit"))):
+           user: User = Depends(require_any_permission("admin.full", "data_migration.commit"))):
     if payload.confirm != "IMPORT PRODUCT BMRS":
         raise HTTPException(400, "Exact confirmation phrase required")
     if not payload.approval_reference.strip():
