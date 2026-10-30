@@ -30,7 +30,8 @@ FORMULA_HEADERS = [
  "formula_basis","bmr_file","source_section","section4_table","section4_row"
 ]
 MAX_DOCS = 1100
-MAX_SOURCE_BYTES = 120_000_000
+MAX_SOURCE_BYTES = 175_000_000
+MAX_UNCOMPRESSED_BYTES = 350_000_000
 
 
 def _clean(value):
@@ -203,7 +204,7 @@ def _parse_document(name,data,lookup,issues):
 def extract(archive: bytes, product_workbook: bytes | None = None, progress=None):
     progress=progress or (lambda message: None)
     if len(archive)>MAX_SOURCE_BYTES:
-        raise ValueError("BMR ZIP exceeds the 120 MB maximum")
+        raise ValueError("BMR ZIP exceeds the 175 MB maximum")
     try:
         z=ZipFile(io.BytesIO(archive))
     except BadZipFile as exc:
@@ -221,8 +222,8 @@ def extract(archive: bytes, product_workbook: bytes | None = None, progress=None
             if item.file_size>12_000_000:
                 raise ValueError(f"An individual file exceeds 12 MB: {item.filename}")
             total+=item.file_size
-            if total>MAX_SOURCE_BYTES:
-                raise ValueError("Uncompressed BMR contents exceed 120 MB")
+            if total>MAX_UNCOMPRESSED_BYTES:
+                raise ValueError("Uncompressed BMR contents exceed 350 MB")
             data=z.read(item)
             if ext in (".doc",".docx"):
                 candidates.append((item.filename,data,ext))
