@@ -22,7 +22,7 @@ No manufacturing scale-up is calculated and no inventory balance is changed by a
 6. Verify a database backup, review source BMR data and enter the QA approval reference and confirmation phrase IMPORT PRODUCT BMRS to commit.
 
 ## Standalone fallback
-The separate StkFlo BMR Extractor v1.1 produces the identical Products.csv and Master_Formulas.csv input files and a StkFlo_Import_Package.zip. Upload the two CSVs using the fallback section in Data Migration; no manual spreadsheet reshaping is needed.
+The separate StkFlo BMR Extractor v1.1 produces the identical Products.csv and Master_Formulas.csv input files and a StkFlo_Import_Package.zip. Upload the StkFlo_Import_Package.zip directly in the fallback section, or upload the two CSVs individually. No manual spreadsheet reshaping is needed.
 
 ## Permissions
 data_migration.view allows viewing and validating imports. data_migration.commit permits approval and commit. ADMIN receives both by default; all other roles start with neither. Assign in Admin → Users & Roles → Roles & Permissions. Existing opening-stock migration is subject to the same rights.
