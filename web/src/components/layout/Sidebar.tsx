@@ -10,6 +10,7 @@ type Props = {
   isAdmin: boolean;
   canViewAudit: boolean;
   canViewProducts: boolean;
+  canViewMigration: boolean;
   alertsCounts: AlertsCounts;
   onLogout: () => void;
 };
@@ -64,7 +65,7 @@ function savedCollapsed(): boolean {
   catch { return false; }
 }
 
-const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, canViewProducts, alertsCounts, onLogout }) => {
+const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, canViewProducts, canViewMigration, alertsCounts, onLogout }) => {
   const [collapsed, setCollapsed] = useState(savedCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -142,12 +143,12 @@ const Sidebar: React.FC<Props> = ({ me, view, setView, isAdmin, canViewAudit, ca
             {item("lots", "Live Lots", "lots")}
             {item("analytics", "Analytics", "analytics")}
           </ul>
-          {isAdmin && <>
+          {(isAdmin || canViewMigration) && <>
             <div className="sidebar-section-label sidebar-section-label-admin">Admin</div>
             <ul className="nav-list">
-              {item("admin", "Users & Roles", "users")}
-              {item("admin-settings", "Settings", "settings")}
-              {item("admin-migration", "Data Migration", "migration")}
+              {isAdmin && item("admin", "Users & Roles", "users")}
+              {isAdmin && item("admin-settings", "Settings", "settings")}
+              {canViewMigration && item("admin-migration", "Data Migration", "migration")}
             </ul>
           </>}
           <div className="sidebar-section-label">Risk &amp; Quality</div>
