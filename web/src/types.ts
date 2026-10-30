@@ -84,6 +84,7 @@ export type Product = {
   storage_condition: "FRIDGELINE" | "AMBIENT";
   controlled_drug_status: "CONTROLLED_DRUG" | "N_A";
   export_status: "EXPORT_LINE" | "N_A";
+  bmr_storage_instructions: string;
   status: "ACTIVE" | "INACTIVE";
   created_at: string;
   created_by: string;
