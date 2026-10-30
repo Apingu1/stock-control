@@ -40,3 +40,26 @@ The database bootstrap version has been incremented to install db/init/130_produ
 
 ## Tests
 GitHub Actions workflow .github/workflows/bmr-migration-validation.yml compiles the backend, tests synthetic DOCX/XLSX extraction and quantity/export mapping, runs opening-stock regression tests, and builds the frontend with TypeScript.
+
+## Single-file Codespaces import (no browser upload and no chunking)
+
+GitHub Codespaces browser forwarding may reject larger HTTP uploads even where application Nginx allows them. Keep one complete original A-Z BMR ZIP unchanged and place it in:
+
+    /workspaces/stock-control/bmr-imports/
+
+That folder is Git-ignored so regulated source BMR documents are not committed to source control. The API mounts it read-only at /bmr-imports.
+
+Create the folder before recreating the API:
+
+    mkdir -p /workspaces/stock-control/bmr-imports
+    docker compose -f infra/docker-compose.yml --env-file .env up -d --no-deps --force-recreate api
+
+Use VS Code Explorer to move the entire ZIP into that folder, or copy an already uploaded ZIP from another Codespaces directory using a local cp command. No HTTP request via the Codespaces forwarded web ports carries the ZIP.
+
+In StkFlo, select Data Migration → Products & Master Formulas → Stage 1. Click Refresh server files and then Extract complete BMR ZIP from Codespace. The same extraction, review, validation and commit flow is used.
+
+If the Product List workbook is not inside the ZIP, place the XLSM/XLSX in the same folder and select it in the UI.
+
+The server only reads top-level ZIP and workbook files in this dedicated read-only directory. Absolute paths, parent traversal and symlinks are rejected. The extraction step does not modify stock records.
+
+For the isolated production-test stack, create the same bmr-imports folder before starting its containers.
