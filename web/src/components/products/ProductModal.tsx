@@ -22,6 +22,7 @@ const initialFields = {
   storage_condition: "AMBIENT",
   controlled_drug_status: "N_A",
   export_status: "N_A",
+  bmr_storage_instructions: "",
 };
 
 export default function ProductModal({ open, product, materials, onClose, onSaved, onMinimize }: Props) {
@@ -49,6 +50,7 @@ export default function ProductModal({ open, product, materials, onClose, onSave
             storage_condition: product.storage_condition,
             controlled_drug_status: product.controlled_drug_status,
             export_status: product.export_status,
+            bmr_storage_instructions: product.bmr_storage_instructions || "",
           }
         : initialFields
     );
@@ -234,6 +236,12 @@ export default function ProductModal({ open, product, materials, onClose, onSave
               <select className="input" value={fields.storage_condition} onChange={(e) => setField("storage_condition", e.target.value)}>
                 <option value="AMBIENT">Ambient</option><option value="FRIDGELINE">Fridgeline</option>
               </select>
+            </div>
+            <div className="form-group">
+              <label className="label">BMR storage instructions (original text)</label>
+              <input className="input" value={fields.bmr_storage_instructions}
+                onChange={e => setField("bmr_storage_instructions",e.target.value)}
+                placeholder="e.g. Store below 25°C / Room Temperature" />
             </div>
             <div className="form-group">
               <label className="label">Controlled drug</label>
