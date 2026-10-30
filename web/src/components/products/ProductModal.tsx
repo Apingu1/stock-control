@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Material, Product } from "../../types";
+import type { Material, Product, ProductFormulaLine } from "../../types";
 import { apiFetch } from "../../utils/api";
 
 type Props = {
@@ -28,6 +28,8 @@ export default function ProductModal({ open, product, materials, onClose, onSave
   const [fields, setFields] = useState(initialFields);
   const [materialIds, setMaterialIds] = useState<Set<number>>(new Set());
   const [materialSearch, setMaterialSearch] = useState("");
+  const [formulaBasis, setFormulaBasis] = useState("");
+  const [formulaLines, setFormulaLines] = useState<Record<number, ProductFormulaLine>>({});
   const [auditReason, setAuditReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -52,6 +54,8 @@ export default function ProductModal({ open, product, materials, onClose, onSave
     );
     setMaterialIds(new Set(product?.materials.map((material) => material.id) || []));
     setMaterialSearch("");
+    setFormulaBasis(product?.formula_basis || "");
+    setFormulaLines(Object.fromEntries((product?.formula_lines || []).map(line => [line.material_id, line])));
     setAuditReason("");
     setError(null);
   }, [open, product]);
@@ -75,6 +79,31 @@ export default function ProductModal({ open, product, materials, onClose, onSave
     setFields((current) => ({ ...current, [key]: value }));
   };
 
+  const updateFormula = (id: number, patch: Partial<ProductFormulaLine>) => {
+    setFormulaLines(current => ({
+      ...current,
+      [id]: {
+        material_id: id, material_sequence: 1, source_material_name: "",
+        material_strength: "", master_formula_raw: "",
+        quantity_type: "", quantity_value: null, quantity_unit: "",
+        qs_target_value: null, qs_target_unit: "", conditional_material: false,
+        ...(current[id] || {}), ...patch
+      }
+    }));
+  };
+  const setFormulaQuantity = (id: number, raw: string) => {
+    const fixed = raw.trim().match(/^(\d+(?:\.\d+)?)\s*([a-zA-Zµμ]+)$/i);
+    const qs = raw.trim().match(/^q\.?\s*s\.?\s*(?:to|up to)\s*(\d+(?:\.\d+)?)\s*([a-zA-Zµμ]+)$/i);
+    const normalized = (u: string) => u.toLowerCase().replace("gm", "g").replace("tablets", "tablets");
+    updateFormula(id, {
+      master_formula_raw: raw,
+      quantity_type: qs ? "QS to" : fixed ? "Fixed" : raw.trim() ? "Unparsed" : "",
+      quantity_value: fixed ? fixed[1] : null,
+      quantity_unit: fixed ? normalized(fixed[2]) : "",
+      qs_target_value: qs ? qs[1] : null,
+      qs_target_unit: qs ? normalized(qs[2]) : ""
+    });
+  };
   const toggleMaterial = (id: number) => {
     setMaterialIds((current) => {
       const next = new Set(current);
@@ -112,6 +141,23 @@ export default function ProductModal({ open, product, materials, onClose, onSave
       version_number: fields.version_number.trim(),
       shelf_life_days: Number(fields.shelf_life_days),
       material_ids: [...materialIds],
+      formula_basis: formulaBasis.trim(),
+      ...(((product?.formula_lines?.length || 0) > 0 ||
+          [...materialIds].some(id => (formulaLines[id]?.master_formula_raw || formulaLines[id]?.material_strength))) ? {
+        formula_lines: [...materialIds].map((id, index) => ({
+          material_id: id,
+          material_sequence: index + 1,
+          source_material_name: materials.find(m => m.id === id)?.name || "",
+          material_strength: formulaLines[id]?.material_strength || "",
+          master_formula_raw: formulaLines[id]?.master_formula_raw || "",
+          quantity_type: formulaLines[id]?.quantity_type || "",
+          quantity_value: formulaLines[id]?.quantity_value || null,
+          quantity_unit: formulaLines[id]?.quantity_unit || "",
+          qs_target_value: formulaLines[id]?.qs_target_value || null,
+          qs_target_unit: formulaLines[id]?.qs_target_unit || "",
+          conditional_material: formulaLines[id]?.conditional_material || false
+        }))
+      } : {}),
       ...(product
         ? { edit_reason: auditReason.trim() }
         : { audit_reason: auditReason.trim() }),
@@ -224,6 +270,44 @@ export default function ProductModal({ open, product, materials, onClose, onSave
                   <small>{material.base_uom_code} • {material.status}</small>
                 </label>
               ))}
+            </div>
+          </section>
+
+
+          <section className="product-material-picker">
+            <div className="issue-batch-section-heading">
+              <div>
+                <div className="issue-batch-section-title">Master Formula · {fields.version_number || "BMR version not set"}</div>
+                <div className="issue-batch-section-help">
+                  Reference data only. Quantities do not change stock or automatically scale batches.
+                  Changing the BMR version retains prior formula versions.
+                </div>
+              </div>
+            </div>
+            <div className="form-group" style={{marginBottom:12}}>
+              <label className="label">Formula basis</label>
+              <input className="input" value={formulaBasis} onChange={e => setFormulaBasis(e.target.value)}
+                placeholder="e.g. 100 ml / 100 g" />
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table className="sf-ops-table" style={{width:"100%",minWidth:650}}>
+                <thead><tr><th>Material</th><th>Strength</th><th>Master formula quantity</th><th>Optional</th></tr></thead>
+                <tbody>{materials.filter(m => materialIds.has(m.id)).map(m =>
+                  <tr key={m.id}>
+                    <td><strong>{m.material_code}</strong><div className="muted">{m.name}</div></td>
+                    <td><input className="input" value={formulaLines[m.id]?.material_strength || ""}
+                      onChange={e => updateFormula(m.id,{material_strength:e.target.value})}
+                      placeholder="e.g. 70%" aria-label={"Strength for "+m.name}/></td>
+                    <td><input className="input" value={formulaLines[m.id]?.master_formula_raw || ""}
+                      onChange={e => setFormulaQuantity(m.id,e.target.value)}
+                      placeholder="e.g. 2.00g or qs to 100ml" aria-label={"Formula quantity for "+m.name}/>
+                      {formulaLines[m.id]?.quantity_type === "Unparsed" && <small className="muted">Raw text retained</small>}</td>
+                    <td><input type="checkbox" checked={!!formulaLines[m.id]?.conditional_material}
+                      onChange={e => updateFormula(m.id,{conditional_material:e.target.checked})}
+                      aria-label={"Optional ingredient "+m.name}/></td>
+                  </tr>
+                )}</tbody>
+              </table>
             </div>
           </section>
 
