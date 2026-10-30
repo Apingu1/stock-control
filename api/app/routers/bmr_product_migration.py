@@ -263,6 +263,7 @@ def commit(payload: ImportCommit,
                 "storage_condition": "FRIDGELINE" if _yes(p.get("fridge_line", "")) or "fridge" in p.get("storage_conditions", "").casefold() else "AMBIENT",
                 "controlled_drug_status": "CONTROLLED_DRUG" if _yes(p.get("controlled_drug", "")) else "N_A",
                 "export_status": "EXPORT_LINE" if _yes(p["medisource_line"]) else "N_A",
+                "bmr_storage_instructions": p.get("storage_conditions", ""),
             }
             if current is None:
                 current = Product(product_code=code, status="ACTIVE", created_by=user.username,
