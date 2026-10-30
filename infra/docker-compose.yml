@@ -40,7 +40,6 @@ services:
         source: ${BACKUP_HOST_PATH:-../backups}
         target: /backups
       - ./../runtime-state:/app-state
-      - ./../bmr-imports:/bmr-imports:ro
       - ./../db/init:/schema/sql:ro
       - ./../db/production-bootstrap.sh:/schema/production-bootstrap.sh:ro
     ports:
