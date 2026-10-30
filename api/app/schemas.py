@@ -206,6 +206,7 @@ class ProductBase(ApiBaseModel):
     storage_condition: Literal["FRIDGELINE", "AMBIENT"]
     controlled_drug_status: Literal["CONTROLLED_DRUG", "N_A"]
     export_status: Literal["EXPORT_LINE", "N_A"]
+    bmr_storage_instructions: str = ""
 
 
 class ProductCreate(ProductBase):
