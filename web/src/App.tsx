@@ -43,7 +43,7 @@ import ProductModal from "./components/products/ProductModal";
 import LoginModal from "./components/modals/LoginModal";
 import AdminUsersView from "./components/admin/AdminUsersView";
 import AdminSettingsView from "./components/admin/AdminSettingsView";
-import OpeningStockMigrationPanel from "./components/admin/OpeningStockMigrationPanel";
+import DataMigrationView from "./components/admin/DataMigrationView";
 
 const App: React.FC = () => {
   // --- Auth -----------------------------------------------------------------
@@ -54,6 +54,8 @@ const App: React.FC = () => {
   const hasPerm = perms.hasPerm;
 
   const isAdmin = hasPerm("admin.full");
+  const canViewMigration = hasPerm("data_migration.view");
+  const canCommitMigration = hasPerm("data_migration.commit");
   const canChangeStatus = hasPerm("lots.status_change");
   const canEditReceipts = hasPerm("receipts.edit");
   const canEditIssues = hasPerm("issues.edit");
@@ -472,7 +474,7 @@ const App: React.FC = () => {
         setView={setView}
         isAdmin={isAdmin}
         canViewAudit={canViewAudit}
-        canViewProducts={canViewProducts}
+        canViewProducts={canViewProducts} canViewMigration={canViewMigration}
         alertsCounts={alertsCounts}
         onLogout={() => {
           if (drafts.some((draft) => draft.dirty) &&
@@ -584,9 +586,9 @@ const App: React.FC = () => {
 
         {view === "admin" && isAdmin && <AdminUsersView />}
         {view === "admin-settings" && isAdmin && <AdminSettingsView />}
-        {view === "admin-migration" && isAdmin && (
+        {view === "admin-migration" && canViewMigration && (
           <section className="content stkflo-migration-workspace">
-            <OpeningStockMigrationPanel />
+            <DataMigrationView canCommit={canCommitMigration} />
           </section>
         )}
         {activeDraftId === null && editingMaterial === null && editingReceipt === null && editingIssue === null && (
