@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from ..models import User
-from ..security import require_permission
+from ..security import require_any_permission
 from ..bmr_extractor_core import extract, MAX_SOURCE_BYTES
 
 router = APIRouter(prefix="/admin/bmr-extractor", tags=["migration"])
@@ -43,7 +43,7 @@ def _work(job_id, raw, workbook):
 async def start(
     archive: UploadFile = File(...),
     product_list: UploadFile | None = File(None),
-    user: User = Depends(require_permission("data_migration.view")),
+    user: User = Depends(require_any_permission("admin.full", "data_migration.view")),
 ):
     if not (archive.filename or "").lower().endswith(".zip"):
         raise HTTPException(400,"Upload a ZIP containing your A-Z BMR Word documents")
