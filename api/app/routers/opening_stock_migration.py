@@ -422,7 +422,7 @@ def commit_opening_stock(
 @router.get("/history")
 def opening_migration_history(
     db: Session = Depends(get_db),
-    _user: User = Depends(require_permission("data_migration.view")),
+    _user: User = Depends(require_any_permission("admin.full", "data_migration.view")),
 ):
     if db.execute(text("SELECT to_regclass('public.opening_stock_migrations')")).scalar() is None:
         return []
