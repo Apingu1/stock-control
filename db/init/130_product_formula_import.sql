@@ -1,3 +1,6 @@
+-- Store the full BMR storage instructions, separate from the operational ambient/fridge flag.
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS bmr_storage_instructions TEXT NOT NULL DEFAULT '';
+
 -- StkFlo: source-traceable, versioned product formulas and controlled BMR import.
 -- This file is idempotent and contains no stock ledger operations.
 CREATE TABLE IF NOT EXISTS product_formula_versions (
