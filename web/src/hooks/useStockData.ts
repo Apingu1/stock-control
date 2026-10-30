@@ -96,7 +96,7 @@ export function useStockData() {
       } catch (e: unknown) {
         console.error(e);
         if (!silent) {
-          setProducts([]);
+          // Preserve last successfully loaded product rows on a transient API/schema error.
           setProductsError(e instanceof Error ? e.message : "Failed to load Product List");
         }
       } finally {
