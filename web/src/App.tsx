@@ -54,8 +54,8 @@ const App: React.FC = () => {
   const hasPerm = perms.hasPerm;
 
   const isAdmin = hasPerm("admin.full");
-  const canViewMigration = hasPerm("data_migration.view");
-  const canCommitMigration = hasPerm("data_migration.commit");
+  const canViewMigration = isAdmin || hasPerm("data_migration.view");
+  const canCommitMigration = isAdmin || hasPerm("data_migration.commit");
   const canChangeStatus = hasPerm("lots.status_change");
   const canEditReceipts = hasPerm("receipts.edit");
   const canEditIssues = hasPerm("issues.edit");
