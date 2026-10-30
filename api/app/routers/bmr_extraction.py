@@ -49,7 +49,7 @@ async def start(
         raise HTTPException(400,"Upload a ZIP containing your A-Z BMR Word documents")
     raw=await archive.read(MAX_SOURCE_BYTES+1)
     if len(raw)>MAX_SOURCE_BYTES:
-        raise HTTPException(413,"BMR ZIP exceeds 120 MB")
+        raise HTTPException(413,"BMR ZIP exceeds 175 MB")
     workbook=None
     if product_list is not None and product_list.filename:
         if not product_list.filename.lower().endswith((".xlsx",".xlsm")):
