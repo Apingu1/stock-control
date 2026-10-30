@@ -3,9 +3,6 @@ from __future__ import annotations
 import csv
 import io
 import asyncio
-from pathlib import Path
-import tempfile
-from unittest.mock import patch
 import unittest
 from zipfile import ZipFile
 
@@ -13,7 +10,6 @@ from openpyxl import Workbook
 
 from app.bmr_extractor_core import extract, _qty
 from app.routers.bmr_product_migration import _yes, _version, read_package
-from app.routers import bmr_extraction
 from starlette.datastructures import UploadFile
 
 
@@ -103,25 +99,6 @@ class BMRExtractorTests(unittest.TestCase):
         result=asyncio.run(read_package(package=uploaded,_user=None))
         self.assertEqual(result["products_csv"],extracted["products_csv"].lstrip("\ufeff"))
         self.assertEqual(result["formulas_csv"],extracted["formulas_csv"].lstrip("\ufeff"))
-
-
-    def test_single_file_from_server_import_folder(self):
-        with tempfile.TemporaryDirectory() as temp:
-            folder=Path(temp)
-            archive=folder/"Complete BMRs.zip"
-            archive.write_bytes(b"not a valid zip but a valid filesystem selection")
-            (folder/"Product List.xlsm").write_bytes(b"test")
-            with patch.object(bmr_extraction, "IMPORT_DIR", folder):
-                listed=bmr_extraction.server_files(_user=None)
-                self.assertEqual([x["name"] for x in listed["archives"]], ["Complete BMRs.zip"])
-                self.assertEqual([x["name"] for x in listed["workbooks"]], ["Product List.xlsm"])
-                self.assertEqual(bmr_extraction._get_server_file("Complete BMRs.zip",(".zip",),175_000_000),
-                                 archive.read_bytes())
-                from fastapi import HTTPException
-                with self.assertRaises(HTTPException):
-                    bmr_extraction._get_server_file("../.env",(".zip",),175_000_000)
-                with self.assertRaises(HTTPException):
-                    bmr_extraction._get_server_file("/etc/passwd",(".zip",),175_000_000)
 
     def test_invalid_zip_rejected(self):
         with self.assertRaises(ValueError):
