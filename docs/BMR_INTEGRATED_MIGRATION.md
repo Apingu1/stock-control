@@ -52,7 +52,7 @@ That folder is Git-ignored so regulated source BMR documents are not committed t
 Create the folder before recreating the API:
 
     mkdir -p /workspaces/stock-control/bmr-imports
-    docker compose -f infra/docker-compose.yml --env-file .env up -d --no-deps --force-recreate api
+    docker compose -f infra/docker-compose.yml --env-file .env up -d --no-deps --build --force-recreate api
 
 Use VS Code Explorer to move the entire ZIP into that folder, or copy an already uploaded ZIP from another Codespaces directory using a local cp command. No HTTP request via the Codespaces forwarded web ports carries the ZIP.
 
