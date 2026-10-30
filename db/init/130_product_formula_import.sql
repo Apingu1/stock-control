@@ -32,8 +32,7 @@ CREATE TABLE IF NOT EXISTS product_formula_lines (
   manufacturer_supplier TEXT NOT NULL DEFAULT '',
   section4_table TEXT NOT NULL DEFAULT '',
   section4_row TEXT NOT NULL DEFAULT '',
-  CONSTRAINT uq_product_formula_line_seq UNIQUE (formula_version_id, material_sequence),
-  CONSTRAINT uq_product_formula_line_material UNIQUE (formula_version_id, material_id)
+  CONSTRAINT uq_product_formula_line_seq UNIQUE (formula_version_id, material_sequence)
 );
 CREATE INDEX IF NOT EXISTS idx_product_formula_lines_material ON product_formula_lines(material_id);
 
