@@ -220,6 +220,7 @@ class Product(Base):
     storage_condition: Mapped[str] = mapped_column(String(20), nullable=False)
     controlled_drug_status: Mapped[str] = mapped_column(String(20), nullable=False)
     export_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    bmr_storage_instructions: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
