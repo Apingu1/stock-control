@@ -350,7 +350,7 @@ def commit(payload: ImportCommit,
 
 @router.get("/history")
 def history(db: Session = Depends(get_db),
-            _user: User = Depends(require_permission("data_migration.view"))):
+            _user: User = Depends(require_any_permission("admin.full", "data_migration.view"))):
     if db.execute(text("SELECT to_regclass('public.product_bmr_imports')")).scalar() is None:
         return []
     rows = db.execute(text("""
@@ -364,7 +364,7 @@ def history(db: Session = Depends(get_db),
 @router.post("/read-package")
 async def read_package(
     package: UploadFile = File(...),
-    _user: User = Depends(require_permission("data_migration.view")),
+    _user: User = Depends(require_any_permission("admin.full", "data_migration.view")),
 ):
     """Read the canonical two CSVs from the standalone extractor's uploadable ZIP.
 
