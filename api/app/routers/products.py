@@ -52,6 +52,7 @@ def _snapshot(db: Session, product: Product) -> dict:
         "storage_condition": product.storage_condition,
         "controlled_drug_status": product.controlled_drug_status,
         "export_status": product.export_status,
+        "bmr_storage_instructions": product.bmr_storage_instructions,
         "status": product.status,
         "material_ids": [material.id for material in materials],
         "material_codes": [material.material_code for material in materials],
@@ -75,6 +76,7 @@ def _out(db: Session, product: Product) -> ProductOut:
         storage_condition=product.storage_condition,
         controlled_drug_status=product.controlled_drug_status,
         export_status=product.export_status,
+        bmr_storage_instructions=product.bmr_storage_instructions,
         status=product.status,
         created_at=product.created_at,
         created_by=product.created_by,
@@ -130,6 +132,7 @@ def _apply_fields(product: Product, payload: ProductCreate | ProductUpdate) -> N
     product.storage_condition = payload.storage_condition
     product.controlled_drug_status = payload.controlled_drug_status
     product.export_status = payload.export_status
+    product.bmr_storage_instructions = payload.bmr_storage_instructions
 
 
 def _sync_materials(
@@ -231,6 +234,7 @@ def create_product(
         storage_condition=payload.storage_condition,
         controlled_drug_status=payload.controlled_drug_status,
         export_status=payload.export_status,
+        bmr_storage_instructions=payload.bmr_storage_instructions,
         status="ACTIVE",
         created_by=user.username,
         updated_by=user.username,
