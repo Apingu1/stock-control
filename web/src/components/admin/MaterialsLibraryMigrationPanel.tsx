@@ -137,9 +137,9 @@ export default function MaterialsLibraryMigrationPanel({ canCommit }: {canCommit
         <button type="button" className="btn secondary" onClick={downloadTemplate}>Download CSV template</button>
       </div>
       <div className="stkflo-migration-warning">
-        <strong>Controlled import.</strong> Existing codes are matched without changing
-        their name, classification, unit, status or compliance approval. Their thresholds
-        are updated; missing manufacturer/supplier fields can be populated.
+        <strong>Controlled import.</strong> Existing codes are matched and their names are aligned to the reviewed CSV
+        for BMR formula consistency; classification, unit, status and compliance approval
+        are preserved. Low-stock and expiry alerts are updated, and missing vendor fields can be populated.
         Existing supplier/manufacturer details are preserved.
         Historical supplier names do not automatically become approved manufacturers.
       </div>
