@@ -58,6 +58,20 @@ export type ProductMaterial = {
   status: string;
 };
 
+export type ProductFormulaLine = {
+  material_id: number;
+  material_sequence: number;
+  source_material_name: string;
+  material_strength: string;
+  master_formula_raw: string;
+  quantity_type: string;
+  quantity_value: string | null;
+  quantity_unit: string;
+  qs_target_value: string | null;
+  qs_target_unit: string;
+  conditional_material: boolean;
+};
+
 export type Product = {
   id: number;
   product_code: string;
@@ -76,6 +90,8 @@ export type Product = {
   updated_at: string;
   updated_by: string;
   materials: ProductMaterial[];
+  formula_basis: string;
+  formula_lines: ProductFormulaLine[];
 };
 
 export type Receipt = {
