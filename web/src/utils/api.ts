@@ -82,6 +82,13 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
     } catch {
       // ignore
     }
+    // Nginx responds to oversized uploads with an HTML error document.
+    // Show a meaningful message rather than dumping the raw HTML into the UI.
+    if (res.status === 413) {
+      message = "Upload rejected (HTTP 413): the request exceeds the server's size limit. Check the ZIP size and make sure the updated StkFlo reverse-proxy configuration is running.";
+    } else if (/^\s*<(?:!doctype|html)/i.test(message)) {
+      message = `Server error (HTTP ${res.status}). Check the StkFlo API or reverse-proxy logs.`;
+    }
     const err = new Error(message) as Error & { status?: number };
     err.status = res.status;
     if (res.status === 401 && token && getToken() === token) {
