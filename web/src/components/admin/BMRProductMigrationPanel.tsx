@@ -225,7 +225,7 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
           <details style={{marginTop:12}}><summary>Or upload pre-extracted CSVs (standalone extractor fallback)</summary>
           <p>Use the output files exactly as produced by the BMR Extractor.
              Products are linked by product code and BMR version. The standalone extractor remains available
-             while legacy Word conversion is being integrated into StkFlo.</p>
+             for offline processing or as a backup method.</p>
           <div className="stkflo-migration-fields">
             <label className="form-group"><span className="label">Products.csv</span>
               <input className="input" type="file" accept=".csv,text/csv"
@@ -238,16 +238,17 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
               {formulaFile && <small>{formulaFile}</small>}
             </label>
           </div>
-          <label className="stkflo-migration-check">
+
+          <button className="btn btn-primary" type="button" disabled={!ready || busy}
+            onClick={() => void validate()}>{busy ? "Checking…" : "Validate & preview CSVs"}</button>
+          </details>
+                    <label className="stkflo-migration-check">
             <input type="checkbox" checked={updateExisting} onChange={e=>{
               setUpdateExisting(e.target.checked); setPreview(null); setConfirm("");
             }} />
             <span>Allow importing a newer BMR version for an existing product
               (updates current mandatory materials; keeps older formula versions)</span>
           </label>
-          <button className="btn btn-primary" type="button" disabled={!ready || busy}
-            onClick={() => void validate()}>{busy ? "Checking…" : "Validate & preview CSVs"}</button>
-          </details>
         </div>
         {preview && <div className="stkflo-migration-step">
           <h3><span>02</span> Review matched products and formula lines</h3>
