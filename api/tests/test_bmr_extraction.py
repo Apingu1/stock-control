@@ -2,13 +2,15 @@
 from __future__ import annotations
 import csv
 import io
+import asyncio
 import unittest
 from zipfile import ZipFile
 
 from openpyxl import Workbook
 
 from app.bmr_extractor_core import extract, _qty
-from app.routers.bmr_product_migration import _yes, _version
+from app.routers.bmr_product_migration import _yes, _version, read_package
+from starlette.datastructures import UploadFile
 
 
 def sample_product_workbook():
@@ -83,6 +85,20 @@ class BMRExtractorTests(unittest.TestCase):
         self.assertEqual(_version("V04"),4)
         self.assertTrue(_yes("M"))
         self.assertFalse(_yes("No"))
+
+    def test_canonical_import_zip_reads_directly(self):
+        archive=io.BytesIO()
+        with ZipFile(archive,"w") as z:
+            z.writestr("BMRs/T/TEST1.V03.docx",test_docx())
+        extracted=extract(archive.getvalue(),sample_product_workbook())
+        package=io.BytesIO()
+        with ZipFile(package,"w") as z:
+            z.writestr("Products.csv",extracted["products_csv"])
+            z.writestr("Master_Formulas.csv",extracted["formulas_csv"])
+        uploaded=UploadFile(file=io.BytesIO(package.getvalue()),filename="StkFlo_Import_Package.zip")
+        result=asyncio.run(read_package(package=uploaded,_user=None))
+        self.assertEqual(result["products_csv"],extracted["products_csv"].lstrip("\ufeff"))
+        self.assertEqual(result["formulas_csv"],extracted["formulas_csv"].lstrip("\ufeff"))
 
     def test_invalid_zip_rejected(self):
         with self.assertRaises(ValueError):
