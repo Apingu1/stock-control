@@ -109,6 +109,9 @@ export default function ProductListView({ products, materials, loading, error, c
                               <strong>Master Formula · BMR {product.version_number || "—"}</strong>
                               <small className="muted">Reference data only · Formula basis: {product.formula_basis || "Not recorded"}</small>
                             </div>
+                            {product.bmr_storage_instructions && <small className="muted">
+                              BMR storage instructions: {product.bmr_storage_instructions}
+                            </small>}
                             <table className="sf-ops-table" style={{width:"100%",minWidth:690}}>
                               <thead><tr><th>#</th><th>Material code</th><th>Material / ingredient</th><th>Strength</th><th>Master formula quantity</th><th>Unit / basis</th></tr></thead>
                               <tbody>
