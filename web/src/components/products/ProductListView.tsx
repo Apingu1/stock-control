@@ -103,7 +103,33 @@ export default function ProductListView({ products, materials, loading, error, c
                         <td><span className={`disposition-badge disposition-${product.status.toLowerCase()}`}>{product.status}</span></td>
                         <td onClick={(e) => e.stopPropagation()}><div className="rowline">{canEdit && <button className="btn btn-mini" onClick={() => { setEditing(product); setModalOpen(true); }}>Edit</button>}{canChangeStatus && <button className="btn btn-mini" onClick={() => void changeStatus(product)}>{product.status === "ACTIVE" ? "Inactivate" : "Activate"}</button>}</div></td>
                       </tr>
-                      {isExpanded && <tr className="product-material-row" key={`${product.id}-materials`}><td></td><td colSpan={6}><div className="product-material-expanded"><strong>Associated materials ({product.materials.length})</strong><div className="product-material-chips">{product.materials.map((material) => <span className="product-material-chip" key={material.id}><b>{material.material_code}</b> {material.material_name}<small>{material.base_uom_code}</small></span>)}</div></div></td></tr>}
+                      {isExpanded && <tr className="product-material-row" key={product.id + "-materials"}><td></td><td colSpan={6}>
+                          <div className="product-material-expanded" style={{overflowX:"auto"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:10}}>
+                              <strong>Master Formula · BMR {product.version_number || "—"}</strong>
+                              <small className="muted">Reference data only · Formula basis: {product.formula_basis || "Not recorded"}</small>
+                            </div>
+                            <table className="sf-ops-table" style={{width:"100%",minWidth:690}}>
+                              <thead><tr><th>#</th><th>Material code</th><th>Material / ingredient</th><th>Strength</th><th>Master formula quantity</th><th>Unit / basis</th></tr></thead>
+                              <tbody>
+                                {product.materials.map((material, index) => {
+                                  const formula = product.formula_lines?.find(f => f.material_id === material.id);
+                                  return <tr key={material.id}>
+                                    <td>{formula?.material_sequence ?? index + 1}</td>
+                                    <td><strong>{material.material_code}</strong></td>
+                                    <td>{material.material_name}{formula?.conditional_material && <small> · Optional</small>}</td>
+                                    <td>{formula?.material_strength || "—"}</td>
+                                    <td>{formula?.master_formula_raw || "Not recorded"}</td>
+                                    <td>{formula?.quantity_type?.toLowerCase().startsWith("qs")
+                                      ? "q.s. to " + (formula.qs_target_value ?? "") + " " + (formula.qs_target_unit ?? "")
+                                      : (formula?.quantity_value ?? "—") + " " + (formula?.quantity_unit || "")}</td>
+                                  </tr>;
+                                })}
+                              </tbody>
+                            </table>
+                            {!(product.formula_lines?.length) && <small className="muted">Materials are linked for consumption verification; no master formula data has been recorded yet.</small>}
+                          </div>
+                        </td></tr>}
                     </Fragment>
                   );
                 })}
