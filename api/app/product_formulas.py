@@ -39,7 +39,7 @@ def save_formula(db: Session, product_id: int, version: str, basis: str,
     if not lines:
         raise HTTPException(400, "Formula cannot be empty")
     ids = [line.material_id for line in lines]
-    if len(ids) != len(set(ids)) or set(ids) != expected_ids:
+    if set(ids) != expected_ids:
         raise HTTPException(400, "Formula materials must match selected mandatory materials exactly")
     sequences = [line.material_sequence for line in lines]
     if len(sequences) != len(set(sequences)):
