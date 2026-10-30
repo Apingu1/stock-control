@@ -78,7 +78,8 @@ from .routers import audit
 from .routers import alerts
 from .routers import quarantine
 from .routers import admin_db_tools
-from .routers import opening_stock_migration, bmr_product_migration, bmr_extraction
+from .routers import opening_stock_migration
+from .routers import material_library_migration, bmr_product_migration, bmr_extraction
 
 # Enhanced routes are registered first so their exact paths take precedence.
 # Existing routers remain intact as the fallback for every unaffected endpoint.
@@ -100,6 +101,7 @@ app.include_router(alerts.router)
 app.include_router(quarantine.router)
 app.include_router(admin_db_tools.router)
 app.include_router(opening_stock_migration.router)
+app.include_router(material_library_migration.router)
 app.include_router(bmr_product_migration.router)
 app.include_router(bmr_extraction.router)
 
