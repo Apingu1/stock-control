@@ -18,6 +18,7 @@ const SYSTEM_ROLES = new Set<string>(["ADMIN", "SENIOR", "OPERATOR"]);
 function groupForPermissionKey(key: string): string {
   if (key.startsWith("materials.")) return "Materials";
   if (key.startsWith("products.")) return "Product List";
+  if (key.startsWith("data_migration.")) return "Data Migration";
   if (key.startsWith("receipts.")) return "Goods Receipts";
   if (key.startsWith("issues.")) return "Consumption";
   if (key.startsWith("lots.")) return "Live Lots";
@@ -105,6 +106,8 @@ export default function AdminUsersView() {
         { key: "materials.create" },
         { key: "materials.edit" },
         { key: "materials.super_edit_locked_fields" },
+        { key: "data_migration.view" },
+        { key: "data_migration.commit" },
         { key: "products.view" },
         { key: "products.create" },
         { key: "products.edit" },
