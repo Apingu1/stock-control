@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..material_classification import validate_material_classification
-from ..models import Material, User
+from ..models import Material, MaterialEdit, User
 from ..security import require_any_permission
 
 router = APIRouter(prefix="/admin/material-migration", tags=["migration"])
@@ -141,6 +141,18 @@ def _evaluate(csv_text: str, db: Session):
             db.query(Material).filter(
                 Material.material_code.in_([r["material_code"] for r in parsed])
             ).all()}
+    # BMR formula matching uses material names. Enforce unique canonical names.
+    planned_names = {}
+    for row in parsed:
+        name_key = row["name"].strip().casefold()
+        if name_key in planned_names:
+            errors.append({"row": row["row"], "message": f"Duplicate material name used by {planned_names[name_key]} and {row['material_code']}"})
+        planned_names[name_key] = row["material_code"]
+    supplied_codes = {r["material_code"].casefold() for r in parsed}
+    for other in db.query(Material).all():
+        matching_code = planned_names.get(other.name.strip().casefold())
+        if matching_code and matching_code.casefold() != other.material_code.casefold() and other.material_code.casefold() not in supplied_codes:
+            errors.append({"row": 0, "message": f"Canonical name already belongs to existing material {other.material_code}: {other.name}"})
     new = updated = 0
     for row in parsed:
         match = existing.get(row["material_code"].casefold())
@@ -154,7 +166,7 @@ def _evaluate(csv_text: str, db: Session):
         ):
             errors.append({"row": n, "message": f"{row['material_code']} already exists with different category/type/UOM; resolve before import"})
         if match.name.strip().casefold() != row["name"].strip().casefold():
-            warnings.append({"row": n, "message": f"{row['material_code']}: existing material name will remain unchanged"})
+            warnings.append({"row": n, "message": f"{row['material_code']}: existing material name will be aligned to the uploaded canonical name"})
         if match.status != row["status"]:
             warnings.append({"row": n, "message": f"{row['material_code']}: existing active/inactive status will remain unchanged"})
         if match.manufacturer and row["manufacturer"] and match.manufacturer.casefold() != row["manufacturer"].casefold():
@@ -264,7 +276,9 @@ def commit(body: CommitInput, db: Session = Depends(get_db),
                 db.flush()
                 action = "CREATED"
             else:
-                # Never alter identity/classification, approval state, or live inventory.
+                # Keep material codes and classifications immutable; align the
+                # reviewed name so subsequent BMR formula imports find it.
+                mat.name = row["name"]
                 if row["low_stock_threshold_qty"] is not None:
                     mat.low_stock_threshold_qty = row["low_stock_threshold_qty"]
                 mat.expiry_alert_days = row["expiry_alert_days"]
@@ -274,6 +288,15 @@ def commit(body: CommitInput, db: Session = Depends(get_db),
                     mat.supplier = row["supplier"]
                 db.flush()
                 action = "UPDATED"
+                after = _snapshot(mat)
+                if before != after:
+                    db.add(MaterialEdit(
+                        material_id=mat.id,
+                        edited_by=user.username,
+                        edit_reason=f"Materials Library migration #{import_id}: {body.approval_reference.strip()}"[:500],
+                        before_json=json.dumps(before, sort_keys=True),
+                        after_json=json.dumps(after, sort_keys=True),
+                    ))
             db.execute(text("""
               INSERT INTO material_library_import_lines
               (import_id, material_code, action, before_json, after_json)
