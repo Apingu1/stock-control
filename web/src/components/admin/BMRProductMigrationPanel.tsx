@@ -24,12 +24,6 @@ const fmtError = (err: unknown) => err instanceof Error ? err.message : String(e
 export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boolean }) {
   const [archive, setArchive] = useState<File | null>(null);
   const [sourceWorkbook, setSourceWorkbook] = useState<File | null>(null);
-  const [serverArchives, setServerArchives] = useState<{name:string;size_bytes:number}[]>([]);
-  const [serverWorkbooks, setServerWorkbooks] = useState<{name:string;size_bytes:number}[]>([]);
-  const [serverArchiveName, setServerArchiveName] = useState("");
-  const [serverWorkbookName, setServerWorkbookName] = useState("");
-  const [serverListError, setServerListError] = useState("");
-
   const [extractionId, setExtractionId] = useState("");
   const [extractionState, setExtractionState] = useState("");
   const [extractionProgress, setExtractionProgress] = useState("");
@@ -59,24 +53,6 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
     } catch (err: unknown) { setError(fmtError(err)); }
   }, []);
   useEffect(() => { void loadHistory(); }, [loadHistory]);
-  const loadServerFiles = useCallback(async () => {
-    setServerListError("");
-    try {
-      const response = await apiFetch("/admin/bmr-extractor/server-files");
-      const data = await response.json() as {
-        archives: {name:string;size_bytes:number}[];
-        workbooks: {name:string;size_bytes:number}[];
-      };
-      setServerArchives(data.archives);
-      setServerWorkbooks(data.workbooks);
-      setServerArchiveName(current => data.archives.some(f => f.name === current) ? current : (data.archives[0]?.name || ""));
-      setServerWorkbookName(current => data.workbooks.some(f => f.name === current) ? current : "");
-    } catch (err: unknown) {
-      setServerListError(fmtError(err));
-    }
-  }, []);
-  useEffect(() => { void loadServerFiles(); }, [loadServerFiles]);
-
 
   useEffect(() => {
     if (!extractionId || extractionState === "COMPLETE" || extractionState === "FAILED") return;
@@ -110,32 +86,12 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
     return () => { cancelled = true; window.clearInterval(interval); };
   }, [extractionId, extractionState]);
 
-
-  const startServerExtraction = async () => {
-    if (!serverArchiveName) return;
-    setBusy(true);setError("");setSuccess("");setPreview(null);setExtracted(null);
-    setProductsCsv("");setFormulasCsv("");setProductsFile("");setFormulaFile("");
-    setExtractionProgress("Starting extraction from complete ZIP in the Codespace…");
-    try {
-      const response = await apiFetch("/admin/bmr-extractor/start-server", {
-        method: "POST", body: JSON.stringify({
-          archive_name: serverArchiveName,
-          product_list_name: serverWorkbookName || null
-        })
-      });
-      const data = await response.json() as {job_id:string;state:string};
-      setExtractionId(data.job_id);
-      setExtractionState(data.state);
-    } catch(err: unknown) {
-      setError(fmtError(err));setExtractionProgress("");
-    } finally {setBusy(false);}
-  };
   const startExtraction = async () => {
     if (!archive) return;
     // The API accepts up to 175,000,000 compressed ZIP bytes, regardless of
     // the number of BMR documents inside the archive.
     if (archive.size > 175_000_000) {
-      setError(`Your ZIP is ${(archive.size / 1_000_000).toFixed(1)} MB; StkFlo accepts at most 175 MB per BMR ZIP. For a single-file import without browser size limits, use the Codespaces folder above.`);
+      setError(`Your ZIP is ${(archive.size / 1_000_000).toFixed(1)} MB; StkFlo accepts at most 175 MB per BMR ZIP. Split the library into smaller source ZIPs and extract each one separately.`);
       return;
     }
     if (sourceWorkbook && sourceWorkbook.size > 8_000_000) {
@@ -246,46 +202,6 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
           <p>Preferred: upload the original A–Z BMR ZIP. The product list is read from within the ZIP,
              or you can supply it separately. The server extracts Section 4 formulas and then prepares
              the same canonical CSVs accepted by Stage 2. For larger archives this runs as a tracked job.</p>
-
-          <div className="stkflo-migration-workspace-import"
-            style={{border:"1px solid var(--sf-border-muted)",borderRadius:12,padding:14,marginBottom:18}}>
-            <div className="issue-batch-section-title">Complete ZIP from Codespaces folder · No browser upload</div>
-            <p>Place the original complete ZIP in <code>/workspaces/stock-control/bmr-imports/</code>.
-              StkFlo reads that single file directly from the server without splitting it or sending it
-              through the Codespaces browser proxy.</p>
-            <div className="stkflo-migration-fields">
-              <label className="form-group">
-                <span className="label">Available BMR ZIP files</span>
-                <select className="input" value={serverArchiveName}
-                  onChange={e=>setServerArchiveName(e.target.value)}>
-                  {serverArchives.length===0 && <option value="">No ZIPs found — add ZIP to bmr-imports</option>}
-                  {serverArchives.map(file=><option key={file.name} value={file.name}>
-                    {file.name} ({(file.size_bytes/1_000_000).toFixed(1)} MB)
-                  </option>)}
-                </select>
-              </label>
-              <label className="form-group">
-                <span className="label">Optional Product List in same folder</span>
-                <select className="input" value={serverWorkbookName}
-                  onChange={e=>setServerWorkbookName(e.target.value)}>
-                  <option value="">Use Product List already inside the ZIP</option>
-                  {serverWorkbooks.map(file=><option key={file.name} value={file.name}>
-                    {file.name}
-                  </option>)}
-                </select>
-              </label>
-            </div>
-            {serverListError && <p className="form-error">{serverListError}</p>}
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button className="btn btn-ghost" type="button" onClick={()=>void loadServerFiles()}>
-                Refresh server files
-              </button>
-              <button className="btn btn-primary" type="button" disabled={!serverArchiveName || busy || extractionState==="RUNNING"}
-                onClick={()=>void startServerExtraction()}>
-                Extract complete BMR ZIP from Codespace
-              </button>
-            </div>
-          </div>
           <div className="stkflo-migration-fields">
             <label className="form-group"><span className="label">Original BMR ZIP (.doc/.docx)</span>
               <input className="input" type="file" accept=".zip,application/zip"
