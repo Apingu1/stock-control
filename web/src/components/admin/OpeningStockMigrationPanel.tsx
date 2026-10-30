@@ -38,7 +38,7 @@ async function readError(error: unknown): Promise<string> {
   return error instanceof Error ? error.message : "Request failed";
 }
 
-export default function OpeningStockMigrationPanel() {
+export default function OpeningStockMigrationPanel({ canCommit = true }: { canCommit?: boolean }) {
   const [fileName, setFileName] = useState("");
   const [csv, setCsv] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -129,7 +129,7 @@ export default function OpeningStockMigrationPanel() {
     finally { setBusy(false); }
   };
 
-  const canPost = !!preview && !preview.blocked && backedUp && reconciled &&
+  const canPost = canCommit && !!preview && !preview.blocked && backedUp && reconciled &&
     confirmation === "IMPORT OPENING STOCK" && approver.trim().length >= 3 &&
     reference.trim().length >= 3 && !!cutover && !busy;
 
@@ -189,7 +189,7 @@ export default function OpeningStockMigrationPanel() {
           <p className="stkflo-migration-small">SHA-256: <code>{preview.source_sha256}</code></p>
         </div>}
 
-        {preview && !preview.blocked && <div className="stkflo-migration-step">
+        {preview && !preview.blocked && canCommit && <div className="stkflo-migration-step">
           <h3><span>03</span> Approve & commit</h3>
           <p>One atomic database transaction will create materials, lots, opening receipts and a migration audit manifest. No historic receipt dates or usage are fabricated.</p>
           <div className="stkflo-migration-fields">
