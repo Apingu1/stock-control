@@ -22,6 +22,16 @@ type History = {
 const fmtError = (err: unknown) => err instanceof Error ? err.message : String(err);
 
 export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boolean }) {
+  const [archive, setArchive] = useState<File | null>(null);
+  const [sourceWorkbook, setSourceWorkbook] = useState<File | null>(null);
+  const [extractionId, setExtractionId] = useState("");
+  const [extractionState, setExtractionState] = useState("");
+  const [extractionProgress, setExtractionProgress] = useState("");
+  const [extracted, setExtracted] = useState<{
+    products: {product_code:string; bmr_version:string; product_name_bmr:string; material_count:number; review_status:string}[];
+    issues: {severity:string;product_code:string;bmr_file:string;message:string}[];
+    product_count:number; formula_count:number; source_count:number;
+  } | null>(null);
   const [productsFile, setProductsFile] = useState("");
   const [formulaFile, setFormulaFile] = useState("");
   const [productsCsv, setProductsCsv] = useState("");
@@ -44,6 +54,60 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
   }, []);
   useEffect(() => { void loadHistory(); }, [loadHistory]);
 
+  useEffect(() => {
+    if (!extractionId || extractionState === "COMPLETE" || extractionState === "FAILED") return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const response = await apiFetch("/admin/bmr-extractor/" + encodeURIComponent(extractionId));
+        const status = await response.json() as {
+          state:string;progress:string;result:null | {
+            products_csv:string; formulas_csv:string;
+            products:{product_code:string;bmr_version:string;product_name_bmr:string;material_count:number;review_status:string}[];
+            issues:{severity:string;product_code:string;bmr_file:string;message:string}[];
+            product_count:number;formula_count:number;source_count:number;
+          };
+        };
+        if (cancelled) return;
+        setExtractionProgress(status.progress);
+        setExtractionState(status.state);
+        if (status.state === "COMPLETE" && status.result) {
+          setProductsCsv(status.result.products_csv);
+          setFormulasCsv(status.result.formulas_csv);
+          setProductsFile("Products.csv · extracted in StkFlo");
+          setFormulaFile("Master_Formulas.csv · extracted in StkFlo");
+          setExtracted(status.result);
+          setPreview(null);
+        }
+      } catch (err: unknown) { if (!cancelled) setError(fmtError(err)); }
+    };
+    void check();
+    const interval = window.setInterval(() => { void check(); }, 3000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [extractionId, extractionState]);
+
+  const startExtraction = async () => {
+    if (!archive) return;
+    setBusy(true);setError("");setSuccess("");setPreview(null);setExtracted(null);
+    setProductsCsv("");setFormulasCsv("");setProductsFile("");setFormulaFile("");
+    setExtractionProgress("Uploading BMR archive…");
+    try {
+      const form = new FormData();
+      form.append("archive", archive);
+      if (sourceWorkbook) form.append("product_list", sourceWorkbook);
+      const res = await apiFetch("/admin/bmr-extractor/start", {method:"POST", body:form});
+      const data = await res.json() as {job_id:string;state:string};
+      setExtractionId(data.job_id);
+      setExtractionState(data.state);
+    } catch (err: unknown) { setError(fmtError(err)); setExtractionProgress(""); }
+    finally { setBusy(false); }
+  };
+  const exportExtractedCsv = (name: string, source: string) => {
+    const url = URL.createObjectURL(new Blob([source],{type:"text/csv;charset=utf-8"}));
+    const link = document.createElement("a");
+    link.href=url;link.download=name;link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  };
   const choose = async (file: File | undefined, type: "products" | "formula") => {
     setError(""); setSuccess(""); setPreview(null); setConfirm(""); setBackedUp(false); setVerified(false);
     if (file && !file.name.toLowerCase().endsWith(".csv")) {
@@ -107,7 +171,58 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
       </div>
       <div className="stkflo-migration-steps">
         <div className="stkflo-migration-step">
-          <h3><span>01</span> Upload extracted BMR data</h3>
+          <h3><span>01</span> Extract BMR documents or upload ready CSVs</h3>
+          <p>Preferred: upload the original A–Z BMR ZIP. The product list is read from within the ZIP,
+             or you can supply it separately. The server extracts Section 4 formulas and then prepares
+             the same canonical CSVs accepted by Stage 2. For larger archives this runs as a tracked job.</p>
+          <div className="stkflo-migration-fields">
+            <label className="form-group"><span className="label">Original BMR ZIP (.doc/.docx)</span>
+              <input className="input" type="file" accept=".zip,application/zip"
+                onChange={e => {setArchive(e.target.files?.[0] || null);setPreview(null);}} /></label>
+            <label className="form-group"><span className="label">Product List XLSX/XLSM (optional if already in ZIP)</span>
+              <input className="input" type="file" accept=".xlsx,.xlsm"
+                onChange={e => setSourceWorkbook(e.target.files?.[0] || null)} /></label>
+          </div>
+          <button type="button" className="btn btn-primary"
+            disabled={!archive || busy || extractionState === "RUNNING"}
+            onClick={() => void startExtraction()}>
+            {busy ? "Uploading…" : "Extract BMRs in StkFlo"}
+          </button>
+          {extractionProgress && <p role="status" className={extractionState === "FAILED" ?
+            "stkflo-migration-blocked" : "stkflo-migration-small"}>{extractionProgress}</p>}
+          {extracted && <div style={{marginTop:12}}>
+            <div className="stkflo-migration-metrics">
+              <div><strong>{extracted.source_count}</strong><span>Source BMRs</span></div>
+              <div><strong>{extracted.product_count}</strong><span>Extracted products</span></div>
+              <div><strong>{extracted.formula_count}</strong><span>Formula rows</span></div>
+              <div><strong>{extracted.issues.length}</strong><span>Review findings</span></div>
+            </div>
+            <details open><summary>Extracted BMR preview ({extracted.product_count} records)</summary>
+              <div style={{maxHeight:280,overflow:"auto"}}>
+                <table className="sf-ops-table"><thead><tr>
+                  <th>Product code</th><th>Version</th><th>Product</th><th>Materials</th><th>Extraction check</th>
+                </tr></thead><tbody>{extracted.products.map((p,i)=><tr key={p.product_code+"-"+i}>
+                  <td>{p.product_code}</td><td>{p.bmr_version}</td><td>{p.product_name_bmr}</td>
+                  <td>{p.material_count}</td><td>{p.review_status}</td>
+                </tr>)}</tbody></table>
+              </div>
+            </details>
+            {extracted.issues.length>0 && <details><summary>
+              Review extraction findings ({extracted.issues.length})
+            </summary><div style={{maxHeight:220,overflowY:"auto"}}>
+              {extracted.issues.map((f,i)=><p key={i}>{f.product_code} · {f.bmr_file}: {f.message}</p>)}
+            </div></details>}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+              <button type="button" className="btn btn-ghost"
+                onClick={()=>exportExtractedCsv("Products.csv",productsCsv)}>Download Products.csv</button>
+              <button type="button" className="btn btn-ghost"
+                onClick={()=>exportExtractedCsv("Master_Formulas.csv",formulasCsv)}>Download Master_Formulas.csv</button>
+              <button type="button" className="btn btn-primary" onClick={() => void validate()}>
+                Continue to Stage 2 · Validate Products & Formulas
+              </button>
+            </div>
+          </div>}
+          <details style={{marginTop:12}}><summary>Or upload pre-extracted CSVs (standalone extractor fallback)</summary>
           <p>Use the output files exactly as produced by the BMR Extractor.
              Products are linked by product code and BMR version. The standalone extractor remains available
              while legacy Word conversion is being integrated into StkFlo.</p>
@@ -131,7 +246,8 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
               (updates current mandatory materials; keeps older formula versions)</span>
           </label>
           <button className="btn btn-primary" type="button" disabled={!ready || busy}
-            onClick={() => void validate()}>{busy ? "Checking…" : "Validate & preview"}</button>
+            onClick={() => void validate()}>{busy ? "Checking…" : "Validate & preview CSVs"}</button>
+          </details>
         </div>
         {preview && <div className="stkflo-migration-step">
           <h3><span>02</span> Review matched products and formula lines</h3>
