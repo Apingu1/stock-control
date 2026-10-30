@@ -88,6 +88,16 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
 
   const startExtraction = async () => {
     if (!archive) return;
+    // The API accepts up to 175,000,000 compressed ZIP bytes, regardless of
+    // the number of BMR documents inside the archive.
+    if (archive.size > 175_000_000) {
+      setError(`Your ZIP is ${(archive.size / 1_000_000).toFixed(1)} MB; StkFlo accepts at most 175 MB per BMR ZIP. Split the library into smaller source ZIPs and extract each one separately.`);
+      return;
+    }
+    if (sourceWorkbook && sourceWorkbook.size > 8_000_000) {
+      setError("The Product List workbook is larger than the 8 MB extraction limit.");
+      return;
+    }
     setBusy(true);setError("");setSuccess("");setPreview(null);setExtracted(null);
     setProductsCsv("");setFormulasCsv("");setProductsFile("");setFormulaFile("");
     setExtractionProgress("Uploading BMR archive…");
@@ -200,6 +210,9 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
               <input className="input" type="file" accept=".xlsx,.xlsm"
                 onChange={e => setSourceWorkbook(e.target.files?.[0] || null)} /></label>
           </div>
+          {archive && <small className="muted">
+            Selected archive: {(archive.size / 1_000_000).toFixed(1)} MB · Maximum compressed ZIP size: 175 MB
+          </small>}
           <button type="button" className="btn btn-primary"
             disabled={!archive || busy || extractionState === "RUNNING"}
             onClick={() => void startExtraction()}>
