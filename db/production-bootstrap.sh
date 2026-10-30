@@ -9,7 +9,7 @@ DB_PORT="${DB_PORT:-5432}"
 
 export PGPASSWORD="$DB_PASSWORD"
 PSQL=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
-BOOTSTRAP_VERSION="production-schema-v6-stkflo-inventory-integrity"
+BOOTSTRAP_VERSION="production-schema-v7-bmr-formula-migration"
 
 marker_exists="$(${PSQL[@]} -tAc "SELECT CASE WHEN to_regclass('public.deployment_schema_bootstrap') IS NULL THEN 0 ELSE 1 END;")"
 if [[ "$marker_exists" == "1" ]]; then
