@@ -10,10 +10,12 @@ import csv
 import hashlib
 import io
 import re
+from pathlib import Path
+from zipfile import ZipFile, BadZipFile
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -357,3 +359,40 @@ def history(db: Session = Depends(get_db),
         FROM product_bmr_imports ORDER BY id DESC LIMIT 50
     """)).mappings().all()
     return [dict(row, imported_at=row["imported_at"].isoformat()) for row in rows]
+
+
+@router.post("/read-package")
+async def read_package(
+    package: UploadFile = File(...),
+    _user: User = Depends(require_permission("data_migration.view")),
+):
+    """Read the canonical two CSVs from the standalone extractor's uploadable ZIP.
+
+    No database mutations, and the source Product List workbook is ignored.
+    """
+    if not (package.filename or "").lower().endswith(".zip"):
+        raise HTTPException(400, "Choose a StkFlo_Import_Package.zip file")
+    raw = await package.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise HTTPException(413, "BMR import package exceeds 12 MB")
+    try:
+        with ZipFile(io.BytesIO(raw)) as z:
+            fields = {}
+            for entry in z.infolist():
+                if entry.is_dir():
+                    continue
+                basename = Path(entry.filename).name
+                if basename not in ("Products.csv", "Master_Formulas.csv"):
+                    continue
+                if basename in fields:
+                    raise HTTPException(400, f"Duplicate {basename} inside ZIP")
+                if entry.file_size > MAX_BYTES:
+                    raise HTTPException(413, f"{basename} exceeds 12 MB")
+                fields[basename] = z.read(entry).decode("utf-8-sig")
+    except (BadZipFile, UnicodeError, RuntimeError) as exc:
+        raise HTTPException(400, "The BMR import package is invalid") from exc
+    if set(fields) != {"Products.csv", "Master_Formulas.csv"}:
+        raise HTTPException(400, "Import ZIP requires Products.csv and Master_Formulas.csv")
+    _read(fields["Products.csv"], P_REQUIRED, "Products.csv")
+    _read(fields["Master_Formulas.csv"], F_REQUIRED, "Master_Formulas.csv")
+    return {"products_csv": fields["Products.csv"], "formulas_csv": fields["Master_Formulas.csv"]}
