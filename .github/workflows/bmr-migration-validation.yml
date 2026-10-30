@@ -23,6 +23,12 @@ jobs:
         run: |
           bash -n scripts/apply_bmr_formula_schema.sh
           bash -n db/production-bootstrap.sh
+      - name: Validate development Nginx routing and BMR upload limits
+        run: |
+          docker run --rm --add-host api:127.0.0.1 \
+            -v "${GITHUB_WORKSPACE}/infra/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.27-alpine nginx -t
+          grep -q 'client_max_body_size 200m;' infra/nginx.conf
       - name: Compile backend modules
         run: |
           python -m compileall -q api/app
