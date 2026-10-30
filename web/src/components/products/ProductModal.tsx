@@ -83,11 +83,12 @@ export default function ProductModal({ open, product, materials, onClose, onSave
     setFormulaLines(current => ({
       ...current,
       [id]: {
-        material_id: id, material_sequence: 1, source_material_name: "",
-        material_strength: "", master_formula_raw: "",
-        quantity_type: "", quantity_value: null, quantity_unit: "",
-        qs_target_value: null, qs_target_unit: "", conditional_material: false,
-        ...(current[id] || {}), ...patch
+        ...(current[id] || {
+          material_id: id, material_sequence: 1, source_material_name: "",
+          material_strength: "", master_formula_raw: "",
+          quantity_type: "", quantity_value: null, quantity_unit: "",
+          qs_target_value: null, qs_target_unit: "", conditional_material: false
+        }), ...patch
       }
     }));
   };
