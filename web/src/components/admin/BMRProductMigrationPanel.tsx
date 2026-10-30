@@ -108,6 +108,23 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
     link.href=url;link.download=name;link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
   };
+  const loadImportPackage = async (file: File | undefined) => {
+    if (!file) return;
+    setError("");setSuccess("");setPreview(null);setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("package",file);
+      const response=await apiFetch("/admin/bmr-migration/read-package", {
+        method:"POST",body:form
+      });
+      const parsed=await response.json() as {products_csv:string;formulas_csv:string};
+      setProductsCsv(parsed.products_csv);setFormulasCsv(parsed.formulas_csv);
+      setProductsFile("Products.csv · from " + file.name);
+      setFormulaFile("Master_Formulas.csv · from " + file.name);
+      setExtracted(null);
+    } catch(err: unknown) {setError(fmtError(err));}
+    finally {setBusy(false);}
+  };
   const choose = async (file: File | undefined, type: "products" | "formula") => {
     setError(""); setSuccess(""); setPreview(null); setConfirm(""); setBackedUp(false); setVerified(false);
     if (file && !file.name.toLowerCase().endsWith(".csv")) {
@@ -223,6 +240,11 @@ export default function BMRProductMigrationPanel({ canCommit }: { canCommit: boo
             </div>
           </div>}
           <details style={{marginTop:12}}><summary>Or upload pre-extracted CSVs (standalone extractor fallback)</summary>
+          <p>Upload the StkFlo_Import_Package.zip directly, or select the two CSV files below.</p>
+          <label className="form-group"><span className="label">StkFlo_Import_Package.zip</span>
+            <input type="file" className="input" accept=".zip,application/zip"
+              onChange={e=>void loadImportPackage(e.target.files?.[0])} />
+          </label>
           <p>Use the output files exactly as produced by the BMR Extractor.
              Products are linked by product code and BMR version. The standalone extractor remains available
              for offline processing or as a backup method.</p>
