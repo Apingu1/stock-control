@@ -10,6 +10,7 @@ from ..db import get_db
 from ..models import Material, Product, ProductAuditEvent, ProductMaterial, User
 from ..schemas import ProductCreate, ProductMaterialOut, ProductOut, ProductStatusUpdate, ProductUpdate
 from ..security import require_permission
+from ..product_formulas import read_formula, save_formula
 
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -37,7 +38,9 @@ def _active_material_rows(db: Session, product_id: int) -> list[Material]:
 
 def _snapshot(db: Session, product: Product) -> dict:
     materials = _active_material_rows(db, product.id)
+    formula = read_formula(db, product.id, product.version_number)
     return {
+        "formula": formula,
         "id": product.id,
         "product_code": product.product_code,
         "product_name": product.product_name,
@@ -57,7 +60,10 @@ def _snapshot(db: Session, product: Product) -> dict:
 
 def _out(db: Session, product: Product) -> ProductOut:
     materials = _active_material_rows(db, product.id)
+    formula = read_formula(db, product.id, product.version_number)
     return ProductOut(
+        formula_basis=formula["formula_basis"],
+        formula_lines=formula["formula_lines"],
         id=product.id,
         product_code=product.product_code,
         product_name=product.product_name,
@@ -233,6 +239,9 @@ def create_product(
     db.add(product)
     db.flush()
     _sync_materials(db, product, materials, user.username)
+    if payload.formula_lines is not None:
+        save_formula(db, product.id, product.version_number, payload.formula_basis,
+                     payload.formula_lines, user.username, {m.id for m in materials})
     after = _snapshot(db, product)
     db.add(
         ProductAuditEvent(
@@ -273,6 +282,9 @@ def update_product(
     _apply_fields(product, payload)
     product.updated_by = user.username
     _sync_materials(db, product, materials, user.username)
+    if payload.formula_lines is not None:
+        save_formula(db, product.id, product.version_number, payload.formula_basis,
+                     payload.formula_lines, user.username, {m.id for m in materials})
     after = _snapshot(db, product)
     if before == after:
         raise HTTPException(status_code=400, detail="No product changes were supplied")
