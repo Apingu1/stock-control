@@ -23,7 +23,7 @@ from ..material_classification import validate_material_classification
 from ..models import (
     ExpiryThresholdSetting, Material, MaterialApprovedManufacturer, MaterialLot, StockTransaction, User,
 )
-from ..security import require_admin_access
+from ..security import require_permission
 
 router = APIRouter(prefix="/admin/migration", tags=["admin", "migration"])
 MAX_BYTES = 5_000_000
@@ -287,7 +287,7 @@ def _ensure_log_table(db: Session):
 def preview_opening_stock(
     body: PreviewRequest,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_admin_access),
+    _user: User = Depends(require_permission("data_migration.view")),
 ):
     result, _, _ = _evaluate(body.csv_text, db)
     return result
@@ -297,7 +297,7 @@ def preview_opening_stock(
 def commit_opening_stock(
     body: CommitRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin_access),
+    user: User = Depends(require_permission("data_migration.commit")),
 ):
     if body.confirm != "IMPORT OPENING STOCK":
         raise HTTPException(400, "Type IMPORT OPENING STOCK exactly to authorise posting")
@@ -422,7 +422,7 @@ def commit_opening_stock(
 @router.get("/history")
 def opening_migration_history(
     db: Session = Depends(get_db),
-    _user: User = Depends(require_admin_access),
+    _user: User = Depends(require_permission("data_migration.view")),
 ):
     if db.execute(text("SELECT to_regclass('public.opening_stock_migrations')")).scalar() is None:
         return []
