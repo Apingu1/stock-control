@@ -194,9 +194,9 @@ def _validate(payload: ImportPreview, db: Session):
             if material.status != "ACTIVE" or material.is_cancelled_bmr_marker:
                 errors.append({"file": "Master_Formulas.csv", "row": line_no,
                                "message": f"Material unavailable: {f['material_name']}"})
-            if material.id in used_ids or seq in used_sequences:
+            if seq in used_sequences:
                 errors.append({"file": "Master_Formulas.csv", "row": line_no,
-                               "message": "Duplicate material or formula sequence"})
+                               "message": "Duplicate formula sequence"})
             used_ids.add(material.id)
             used_sequences.add(seq)
             matched.append((material, f, seq))
