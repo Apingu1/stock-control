@@ -167,6 +167,24 @@ class MaterialOut(MaterialBase):
 
 # --- Product List ------------------------------------------------------------
 
+class ProductFormulaLineIn(ApiBaseModel):
+    material_id: int
+    material_sequence: int = Field(ge=1)
+    source_material_name: str = ""
+    material_strength: str = ""
+    master_formula_raw: str = ""
+    quantity_type: str = ""
+    quantity_value: Optional[Decimal] = Field(default=None, ge=0)
+    quantity_unit: str = ""
+    qs_target_value: Optional[Decimal] = Field(default=None, ge=0)
+    qs_target_unit: str = ""
+    conditional_material: bool = False
+
+
+class ProductFormulaLineOut(ProductFormulaLineIn):
+    pass
+
+
 class ProductMaterialOut(ApiBaseModel):
     id: int
     material_code: str
@@ -192,11 +210,15 @@ class ProductBase(ApiBaseModel):
 
 class ProductCreate(ProductBase):
     material_ids: List[int] = Field(..., min_length=1)
+    formula_basis: str = ""
+    formula_lines: Optional[List[ProductFormulaLineIn]] = None
     audit_reason: str = Field(..., min_length=1, max_length=500)
 
 
 class ProductUpdate(ProductBase):
     material_ids: List[int] = Field(..., min_length=1)
+    formula_basis: str = ""
+    formula_lines: Optional[List[ProductFormulaLineIn]] = None
     edit_reason: str = Field(..., min_length=1, max_length=500)
 
 
@@ -213,6 +235,8 @@ class ProductOut(ProductBase):
     updated_at: datetime
     updated_by: str
     materials: List[ProductMaterialOut] = []
+    formula_basis: str = ""
+    formula_lines: List[ProductFormulaLineOut] = []
 
     class Config:
         from_attributes = True
