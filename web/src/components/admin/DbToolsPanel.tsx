@@ -73,6 +73,8 @@ type BackupSettings = {
   backup_dir_container: string;
   next_run_at_local?: string | null;
   scheduler?: SchedulerStatus;
+  replication_settings?: { enabled?: boolean; destination_unc?: string };
+  replication_status?: { at_utc?: string; result?: string; copied?: string[]; verified?: number; failed?: string[]; destination?: string };
 };
 
 type DatasetsResponse = {
@@ -518,10 +520,29 @@ export default function DbToolsPanel() {
       <div className="sf-phase4-backup-section">
         <div className="sf-settings-section-title">Backup Location</div>
         <div className="sf-settings-path">{mono(hostLocation)}</div>
+        <div className="info-row" style={{ marginTop: 12 }}>
+          <span>Network backup destination</span>
+          <b>{mono(settings?.replication_settings?.destination_unc || "Not configured")}</b>
+        </div>
+        <div className="info-row" style={{ marginTop: 8 }}>
+          <span>Replication status</span>
+          <b>{settings?.replication_status?.result || "Awaiting VM manager configuration"}</b>
+        </div>
+        {settings?.replication_status?.at_utc ? (
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+            Last check: {formatDateTime(settings.replication_status.at_utc)} · Verified files: {settings.replication_status.verified ?? 0}
+          </div>
+        ) : null}
+        {settings?.replication_status?.failed?.length ? (
+          <div role="alert" style={{ marginTop: 8, fontSize: 12, color: "#fecaca" }}>
+            {settings.replication_status.failed.join("; ")}
+          </div>
+        ) : null}
         <div style={{ marginTop: 7, fontSize: 13, opacity: 0.78, lineHeight: 1.5 }}>
-          This is a physical folder on the Stock Control server, outside the Docker container. To browse to a different
-          local drive or approved network location, open <b>ESC Backup Settings</b> on the Windows server. The utility
-          validates the folder before applying it to both manual and automatic backups.
+          This is the protected local backup folder on the Windows VM. Local verified backups are independently copied to
+          your approved network share (the network drive that is already covered by your organisation's cloud backup).
+          Configure and validate the underlying UNC destination remotely using <b>Windows VM Manager</b> above.
+          The scheduled replication task retries when the share is unavailable.
         </div>
       </div>
 
