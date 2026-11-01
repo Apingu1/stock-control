@@ -97,10 +97,10 @@ def _new_filename(backup_type: str) -> str:
     now_local = datetime.now(ZoneInfo(timezone_name))
     stamp = now_local.strftime("%Y-%m-%d_%H-%M-%S")
     label = FILENAME_LABELS[backup_type]
-    candidate = backup_dir() / f"StockControl_{label}_{stamp}.dump"
+    candidate = backup_dir() / f"StkFlo_{label}_{stamp}.dump"
     sequence = 1
     while candidate.exists() or backup_manifest_path(candidate).exists():
-        candidate = backup_dir() / f"StockControl_{label}_{stamp}_{sequence:02d}.dump"
+        candidate = backup_dir() / f"StkFlo_{label}_{stamp}_{sequence:02d}.dump"
         sequence += 1
     return candidate.name
 
