@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title Pharmagrowth Stock Control - Build Commercial Package
+title StkFlo - Build Commercial Package
 cd /d "%~dp0"
 
 where powershell.exe >nul 2>&1
