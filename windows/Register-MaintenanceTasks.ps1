@@ -30,13 +30,13 @@ $healthTriggers = @(
 )
 $renewalTrigger = New-ScheduledTaskTrigger -Daily -At '02:15'
 
-Register-EaststoneTask -Name 'Eaststone Stock Control - Health Monitor' -ScriptName 'Health-Monitor.ps1' -Triggers $healthTriggers
-Register-EaststoneTask -Name 'Eaststone Stock Control - Certificate Renewal' -ScriptName 'Certificate-Renewal.ps1' -Triggers @($renewalTrigger)
+Register-EaststoneTask -Name 'StkFlo - Health Monitor' -ScriptName 'Health-Monitor.ps1' -Triggers $healthTriggers
+Register-EaststoneTask -Name 'StkFlo - Certificate Renewal' -ScriptName 'Certificate-Renewal.ps1' -Triggers @($renewalTrigger)
 
 # Older releases used a fixed 02:30 Windows task. Automatic backups now run in
 # the always-on Docker scheduler so the configured time can be changed from the
 # Admin UI and backups do not depend on an interactive Windows logon session.
-Unregister-ScheduledTask -TaskName 'Eaststone Stock Control - Daily Backup' -Confirm:$false -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName 'StkFlo - Daily Backup' -Confirm:$false -ErrorAction SilentlyContinue
 
 # Run the monitor once immediately after registration so installation does not
 # depend on waiting for the first trigger.
