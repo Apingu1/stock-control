@@ -76,6 +76,8 @@ if not "%RUNNING_ON_SERVER%"=="1" (
   )
 )
 
+echo Removing installed StkFlo client icon...
+if exist "%ProgramData%\StkFlo\Client\stkflo.ico" del /f /q "%ProgramData%\StkFlo\Client\stkflo.ico" >nul 2>&1
 echo Removing client registration...
 reg delete "HKLM\SOFTWARE\StkFlo\Client" /f >nul 2>&1
 
