@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CERT_DIR="$ROOT_DIR/infra/certs"
-HOSTNAME_VALUE="${1:-stock-control.test}"
+HOSTNAME_VALUE="${1:-stkflo}"
 IP_ADDRESS="${2:-}"
 FORCE_NEW_CA="${3:-}"
 
@@ -68,7 +68,7 @@ if [[ ! -s "$CA_KEY" || ! -s "$CA_CERT" ]]; then
     -key "$CA_KEY" \
     -sha256 \
     -days 10950 \
-    -subj "/C=GB/O=Eaststone/OU=Stock Control/CN=Eaststone Stock Control Private CA" \
+    -subj "/C=GB/O=StkFlo/OU=Server/CN=StkFlo Private CA" \
     -out "$CA_CERT"
   echo "Created a new 30-year private Stock Control CA."
 else
@@ -80,7 +80,7 @@ fi
 openssl genrsa -out "$SERVER_KEY" 2048
 openssl req -new \
   -key "$SERVER_KEY" \
-  -subj "/C=GB/O=Eaststone/OU=Stock Control/CN=${HOSTNAME_VALUE}" \
+  -subj "/C=GB/O=StkFlo/OU=Server/CN=${HOSTNAME_VALUE}" \
   -out "$SERVER_CSR"
 
 openssl x509 -req \
