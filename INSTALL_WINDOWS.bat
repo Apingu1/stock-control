@@ -1,13 +1,13 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Eaststone Stock Control - Windows Installer
+title StkFlo - Windows Installer
 cd /d "%~dp0"
 
 set "QUIET=0"
 if /I "%~1"=="--quiet" set "QUIET=1"
 
 echo ============================================================
-echo   Eaststone Stock Control - Production Installer
+echo   StkFlo - Production Installer
 echo ============================================================
 echo.
 
@@ -48,7 +48,7 @@ if not exist ".env" (
     echo APP_STATE_DIR=/app-state
     echo BACKUP_DIR_LABEL=%CD%\Backups
     echo APP_HTTP_PORT=8088
-    echo APP_HTTPS_PORT=8443
+    echo APP_HTTPS_PORT=443
   ) > ".env"
   echo Environment file created.
 ) else (
@@ -89,54 +89,41 @@ docker compose -f "infra\docker-compose.production.yml" --env-file ".env" up -d 
 if errorlevel 1 goto :start_failed
 
 echo.
-echo Waiting for Stock Control to become healthy...
+echo Waiting for StkFlo to become healthy...
 for /L %%I in (1,1,90) do (
   curl.exe -fsS "http://127.0.0.1:!APP_HTTP_PORT!/api/health" >nul 2>&1
   if not errorlevel 1 goto :ready
-  timeout /t 2 /nobreak >nul
-)
-goto :health_failed
-
-:ready
-setlocal DisableDelayedExpansion
 echo.
-echo Creating and verifying the bootstrap administrator...
-docker compose -f "infra\docker-compose.production.yml" --env-file ".env" exec -T -e BOOTSTRAP_ADMIN_PASSWORD=Admin123! api python -m app.bootstrap_admin
-if errorlevel 1 goto :admin_failed_disabled
-set "LOGIN_JSON=%TEMP%\eaststone-login-test-%RANDOM%.json"
-> "%LOGIN_JSON%" echo {"username":"admin","password":"Admin123!"}
-curl.exe -fsS -X POST -H "Content-Type: application/json" --data-binary "@%LOGIN_JSON%" "http://127.0.0.1:%APP_HTTP_PORT%/api/auth/login/" >nul 2>&1
-if errorlevel 1 goto :login_failed_disabled
-del /f /q "%LOGIN_JSON%" >nul 2>&1
-endlocal
-goto :installation_success
-
-:admin_failed_disabled
-endlocal
-goto :admin_failed
-:login_failed_disabled
-del /f /q "%LOGIN_JSON%" >nul 2>&1
-endlocal
-goto :login_failed
-
+echo Preparing the one-time administrator credential...
+if not exist "deployment" mkdir "deployment"
+set "INIT_PASS="
+if exist "deployment\admin-bootstrap-complete.flag" goto :installation_success
+for /f "delims=" %%S in ('docker run --rm python:3.11-alpine python -c "import secrets; print(secrets.token_hex(18))"') do set "INIT_PASS=%%S"
+if not defined INIT_PASS goto :admin_failed
+docker compose -f "infra\docker-compose.production.yml" --env-file ".env" exec -T -e BOOTSTRAP_ADMIN_PASSWORD=!INIT_PASS! api python -m app.bootstrap_admin
+if errorlevel 1 goto :admin_failed
+set "LOGIN_JSON=%TEMP%\stkflo-login-%RANDOM%.json"
+> "!LOGIN_JSON!" echo {"username":"admin","password":"!INIT_PASS!"}
+curl.exe -fsS -X POST -H "Content-Type: application/json" --data-binary "@!LOGIN_JSON!" "http://127.0.0.1:!APP_HTTP_PORT!/api/auth/login/" >nul 2>&1
+set "LOGIN_RC=!ERRORLEVEL!"
+del /f /q "!LOGIN_JSON!" >nul 2>&1
+if not "!LOGIN_RC!"=="0" goto :login_failed
+> "deployment\admin-bootstrap-complete.flag" echo Initial administrator generated at %DATE% %TIME%
 :installation_success
 echo.
 echo ============================================================
-echo   Base installation completed successfully
+echo   StkFlo base installation completed successfully
 echo ============================================================
-echo Server address: http://localhost:!APP_HTTP_PORT!
-echo Initial username: admin
-echo Initial password: Admin123!
-echo The application will require a new private password at first login.
+echo StkFlo diagnostic endpoint: http://127.0.0.1:!APP_HTTP_PORT!
+if defined INIT_PASS (
+  echo Initial username: admin
+  echo ONE-TIME ADMINISTRATOR PASSWORD: !INIT_PASS!
+  echo Record securely now, then change it immediately at first login.
+) else (
+  echo Existing administrator retained. Password has not been reset.
+)
 if "%QUIET%"=="1" exit /b 0
-set "SHORTCUT=%USERPROFILE%\Desktop\Eaststone Stock Control.url"
-(
-  echo [InternetShortcut]
-  echo URL=http://localhost:!APP_HTTP_PORT!
-  echo IconFile=%SystemRoot%\System32\SHELL32.dll
-  echo IconIndex=13
-) > "!SHORTCUT!"
-start "" "http://localhost:!APP_HTTP_PORT!"
+start "" "http://127.0.0.1:!APP_HTTP_PORT!"
 pause
 exit /b 0
 
