@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title Eaststone Stock Control - Status
+title StkFlo - Status
 cd /d "%~dp0"
 
 if not exist ".env" (
@@ -10,14 +10,14 @@ if not exist ".env" (
 )
 
 set "APP_HTTP_PORT=8088"
-set "APP_HTTPS_PORT=8443"
-set "TLS_HOSTNAME=stock-control.test"
+set "APP_HTTPS_PORT=443"
+set "TLS_HOSTNAME=stkflo"
 for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"APP_HTTP_PORT=" ".env" 2^>nul') do set "APP_HTTP_PORT=%%B"
 for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"APP_HTTPS_PORT=" ".env" 2^>nul') do set "APP_HTTPS_PORT=%%B"
 if exist "deployment\server-config.ini" for /f "usebackq tokens=1,* delims==" %%A in ("deployment\server-config.ini") do if /I "%%A"=="TLS_HOSTNAME" set "TLS_HOSTNAME=%%B"
 
 echo ============================================================
-echo   Eaststone Stock Control - Status
+echo   StkFlo - Status
 echo ============================================================
 if exist "deployment\manual-stop.flag" (
   echo STATE: CONTROLLED STOP
@@ -61,8 +61,8 @@ if exist "runtime-state\backup_scheduler_status.json" (
 
 echo.
 echo Scheduled maintenance tasks:
-schtasks /Query /TN "Eaststone Stock Control - Health Monitor" /FO LIST 2>nul | findstr /I "TaskName Status Next Run"
-schtasks /Query /TN "Eaststone Stock Control - Certificate Renewal" /FO LIST 2>nul | findstr /I "TaskName Status Next Run"
+schtasks /Query /TN "StkFlo - Health Monitor" /FO LIST 2>nul | findstr /I "TaskName Status Next Run"
+schtasks /Query /TN "StkFlo - Certificate Renewal" /FO LIST 2>nul | findstr /I "TaskName Status Next Run"
 
 echo.
 pause
