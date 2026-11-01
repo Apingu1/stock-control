@@ -27,12 +27,31 @@ function Assert-Docker {
     docker info *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop engine is not reachable from the configured Docker user session' }
 }
+function Assert-ApprovedStop {
+    # When the application is alive, require the administrator to put it into
+    # the existing maintenance mode before a disruptive stop/restart.
+    $healthy = $false
+    try {
+        $health = Invoke-RestMethod 'http://127.0.0.1:8088/api/health' -TimeoutSec 3
+        $healthy = [bool]$health.ok
+    } catch {}
+    if ($healthy) {
+        try {
+            $maintenance = Invoke-RestMethod 'http://127.0.0.1:8088/api/admin/db-tools/maintenance' -TimeoutSec 3
+        } catch { throw 'Cannot verify StkFlo maintenance mode while the application is healthy; stop refused' }
+        if (-not $maintenance.enabled) { throw 'Enable maintenance mode in StkFlo Admin before stopping or restarting a healthy application' }
+    }
+}
 function Stop-Stack {
+    Assert-Docker
+    Assert-ApprovedStop
     New-Item -ItemType Directory -Path (Split-Path $flag -Parent) -Force | Out-Null
     Set-Content -LiteralPath $flag -Value ("Stopped by management task at " + [DateTime]::UtcNow.ToString('o')) -Encoding UTF8
-    Assert-Docker
     & docker compose -f $compose -f $tls --env-file $environment down --remove-orphans
-    if ($LASTEXITCODE -ne 0) { throw 'Docker Compose could not stop the application' }
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -LiteralPath $flag -Force -ErrorAction SilentlyContinue
+        throw 'Docker Compose could not stop the application'
+    }
 }
 function Start-Stack {
     if (Test-Path -LiteralPath $flag) { Remove-Item -LiteralPath $flag -Force }
