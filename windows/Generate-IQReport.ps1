@@ -152,9 +152,9 @@ $html = @"
 "@
 
 $stamp = $generated.ToString('yyyyMMdd_HHmmss')
-$file = Join-Path $outputDir "ESC-IQ-Execution-$stamp.html"
+$file = Join-Path $outputDir "StkFlo-IQ-Execution-$stamp.html"
 $html | Set-Content -LiteralPath $file -Encoding utf8
-Copy-Item -LiteralPath $file -Destination (Join-Path $outputDir 'ESC-IQ-Execution-Latest.html') -Force
+Copy-Item -LiteralPath $file -Destination (Join-Path $outputDir 'StkFlo-IQ-Execution-Latest.html') -Force
 Write-Host "Installation Qualification report created: $file"
 if ($overall -eq 'FAIL') { exit 1 }
 exit 0
