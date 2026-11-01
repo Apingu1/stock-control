@@ -11,7 +11,7 @@ from .models import AuthSession, User
 
 def main() -> None:
     username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "admin").strip() or "admin"
-    password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "Admin123!")
+    password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
 
     if len(password) < 8:
         raise RuntimeError("Bootstrap admin password must be at least 8 characters")
@@ -30,7 +30,7 @@ def main() -> None:
                 created_by="production-bootstrap",
             )
             db.add(user)
-        else:
+        elif os.getenv("BOOTSTRAP_ADMIN_FORCE_RESET") == "1":
             user.password_hash = bcrypt.hash(password)
             user.role = "ADMIN"
             user.is_active = True
