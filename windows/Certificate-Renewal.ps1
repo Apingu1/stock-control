@@ -30,7 +30,7 @@ function Read-Config {
 
 try {
     $config = Read-Config
-    $hostname = if ($config['TLS_HOSTNAME']) { $config['TLS_HOSTNAME'] } else { 'stock-control.test' }
+    $hostname = if ($config['TLS_HOSTNAME']) { $config['TLS_HOSTNAME'] } else { 'stkflo' }
     $serverIp = if ($config['SERVER_IP']) { $config['SERVER_IP'] } else { '' }
 
     docker info *> $null
