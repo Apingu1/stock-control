@@ -165,7 +165,7 @@ try { $currentPath = Resolve-ConfiguredPath $currentPath } catch { $currentPath 
 $currentSettings = Read-BackupSettings
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'Eaststone Stock Control - Backup Settings'
+$form.Text = 'StkFlo - Backup Settings'
 $form.Size = New-Object System.Drawing.Size(760, 520)
 $form.MinimumSize = New-Object System.Drawing.Size(760, 520)
 $form.StartPosition = 'CenterScreen'
