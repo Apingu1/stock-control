@@ -137,7 +137,7 @@ if errorlevel 1 echo WARNING: Initial backup failed. Review logs\backup.log.
 
 echo Executing installation qualification checks...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Generate-IQReport.ps1" -InstallRoot "%INSTALL_ROOT%"
-if errorlevel 1 echo WARNING: One or more IQ checks failed. Review deployment-records\ESC-IQ-Execution-Latest.html.
+if errorlevel 1 echo WARNING: One or more IQ checks failed. Review deployment-records\StkFlo-IQ-Execution-Latest.html.
 
 echo.
 echo ============================================================
@@ -148,7 +148,7 @@ echo Client deployment folder: %INSTALL_ROOT%\client-deployment
 echo Client package server IP: %SERVER_IP%
 echo Initial login: admin / unique password shown once during base setup.
 echo A new private administrator password is mandatory at first login.
-echo IQ report: %INSTALL_ROOT%\deployment-records\ESC-IQ-Execution-Latest.html
+echo IQ report: %INSTALL_ROOT%\deployment-records\StkFlo-IQ-Execution-Latest.html
 echo.
 start "" "https://%TLS_HOSTNAME%/"
 pause
