@@ -60,6 +60,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       BACKUP_DIR: /backups
       APP_STATE_DIR: /app-state
+      STKFLO_HOST_MANAGER_URL: ${STKFLO_HOST_MANAGER_URL:-}
+      STKFLO_VM_MANAGER_URL: ${STKFLO_VM_MANAGER_URL:-}
       TZ: ${TZ:-Europe/London}
     depends_on:
       db-init:
