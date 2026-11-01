@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
-title Pharmagrowth Stock Control - Backup and Restore
-set "INSTALL_ROOT=%ProgramData%\Eaststone\StockControl"
+title StkFlo - Backup and Restore
+set "INSTALL_ROOT=%ProgramData%\StkFlo\Server"
 if not exist "%INSTALL_ROOT%\ESC_BACKUP_RESTORE_WINDOWS.bat" (
   echo ERROR: Stock Control is not installed at:
   echo   %INSTALL_ROOT%
