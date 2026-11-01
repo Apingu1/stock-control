@@ -214,8 +214,12 @@ try {
     while ($listener.IsListening) {
         $context = $listener.GetContext()
         try {
-            $identity = $context.User.Identity
-            $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+            if (-not $context.User) {
+                Send-Response $context 401 @{error='Windows authentication is required'}
+                continue
+            }
+            $identity = [Security.Principal.WindowsIdentity]$context.User.Identity
+            $principal = [Security.Principal.WindowsPrincipal]::new($identity)
             $group = "$env:COMPUTERNAME\$($config.admin_group)"
             if (-not $identity.IsAuthenticated -or -not $principal.IsInRole($group)) {
                 Audit $identity.Name 'AUTH' 'DENIED' 'Not member of StkFlo management group'
@@ -244,7 +248,7 @@ try {
                     Send-Response $context 413 @{error='Invalid request size'}
                     continue
                 }
-                $reader = New-Object IO.StreamReader($context.Request.InputStream,[Text.Encoding]::UTF8)
+                $reader = [IO.StreamReader]::new($context.Request.InputStream,[Text.Encoding]::UTF8)
                 $requestBody = $reader.ReadToEnd() | ConvertFrom-Json
                 $action = [string]$requestBody.action
                 $reason = [string]$requestBody.reason
