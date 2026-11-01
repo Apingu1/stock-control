@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Eaststone Stock Control - Enable HTTPS
+title StkFlo - Enable HTTPS
 cd /d "%~dp0"
 
 if not exist ".env" (
@@ -15,12 +15,12 @@ set "QUIET=0"
 if /I "%~3"=="--quiet" set "QUIET=1"
 
 echo ============================================================
-echo   Enable HTTPS for Stock Control
+echo   Enable HTTPS for StkFlo
 echo ============================================================
 echo.
 if not defined TLS_HOSTNAME (
-  set /p "TLS_HOSTNAME=Internal hostname [stock-control.test]: "
-  if not defined TLS_HOSTNAME set "TLS_HOSTNAME=stock-control.test"
+  set /p "TLS_HOSTNAME=Internal hostname [stkflo]: "
+  if not defined TLS_HOSTNAME set "TLS_HOSTNAME=stkflo"
 )
 
 if not defined SERVER_IP if "!QUIET!"=="0" set /p "SERVER_IP=Server IPv4 address: "
@@ -58,7 +58,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-set "APP_HTTPS_PORT=8443"
+set "APP_HTTPS_PORT=443"
 for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"APP_HTTPS_PORT=" ".env" 2^>nul') do set "APP_HTTPS_PORT=%%B"
 
 echo Waiting for HTTPS...
@@ -74,7 +74,7 @@ exit /b 1
 
 :ready
 echo.
-echo HTTPS is ready: https://!TLS_HOSTNAME!:!APP_HTTPS_PORT!
+echo HTTPS is ready: https://!TLS_HOSTNAME!
 echo Public CA certificate: %CD%\infra\certs\stock-control-ca.crt
 echo Private keys remain on the server in infra\certs.
 if "!QUIET!"=="1" exit /b 0
@@ -82,5 +82,5 @@ echo.
 echo Manual client setup requires:
 echo   1. Import stock-control-ca.crt into Local Computer Trusted Root.
 echo   2. Add !SERVER_IP! !TLS_HOSTNAME! to the client hosts file, or configure DNS.
-start "" "https://!TLS_HOSTNAME!:!APP_HTTPS_PORT!"
+start "" "https://!TLS_HOSTNAME!"
 pause
