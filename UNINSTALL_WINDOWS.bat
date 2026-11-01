@@ -1,134 +1,80 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Eaststone Stock Control - Complete Uninstall
-
-net session >nul 2>&1
-if errorlevel 1 (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs -WorkingDirectory '%~dp0'"
-  exit /b
+title StkFlo - Complete Test Uninstall
+set "INSTALL_ROOT=%ProgramData%\StkFlo\Server"
+if /I not "%~1"=="--staged" (
+  if not exist "%INSTALL_ROOT%\infra\docker-compose.production.yml" (
+    echo ERROR: No StkFlo server installation was found at %INSTALL_ROOT%.
+    pause
+    exit /b 1
+  )
+  set "STAGE=%TEMP%\StkFlo-Uninstall-%RANDOM%.bat"
+  copy /Y "%~f0" "!STAGE!" >nul
+  if errorlevel 1 (
+    echo ERROR: Cannot stage the uninstaller locally.
+    exit /b 1
+  )
+  set "STAGE_UNINSTALL=!STAGE!"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Start-Process -FilePath $env:STAGE_UNINSTALL -ArgumentList '--staged' -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+  set "EXIT_CODE=!ERRORLEVEL!"
+  del /f /q "!STAGE!" >nul 2>&1
+  exit /b !EXIT_CODE!
 )
-
-cd /d "%~dp0"
-set "TLS_HOSTNAME=stock-control.test"
-if exist "deployment\server-config.ini" for /f "usebackq tokens=1,* delims==" %%A in ("deployment\server-config.ini") do if /I "%%A"=="TLS_HOSTNAME" set "TLS_HOSTNAME=%%B"
-
+net session >nul 2>&1
+if errorlevel 1 exit /b 1
+cd /d "%INSTALL_ROOT%"
 echo ============================================================
-echo   Eaststone Stock Control - COMPLETE UNINSTALL
+echo   StkFlo - CLEAN TEST UNINSTALL
 echo ============================================================
+echo WARNING: All VM-local application data and PostgreSQL volumes will
+echo be deleted. The N: distribution package and network/cloud backups
+echo are NOT deleted. Host-side manager is removed separately on Hyper-V.
 echo.
-echo WARNING: This permanently removes the Stock Control installation.
-echo It removes containers, the PostgreSQL volume and all stock data,
-echo generated images, certificates, trusted-root entry, hosts entry,
-echo firewall rules, scheduled tasks, backups, logs and shortcuts.
-echo.
-echo Docker Desktop and unrelated Docker projects are NOT removed.
-echo.
-set /p "CONFIRM1=Type UNINSTALL to continue: "
-if /I not "%CONFIRM1%"=="UNINSTALL" goto :cancelled
-echo.
-echo FINAL WARNING: ALL STOCK CONTROL DATA WILL BE DESTROYED.
-set /p "CONFIRM2=Type DELETE ALL DATA to confirm: "
-if /I not "%CONFIRM2%"=="DELETE ALL DATA" goto :cancelled
-
-where docker >nul 2>&1
-if errorlevel 1 goto :no_docker
+set /p "CONFIRM1=Type UNINSTALL to proceed: "
+if /I not "!CONFIRM1!"=="UNINSTALL" exit /b 0
+set /p "CONFIRM2=Type DELETE LOCAL DATA to confirm: "
+if /I not "!CONFIRM2!"=="DELETE LOCAL DATA" exit /b 0
 docker info >nul 2>&1
 if errorlevel 1 (
-  echo Docker is not running. Attempting to start Docker Desktop for safe cleanup...
-  if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
-  if exist "%ProgramFiles(x86)%\Docker\Docker\Docker Desktop.exe" start "" "%ProgramFiles(x86)%\Docker\Docker\Docker Desktop.exe"
-  for /L %%I in (1,1,60) do (
-    timeout /t 2 /nobreak >nul
-    docker info >nul 2>&1
-    if not errorlevel 1 goto :docker_ready
-  )
-  goto :docker_not_running
+  echo ERROR: Docker must be running to verify removal of PostgreSQL volumes.
+  pause
+  exit /b 1
 )
-
-:docker_ready
-echo Removing scheduled maintenance tasks...
-schtasks /Delete /TN "Eaststone Stock Control - Health Monitor" /F >nul 2>&1
-schtasks /Delete /TN "Eaststone Stock Control - Certificate Renewal" /F >nul 2>&1
-schtasks /Delete /TN "Eaststone Stock Control - Daily Backup" /F >nul 2>&1
-
-echo Removing Windows Firewall rules...
-netsh advfirewall firewall delete rule name="Eaststone Stock Control HTTP" >nul 2>&1
-netsh advfirewall firewall delete rule name="Eaststone Stock Control HTTPS" >nul 2>&1
-
-echo Removing the local hostname entry...
-if exist "windows\Configure-Hosts.ps1" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Configure-Hosts.ps1" -Hostname "%TLS_HOSTNAME%" -Remove >nul 2>&1
-
-echo Removing the Stock Control private CA from Local Computer Trusted Root...
+echo Removing StkFlo containers and volumes...
+docker compose -f "infra\docker-compose.production.yml" -f "infra\docker-compose.production.tls.yml" --env-file ".env" down -v --remove-orphans
+if errorlevel 1 goto :failed
+docker volume rm stkflo-db-data >nul 2>&1
+echo Removing VM-specific Windows maintenance tasks...
+for %%T in (
+  "StkFlo - Health Monitor"
+  "StkFlo - Certificate Renewal"
+  "StkFlo - Stack Start"
+  "StkFlo - Stack Stop"
+  "StkFlo - Stack Restart"
+  "StkFlo - Backup Replication"
+  "StkFlo - VM Manager"
+) do schtasks /Delete /TN %%T /F >nul 2>&1
+netsh advfirewall firewall delete rule name="StkFlo HTTPS" >nul 2>&1
+netsh advfirewall firewall delete rule name="StkFlo - VM Manager HTTPS" >nul 2>&1
+netsh http delete sslcert ipport=0.0.0.0:9444 >nul 2>&1
+reg delete "HKLM\SOFTWARE\StkFlo\Server" /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\StkFlo\Client" /f >nul 2>&1
+if exist "deployment\server-config.ini" for /f "tokens=1,* delims==" %%A in ('findstr /B "TLS_HOSTNAME=" "deployment\server-config.ini"') do (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Configure-Hosts.ps1" -Hostname "%%B" -Remove >nul 2>&1
+)
 if exist "deployment\trusted-root-thumbprint.txt" (
-  set /p "CERT_THUMBPRINT=" < "deployment\trusted-root-thumbprint.txt"
-  if defined CERT_THUMBPRINT powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem 'Cert:\LocalMachine\Root\!CERT_THUMBPRINT!' -ErrorAction SilentlyContinue ^| Remove-Item -Force -ErrorAction SilentlyContinue"
+  set /p "CERT_HASH=" < "deployment\trusted-root-thumbprint.txt"
+  if defined CERT_HASH powershell.exe -NoProfile -Command "Remove-Item -LiteralPath ('Cert:\LocalMachine\Root\' + $env:CERT_HASH) -Force -ErrorAction SilentlyContinue"
 )
-
-echo Removing Docker containers, network, images and database volume...
-if exist ".env" (
-  docker compose -f "infra\docker-compose.production.yml" -f "infra\docker-compose.production.tls.yml" --env-file ".env" down -v --remove-orphans >nul 2>&1
-  docker compose -f "infra\docker-compose.production.yml" --env-file ".env" down -v --remove-orphans >nul 2>&1
-) else (
-  docker compose -f "infra\docker-compose.production.yml" -f "infra\docker-compose.production.tls.yml" down -v --remove-orphans >nul 2>&1
-  docker compose -f "infra\docker-compose.production.yml" down -v --remove-orphans >nul 2>&1
-)
-docker rm -f stock-control-prodtest-web-1 stock-control-prodtest-api-1 stock-control-prodtest-db-init-1 stock-control-prodtest-db-1 >nul 2>&1
-docker volume rm stock-control-prodtest-db-data >nul 2>&1
-docker network rm stock-control-prodtest_stock_control_internal >nul 2>&1
-docker image rm stock-control-prodtest-web stock-control-prodtest-api >nul 2>&1
-
-echo Removing generated data and local records...
-if exist ".env" del /f /q ".env" >nul 2>&1
-for %%F in (stock-control.crt stock-control.key stock-control-ca.crt stock-control-ca.key stock-control-ca.srl stock-control.csr stock-control.ext) do if exist "infra\certs\%%F" del /f /q "infra\certs\%%F" >nul 2>&1
-for %%D in (backups-production-test client-deployment deployment deployment-records logs) do if exist "%%D" (
-  attrib -h -s -r "%%D\*" /s /d >nul 2>&1
-  rmdir /s /q "%%D" >nul 2>&1
-)
-
-del /f /q "%USERPROFILE%\Desktop\Eaststone Stock Control.url" >nul 2>&1
-del /f /q "%USERPROFILE%\Desktop\Eaststone Stock Control.lnk" >nul 2>&1
-del /f /q "%USERPROFILE%\Desktop\ESC Backup and Restore.lnk" >nul 2>&1
-del /f /q "%USERPROFILE%\Desktop\ESC Status.lnk" >nul 2>&1
-del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\Eaststone Stock Control.lnk" >nul 2>&1
-del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\ESC Backup and Restore.lnk" >nul 2>&1
-del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\ESC Status.lnk" >nul 2>&1
-reg delete "HKLM\SOFTWARE\Eaststone\StockControl" /f >nul 2>&1
-
-echo.
-echo Stock Control runtime resources and all generated data were removed.
-echo.
-set /p "DELETEFILES=Also delete this entire installed application folder? Type DELETE FOLDER to confirm: "
-if /I not "%DELETEFILES%"=="DELETE FOLDER" goto :keep_files
-
-set "TARGET_DIR=%CD%"
-set "CLEANUP=%TEMP%\remove-eaststone-stock-control-%RANDOM%.bat"
-(
-  echo @echo off
-  echo timeout /t 3 /nobreak ^>nul
-  echo cd /d "%TEMP%"
-  echo attrib -h -s -r "%TARGET_DIR%\*" /s /d ^>nul 2^>^&1
-  echo rmdir /s /q "%TARGET_DIR%"
-  echo del /f /q "%%~f0"
-) > "%CLEANUP%"
-echo The application folder will now be deleted.
-start "" /min cmd /c ""%CLEANUP%""
-exit /b 0
-
-:keep_files
-echo The source and installer files were retained; runtime data has been removed.
-pause
-exit /b 0
-:no_docker
-echo ERROR: Docker was not found. Complete Docker cleanup cannot be verified.
-goto :failed
-:docker_not_running
-echo ERROR: Docker did not start. No generated files were deleted so cleanup can be retried safely.
-goto :failed
-:cancelled
-echo Uninstall cancelled. Nothing was removed.
+echo Removing installed application files, local backups, and management agent...
+cd /d "%ProgramData%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -LiteralPath $env:INSTALL_ROOT -Recurse -Force -ErrorAction Stop; Remove-Item -LiteralPath (Join-Path $env:ProgramData 'StkFlo\Management') -Recurse -Force -ErrorAction SilentlyContinue"
+if errorlevel 1 goto :failed
+echo StkFlo removed from this Windows VM. Network backups were preserved.
+echo The physical Hyper-V Host Manager was not touched.
 pause
 exit /b 0
 :failed
-echo.
+echo ERROR: Full uninstall could not be verified. Do not assume data was removed.
 pause
 exit /b 1
