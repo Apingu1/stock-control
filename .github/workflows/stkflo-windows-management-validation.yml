@@ -59,8 +59,9 @@ jobs:
           Write-Host 'Release structure checks passed.'
       - uses: actions/upload-artifact@v4
         with:
-          name: StkFlo-Windows-Installation-validation
-          path: release/StkFlo-Windows-Installation.zip
+          name: StkFlo-Windows-Commercial-Package
+          path: release/StkFlo/
+          retention-days: 30
           if-no-files-found: error
 
   frontend:
