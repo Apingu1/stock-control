@@ -74,6 +74,7 @@ if not exist "client-deployment\02 - UNINSTALL CLIENT.bat" goto :client_template
 if not exist "client-deployment\Configure-Hosts.ps1" goto :client_template_failed
 if not exist "client-deployment\client-config.ini" goto :client_template_failed
 if not exist "client-deployment\README.txt" goto :client_template_failed
+if not exist "client-deployment\stkflo.ico" goto :client_template_failed
 
 echo Running controlled application and database installation...
 call "INSTALL_WINDOWS.bat" --quiet
@@ -124,7 +125,7 @@ if errorlevel 1 goto :client_template_failed
 if not exist "client-deployment\stock-control-ca.crt" goto :client_template_failed
 
 echo Creating server shortcuts...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$url='https://%TLS_HOSTNAME%/';$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($spec in @(@('StkFlo',$url),@('StkFlo Backup Settings','%INSTALL_ROOT%\ESC_BACKUP_SETTINGS_WINDOWS.bat'),@('StkFlo Backup and Restore','%INSTALL_ROOT%\ESC_BACKUP_RESTORE_WINDOWS.bat'),@('StkFlo Status','%INSTALL_ROOT%\STATUS_WINDOWS.bat'))){foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir ($spec[0]+'.lnk')));if($spec[1] -like 'https:*'){$s.TargetPath=$edge;$s.Arguments='--app='+$spec[1]}else{$s.TargetPath=$spec[1]};$s.WorkingDirectory='%INSTALL_ROOT%';$s.Description=$spec[0];$s.Save()}}}"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$url='https://%TLS_HOSTNAME%/';$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($spec in @(@('StkFlo',$url),@('StkFlo Backup Settings','%INSTALL_ROOT%\ESC_BACKUP_SETTINGS_WINDOWS.bat'),@('StkFlo Backup and Restore','%INSTALL_ROOT%\ESC_BACKUP_RESTORE_WINDOWS.bat'),@('StkFlo Status','%INSTALL_ROOT%\STATUS_WINDOWS.bat'))){foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir ($spec[0]+'.lnk')));if($spec[1] -like 'https:*'){$s.TargetPath=$edge;$s.Arguments='--app='+$spec[1];if($spec[0] -eq 'StkFlo'){$s.IconLocation='%INSTALL_ROOT%\web\public\icons\stkflo-favicon.ico'}}else{$s.TargetPath=$spec[1]};$s.WorkingDirectory='%INSTALL_ROOT%';$s.Description=$spec[0];$s.Save()}}}"
 
 reg add "HKLM\SOFTWARE\StkFlo\Server" /v InstallPath /t REG_SZ /d "%INSTALL_ROOT%" /f >nul
 reg add "HKLM\SOFTWARE\StkFlo\Server" /v ServerUrl /t REG_SZ /d "https://%TLS_HOSTNAME%/" /f >nul
