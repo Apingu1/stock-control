@@ -28,10 +28,10 @@ function Html([object]$Value) {
 
 $config = Read-Settings $configPath
 $environment = Read-Settings $envPath
-$hostname = if ($config['TLS_HOSTNAME']) { $config['TLS_HOSTNAME'] } else { 'stock-control.test' }
+$hostname = if ($config['TLS_HOSTNAME']) { $config['TLS_HOSTNAME'] } else { 'stkflo' }
 $serverIp = if ($config['SERVER_IP']) { $config['SERVER_IP'] } else { 'Not recorded' }
 $httpPort = if ($environment['APP_HTTP_PORT']) { $environment['APP_HTTP_PORT'] } else { '8088' }
-$httpsPort = if ($environment['APP_HTTPS_PORT']) { $environment['APP_HTTPS_PORT'] } else { '8443' }
+$httpsPort = if ($environment['APP_HTTPS_PORT']) { $environment['APP_HTTPS_PORT'] } else { '443' }
 $checks = New-Object System.Collections.Generic.List[object]
 
 function Add-Check([string]$Id, [string]$Requirement, [scriptblock]$Test) {
@@ -93,10 +93,10 @@ Add-Check 'IQ-09' 'Configured hostname resolves locally' {
     "${hostname} -> $($addresses -join ', '); recorded server IP=$serverIp"
 }
 Add-Check 'IQ-10' 'Automatic certificate renewal task exists' {
-    (Get-ScheduledTask -TaskName 'Eaststone Stock Control - Certificate Renewal' -ErrorAction Stop).State
+    (Get-ScheduledTask -TaskName 'StkFlo - Certificate Renewal' -ErrorAction Stop).State
 }
 Add-Check 'IQ-11' 'Automatic health-monitor task exists' {
-    (Get-ScheduledTask -TaskName 'Eaststone Stock Control - Health Monitor' -ErrorAction Stop).State
+    (Get-ScheduledTask -TaskName 'StkFlo - Health Monitor' -ErrorAction Stop).State
 }
 Add-Check 'IQ-12' 'Configurable automatic database-backup scheduler is running' {
     $base = Join-Path $InstallRoot 'infra\docker-compose.production.yml'
@@ -140,9 +140,9 @@ $rows = foreach ($check in $checks) {
 $generated = Get-Date
 $html = @"
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Eaststone Stock Control Installation Qualification</title>
+<html lang="en"><head><meta charset="utf-8"><title>StkFlo Installation Qualification</title>
 <style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#172033}h1{margin-bottom:4px}.meta{display:grid;grid-template-columns:220px 1fr;gap:6px;max-width:900px}.card{border:1px solid #ccd3df;border-radius:10px;padding:18px;margin:18px 0}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd3df;padding:8px;vertical-align:top;text-align:left}th{background:#eef2f8}.pass{color:#08783e;font-weight:700}.fail{color:#b42318;font-weight:700}pre{white-space:pre-wrap;margin:0;font-family:Consolas,monospace;font-size:12px}.sign{height:80px}</style></head>
-<body><h1>Eaststone Stock Control</h1><h2>Installation Qualification Execution Report</h2>
+<body><h1>StkFlo</h1><h2>Installation Qualification Execution Report</h2>
 <div class="card meta"><strong>Execution date</strong><span>$(Html $generated.ToString('u'))</span><strong>Computer</strong><span>$(Html $env:COMPUTERNAME)</span><strong>Executed by</strong><span>$(Html "$env:USERDOMAIN\$env:USERNAME")</span><strong>Installation path</strong><span>$(Html $InstallRoot)</span><strong>Hostname</strong><span>$(Html $hostname)</span><strong>Server IP</strong><span>$(Html $serverIp)</span><strong>Overall result</strong><span class="$($overall.ToLower())">$(Html $overall)</span></div>
 <table><thead><tr><th>Test</th><th>Requirement</th><th>Result</th><th>Objective evidence</th></tr></thead><tbody>$($rows -join "`n")</tbody></table>
 <div class="card"><h3>Approval</h3><p>Deviations / comments:</p><div class="sign"></div><p>Executed by: ____________________ Date: __________</p><p>Reviewed by: ____________________ Date: __________</p><p>Approved by: ____________________ Date: __________</p></div>
