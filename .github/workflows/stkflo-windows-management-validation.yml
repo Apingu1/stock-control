@@ -40,6 +40,11 @@ jobs:
           $required = @(
             '01 - INSTALL SERVER.bat',
             'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat',
+            'CLIENT DEPLOYMENT\stkflo.ico',
+            'System\web\public\branding\stkflo-login-loop.mp4',
+            'System\web\public\branding\stkflo-login-poster.webp',
+            'System\web\public\branding\stkflo-monogram.svg',
+            'System\web\public\icons\stkflo-favicon.ico',
             'System\windows\management\Server-Management.ps1',
             'System\windows\management\Invoke-StackAction.ps1',
             'System\windows\management\Sync-Backups.ps1',
