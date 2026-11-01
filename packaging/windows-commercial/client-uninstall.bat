@@ -1,28 +1,32 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Eaststone Stock Control - Client Uninstall
+title StkFlo - Client Uninstall
 
 set "STAGED=0"
 if /I "%~1"=="--staged" set "STAGED=1"
 set "SELF_NAME=%~nx0"
 
+rem Stage every invocation, even if launched as Administrator from N: or a UNC share.
+rem UAC may remove mapped network-drive visibility; execute solely from local files.
+if "!STAGED!"=="0" (
+  set "STAGE=%TEMP%\StkFlo-Client-%RANDOM%-%RANDOM%"
+  mkdir "!STAGE!" >nul 2>&1
+  robocopy "%~dp0" "!STAGE!" /E /R:2 /W:1 /NFL /NDL /NP >nul
+  if !ERRORLEVEL! GEQ 8 goto :stage_error
+  if not exist "!STAGE!\!SELF_NAME!" goto :stage_error
+  set "STAGE_PATH=!STAGE!"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ""'+$env:STAGE_PATH+'\'+$env:SELF_NAME+'" --staged') -WorkingDirectory $env:STAGE_PATH -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+  set "RESULT=!ERRORLEVEL!"
+  rmdir /s /q "!STAGE!" >nul 2>&1
+  exit /b !RESULT!
+)
 net session >nul 2>&1
 if errorlevel 1 (
-  echo Requesting administrator access...
-  set "STAGE=%TEMP%\EaststoneStockControlClientUninstall-%RANDOM%-%RANDOM%"
-  mkdir "!STAGE!" >nul 2>&1
-  xcopy "%~dp0*" "!STAGE!\" /E /I /Y /Q >nul
-  if not exist "!STAGE!\!SELF_NAME!" (
-    echo ERROR: Client uninstall files could not be staged before elevation.
-    pause
-    exit /b 1
-  )
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!STAGE!\!SELF_NAME!' -ArgumentList '--staged' -Verb RunAs -WorkingDirectory '!STAGE!'"
-  exit /b
+  echo ERROR: Local administrator permissions are required.
+  exit /b 1
 )
-
 cd /d "%~dp0"
-set "TLS_HOSTNAME=stock-control.test"
+set "TLS_HOSTNAME=stkflo"
 set "CA_THUMBPRINT="
 set "RUNNING_ON_SERVER=0"
 
@@ -32,18 +36,18 @@ if exist "client-config.ini" (
   )
 )
 
-for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerHostname 2^>nul ^| find /I "ServerHostname"') do set "TLS_HOSTNAME=%%B"
-for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\Eaststone\StockControlClient" /v CAThumbprint 2^>nul ^| find /I "CAThumbprint"') do set "CA_THUMBPRINT=%%B"
+for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\StkFlo\Client" /v ServerHostname 2^>nul ^| find /I "ServerHostname"') do set "TLS_HOSTNAME=%%B"
+for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\StkFlo\Client" /v CAThumbprint 2^>nul ^| find /I "CAThumbprint"') do set "CA_THUMBPRINT=%%B"
 
 if not defined CA_THUMBPRINT if exist "stock-control-ca.crt" (
   for /f "usebackq delims=" %%T in (`powershell.exe -NoProfile -Command "$c=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath 'stock-control-ca.crt').Path);$c.Thumbprint"`) do set "CA_THUMBPRINT=%%T"
 )
 
-reg query "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath >nul 2>&1
+reg query "HKLM\SOFTWARE\StkFlo\Server" /v InstallPath >nul 2>&1
 if not errorlevel 1 set "RUNNING_ON_SERVER=1"
 
 echo ============================================================
-echo   Eaststone Stock Control - Client Uninstall
+echo   StkFlo - Client Uninstall
 echo ============================================================
 echo.
 echo This removes this computer's Stock Control client configuration only.
@@ -58,8 +62,8 @@ set /p "CONFIRM=Type UNINSTALL CLIENT to continue: "
 if /I not "%CONFIRM%"=="UNINSTALL CLIENT" goto :cancelled
 
 echo Removing application shortcuts...
-del /f /q "%USERPROFILE%\Desktop\Eaststone Stock Control.lnk" >nul 2>&1
-del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Eaststone Stock Control.lnk" >nul 2>&1
+del /f /q "%PUBLIC%\Desktop\StkFlo.lnk" >nul 2>&1
+del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\StkFlo.lnk" >nul 2>&1
 
 if not "%RUNNING_ON_SERVER%"=="1" (
   echo Removing the Stock Control hostname mapping...
@@ -72,7 +76,7 @@ if not "%RUNNING_ON_SERVER%"=="1" (
 )
 
 echo Removing client registration...
-reg delete "HKLM\SOFTWARE\Eaststone\StockControlClient" /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\StkFlo\Client" /f >nul 2>&1
 
 echo.
 echo ============================================================
@@ -89,13 +93,9 @@ set "RESULT=0"
 :finish
 echo.
 pause
-if "%STAGED%"=="1" (
-  set "STAGE_DIR=%~dp0"
-  set "CLEANUP=%TEMP%\eaststone-client-uninstall-cleanup-%RANDOM%.cmd"
-  >"!CLEANUP!" echo @echo off
-  >>"!CLEANUP!" echo timeout /t 3 /nobreak ^>nul
-  >>"!CLEANUP!" echo rmdir /s /q "!STAGE_DIR!"
-  >>"!CLEANUP!" echo del /f /q "%%~f0"
-  start "" /min cmd.exe /c ""!CLEANUP!""
-)
 exit /b %RESULT%
+
+:stage_error
+echo ERROR: Client package could not be staged locally.
+pause
+exit /b 1
