@@ -49,6 +49,8 @@ if not exist ".env" (
     echo BACKUP_DIR_LABEL=%CD%\Backups
     echo APP_HTTP_PORT=8088
     echo APP_HTTPS_PORT=443
+    echo STKFLO_HOST_MANAGER_URL=https://stkflo-host:9443/
+    echo STKFLO_VM_MANAGER_URL=https://stkflo-manager:9444/
   ) > ".env"
   echo Environment file created.
 ) else (
