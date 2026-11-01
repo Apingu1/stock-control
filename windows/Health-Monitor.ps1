@@ -76,7 +76,8 @@ $status = [ordered]@{
 try {
     if (Test-Path $manualStopPath) {
         $status.controlled_stop = $true
-        $status.healthy = $true
+        $status.healthy = $false
+        $status.state = 'CONTROLLED_STOP'
         $status | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statusPath -Encoding utf8
         Write-Log 'Controlled stop flag is present. Automatic restart was intentionally suppressed.'
         exit 0
