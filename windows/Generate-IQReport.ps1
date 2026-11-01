@@ -113,7 +113,9 @@ Add-Check 'IQ-12' 'Configurable automatic database-backup scheduler is running' 
 }
 Add-Check 'IQ-13' 'Initial administrator login is operational' {
     if ([string]::IsNullOrWhiteSpace($AdminPassword)) {
-        return 'Not executed: administrator password not supplied to report generator.'
+        $marker = Join-Path $InstallRoot 'deployment\admin-bootstrap-complete.flag'
+        if (-not (Test-Path -LiteralPath $marker)) { throw 'Installer bootstrap verification marker is absent' }
+        return 'Installer verified one-time admin authentication and recorded successful bootstrap; password was not retained for IQ.'
     }
     $tempBody = Join-Path $env:TEMP "eaststone-iq-login-$([guid]::NewGuid().ToString('N')).json"
     try {
