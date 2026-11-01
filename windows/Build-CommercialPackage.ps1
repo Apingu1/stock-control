@@ -94,7 +94,8 @@ Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Val
 
 # Keep the full controlled Windows documentation available without cluttering
 # the package root.
-Copy-Item -Path (Join-Path $RepositoryRoot 'docs\windows\*') -Destination $docsDir -Recurse -Force
+Copy-RequiredFile (Join-Path $RepositoryRoot 'docs\windows\IT_INSTALLATION_GUIDE.txt') (Join-Path $docsDir 'IT_INSTALLATION_GUIDE.txt')
+Copy-RequiredFile (Join-Path $RepositoryRoot 'docs\windows\STKFLO_WINDOWS_REMOTE_MANAGEMENT.md') (Join-Path $docsDir 'STKFLO_WINDOWS_REMOTE_MANAGEMENT.md')
 
 # Copy only runtime/source directories required by the tested Docker deployment.
 $runtimeDirectories = @('api', 'db', 'infra', 'scripts', 'web', 'windows')
