@@ -64,6 +64,8 @@ function Get-VMStatus {
     $stopped = Test-Path -LiteralPath (Join-Path $root 'deployment\manual-stop.flag')
     $health = Read-JsonFile (Join-Path $root 'logs\health-status.json')
     $operation = Read-JsonFile (Join-Path $root 'runtime-state\management-operation.json')
+    $backupReplication = Read-JsonFile (Join-Path $root 'runtime-state\backup_replication_status.json')
+    $backupDestination = Read-JsonFile (Join-Path $root 'runtime-state\backup_replication_settings.json')
     $api = $false
     try {
         $response = Invoke-RestMethod -Uri 'http://127.0.0.1:8088/api/health' -TimeoutSec 3
@@ -76,10 +78,12 @@ function Get-VMStatus {
         controlled_stop = $stopped
         health_monitor = $health
         last_action = $operation
+        backup_replication = $backupReplication
+        backup_destination = $backupDestination
         at_utc = [DateTime]::UtcNow.ToString('o')
     }
 }
-function Invoke-AllowlistedAction([string]$action,[string]$actor) {
+function Invoke-AllowlistedAction([string]$action,[string]$actor,[string]$destination='') {
     if ($Role -eq 'Host') {
         switch ($action) {
             'vm-start' {
@@ -107,6 +111,28 @@ function Invoke-AllowlistedAction([string]$action,[string]$actor) {
         }
     }
     if ($Role -eq 'VM') {
+        if ($action -eq 'backup-destination') {
+            if (-not $config.allowed_backup_roots -or $config.allowed_backup_roots.Count -eq 0) { throw 'Approved backup roots are not configured by IT' }
+            $candidate = $destination.TrimEnd('\')
+            if (-not $candidate.StartsWith('\') -or $candidate -match '[<>|?*]' -or $candidate.Contains('..')) { throw 'Enter a valid UNC folder path' }
+            $allowed = $false
+            foreach ($root in $config.allowed_backup_roots) {
+                $base = ([string]$root).TrimEnd('\')
+                if ($candidate.Equals($base,[StringComparison]::OrdinalIgnoreCase) -or $candidate.StartsWith(($base + '\'),[StringComparison]::OrdinalIgnoreCase)) {
+                    $allowed = $true
+                }
+            }
+            if (-not $allowed) { throw 'Destination is outside IT-approved backup shares' }
+            $stateDir = Join-Path ([string]$config.install_root) 'runtime-state'
+            New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
+            $path = Join-Path $stateDir 'backup_replication_settings.json'
+            $data = [ordered]@{ enabled=$true; destination_unc=$candidate; updated_by=$actor; updated_at_utc=[DateTime]::UtcNow.ToString('o') }
+            $tmp = "$path.tmp"
+            $data | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $tmp -Encoding UTF8
+            Move-Item -LiteralPath $tmp -Destination $path -Force
+            Start-ScheduledTask -TaskName 'StkFlo - Backup Replication' -ErrorAction Stop
+            return @{result='VALIDATION_QUEUED'; destination=$candidate; note='Backup share write and replication verification will run under the Docker/SMB user account. Check status for success.'}
+        }
         $task = switch ($action) {
             'stack-start' { 'StkFlo - Stack Start' }
             'stack-stop' { 'StkFlo - Stack Stop' }
@@ -135,6 +161,7 @@ small{color:#9daec5}#message{padding-top:9px;min-height:24px}
 <p>Independent emergency administration. Access requires an approved Windows administrator identity. Operations are recorded in the host audit log.</p>
 <div class="card"><h3>Live status</h3><pre id="status">Loading...</pre><button class="secondary" onclick="refresh()">Refresh status</button></div>
 <div class="card"><h3>Controlled recovery</h3><div id="actions"></div><small>Stop and restart actions can interrupt active users. Confirm the operation and follow your change-control procedure.</small><div id="message"></div></div>
+<div class="card" id="backupBox" style="display:none"><h3>Network backup replication</h3><p>StkFlo creates verified backups locally and copies them to the approved network share for existing cloud backup coverage.</p><input id="unc" placeholder="\\fileserver\backup-share\StkFlo" style="width:100%;padding:12px;border-radius:8px;background:#0b1220;color:white;border:1px solid #33445c"><button onclick="saveBackupDestination()">Validate and save destination</button></div>
 <script>
 const hostActions=[['vm-start','Start Windows VM'],['vm-shutdown','Shut down VM'],['vm-restart','Force restart VM (policy gated)']];
 const vmActions=[['stack-start','Start StkFlo'],['stack-stop','Stop StkFlo'],['stack-restart','Restart StkFlo']];
@@ -145,6 +172,8 @@ async function refresh(){
  if(!res.ok)throw Error('Status HTTP '+res.status);
  const obj=await res.json();role=obj.role;
  document.getElementById('status').textContent=JSON.stringify(obj,null,2);
+ document.getElementById('backupBox').style.display=role==='VM'?'block':'none';
+ if(role==='VM' && obj.backup_destination && obj.backup_destination.destination_unc){document.getElementById('unc').value=obj.backup_destination.destination_unc;}
  const actions=role==='Host'?hostActions:vmActions;
  document.getElementById('actions').innerHTML='';
  actions.forEach(function(item){
@@ -155,17 +184,24 @@ async function refresh(){
  });
  }catch(e){document.getElementById('status').textContent=String(e)}
 }
-async function act(action,label){
- if(!confirm('Request '+label+'? This will be audited and may interrupt users.'))return;
+async function saveBackupDestination(){
+ const destination=document.getElementById('unc').value.trim();
+ if(!destination || !confirm('Configure StkFlo to copy verified backups to '+destination+'?'))return;
+ await postAction('backup-destination','Save approved backup destination',destination);
+}
+async function postAction(action,label,destination){
  const reason=prompt('Reason / change reference (required):');
  if(!reason || !reason.trim())return;
  try{
- const res=await fetch('/api/action',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-StkFlo-Action':'1'},body:JSON.stringify({action:action,reason:reason.trim()})});
+ const res=await fetch('/api/action',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-StkFlo-Action':'1'},body:JSON.stringify({action:action,reason:reason.trim(),destination:destination||''})});
  const obj=await res.json();
  document.getElementById('message').textContent=(res.ok?'Request accepted: ':'Request rejected: ')+JSON.stringify(obj);
  await refresh();
  }catch(e){document.getElementById('message').textContent=String(e)}
 }
+async function act(action,label){
+ if(!confirm('Request '+label+'? This will be audited and may interrupt users.'))return;
+ await postAction(action,label);
 refresh();
 </script></body></html>
 '@
@@ -214,7 +250,7 @@ try {
                 $reason = [string]$requestBody.reason
                 if ($reason.Trim().Length -lt 4 -or $reason.Length -gt 300) { Send-Response $context 400 @{error='Reason of 4-300 characters is required'}; continue }
                 try {
-                    $result = Invoke-AllowlistedAction $action $identity.Name
+                    $result = Invoke-AllowlistedAction $action $identity.Name ([string]$requestBody.destination)
                     Audit $identity.Name $action 'ACCEPTED' $reason
                     Send-Response $context 202 $result
                 } catch {
