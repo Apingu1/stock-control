@@ -43,7 +43,7 @@ if not exist "%CA_CERT%" (
 
 set "TLS_HOSTNAME=stkflo"
 set "SERVER_IP="
-set "APP_HTTPS_PORT=8443"
+set "APP_HTTPS_PORT=443"
 for /f "usebackq tokens=1,* delims==" %%A in ("%CONFIG%") do (
   if /I "%%A"=="TLS_HOSTNAME" set "TLS_HOSTNAME=%%B"
   if /I "%%A"=="SERVER_IP" set "SERVER_IP=%%B"
@@ -70,11 +70,11 @@ if not errorlevel 1 (
 echo ============================================================
 echo   StkFlo - Client Setup
 echo ============================================================
-echo Server: https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%
+echo StkFlo hostname: %TLS_HOSTNAME%
 if "%RUNNING_ON_SERVER%"=="1" echo Local server installation detected - using 127.0.0.1 for this computer only.
 echo.
 
-echo Installing the Stock Control trusted-root certificate...
+echo Installing the StkFlo trusted-root certificate...
 certutil.exe -addstore -f Root "%CA_CERT%" >nul
 if errorlevel 1 goto :cert_failed
 for /f "usebackq delims=" %%T in (`powershell.exe -NoProfile -Command "$c=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath '%CA_CERT%').Path);$c.Thumbprint"`) do set "CA_THUMBPRINT=%%T"
@@ -88,7 +88,8 @@ if exist "Configure-Hosts.ps1" (
 )
 if errorlevel 1 goto :hosts_failed
 
-set "APP_URL=https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/"
+set "APP_URL=https://%TLS_HOSTNAME%/"
+if not "%APP_HTTPS_PORT%"=="443" set "APP_URL=https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/"
 echo Creating application shortcuts...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($dir in @($env:PUBLIC+'\Desktop',$env:ProgramData+'\Microsoft\Windows\Start Menu\Programs')){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir 'StkFlo.lnk'));if(Test-Path $edge){$s.TargetPath=$edge;$s.Arguments='--app=%APP_URL%';$s.IconLocation=$edge}else{$s.TargetPath='%SystemRoot%\System32\cmd.exe';$s.Arguments='/c start "" "%APP_URL%"'};$s.Description='StkFlo';$s.Save()}}"
 if errorlevel 1 goto :shortcut_failed
