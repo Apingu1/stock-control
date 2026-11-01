@@ -51,6 +51,7 @@ if ($LASTEXITCODE -eq 0) {
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Server-Management.ps1') -Destination $root -Force
 if ($Role -eq 'VM') {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Invoke-StackAction.ps1') -Destination $root -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Sync-Backups.ps1') -Destination $root -Force
 }
 $allowed = @()
 if ($AllowedBackupShare) {
@@ -90,6 +91,12 @@ if ($Role -eq 'VM') {
         $dockerPrincipal = New-ScheduledTaskPrincipal -UserId $DockerUser -LogonType Interactive -RunLevel Limited
         Register-ScheduledTask -TaskName $taskName -Action $taskAction -Principal $dockerPrincipal -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -AllowStartIfOnBatteries) -Force | Out-Null
     }
+    $syncScript = Join-Path $root 'Sync-Backups.ps1'
+    $syncArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $syncScript + '" -InstallRoot "' + $InstallRoot + '"'
+    $syncAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $syncArgs -WorkingDirectory $root
+    $syncPrincipal = New-ScheduledTaskPrincipal -UserId $DockerUser -LogonType Interactive -RunLevel Limited
+    $syncTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 15)
+    Register-ScheduledTask -TaskName 'StkFlo - Backup Replication' -Action $syncAction -Principal $syncPrincipal -Trigger $syncTrigger -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 4)) -Force | Out-Null
 }
 $firewallName = "StkFlo - $Role Manager HTTPS"
 if (Get-NetFirewallRule -DisplayName $firewallName -ErrorAction SilentlyContinue) {
