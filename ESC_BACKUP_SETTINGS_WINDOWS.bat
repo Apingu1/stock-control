@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title Eaststone Stock Control - Backup Settings
+title StkFlo - Backup Settings
 
 net session >nul 2>&1
 if errorlevel 1 (
