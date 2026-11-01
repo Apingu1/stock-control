@@ -20,7 +20,9 @@ def main() -> None:
     db = session_local()
     try:
         user = db.query(User).filter(User.username == username).one_or_none()
+        change = "UNCHANGED"
         if user is None:
+            change = "CREATED"
             user = User(
                 username=username,
                 password_hash=bcrypt.hash(password),
@@ -31,6 +33,7 @@ def main() -> None:
             )
             db.add(user)
         elif os.getenv("BOOTSTRAP_ADMIN_FORCE_RESET") == "1":
+            change = "RESET"
             user.password_hash = bcrypt.hash(password)
             user.role = "ADMIN"
             user.is_active = True
@@ -48,7 +51,7 @@ def main() -> None:
             )
 
         db.commit()
-        print(f"Bootstrap administrator '{username}' is active and password was reset.")
+        print(f"Bootstrap administrator '{username}': {change}.")
     finally:
         db.close()
 
