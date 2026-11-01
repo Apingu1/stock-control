@@ -1,0 +1,91 @@
+name: StkFlo Windows Management Validation
+on:
+  push:
+    branches:
+      - feature/stkflo-windows-deployment-remote-management
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all Windows PowerShell sources
+        shell: pwsh
+        run: |
+          $failed = @()
+          $sources = @(Get-ChildItem windows -Recurse -Filter '*.ps1' -File)
+          foreach ($source in $sources) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($source.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed += "$($source.FullName) : $($errors | Out-String)"
+            }
+          }
+          if ($failed.Count) { throw ($failed -join [Environment]::NewLine) }
+          Write-Host "Parsed $($sources.Count) Windows PowerShell sources."
+      - name: Build clean StkFlo release
+        shell: powershell
+        run: |
+          & .\windows\Build-CommercialPackage.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check release structure, staging and manager files
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD 'release\StkFlo'
+          $required = @(
+            '01 - INSTALL SERVER.bat',
+            'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat',
+            'System\windows\management\Server-Management.ps1',
+            'System\windows\management\Invoke-StackAction.ps1',
+            'System\windows\management\Sync-Backups.ps1',
+            'Administration & Recovery\03 - ENABLE VM MANAGEMENT.bat',
+            'HOST MANAGEMENT\01 - INSTALL HOST MANAGER.bat',
+            'HOST MANAGEMENT\Install-Manager.ps1',
+            'HOST MANAGEMENT\Server-Management.ps1'
+          )
+          foreach($file in $required) {
+            if(-not (Test-Path (Join-Path $root $file))) { throw "Missing release file: $file" }
+          }
+          if(-not (Test-Path 'release\StkFlo-Windows-Installation.zip')) { throw 'Missing release ZIP' }
+          $installer = Get-Content (Join-Path $root '01 - INSTALL SERVER.bat') -Raw
+          if($installer -notmatch 'StkFlo-Installer') { throw 'Server network staging is missing' }
+          $client = Get-Content (Join-Path $root 'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat') -Raw
+          if($client -notmatch 'StkFlo-Client') { throw 'Client network staging is missing' }
+          Write-Host 'Release structure checks passed.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StkFlo-Windows-Installation-validation
+          path: release/StkFlo-Windows-Installation.zip
+          if-no-files-found: error
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Compile the StkFlo administrator UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+  api-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile Python services
+        run: python -m compileall -q api/app
+      - name: Syntax check Linux production scripts
+        run: find scripts db -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
