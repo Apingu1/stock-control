@@ -86,7 +86,7 @@ try {
     if (-not (Test-Path $envPath)) { throw '.env is missing.' }
     $settings = Read-DotEnv $envPath
     $httpPort = if ($settings['APP_HTTP_PORT']) { $settings['APP_HTTP_PORT'] } else { '8088' }
-    $httpsPort = if ($settings['APP_HTTPS_PORT']) { $settings['APP_HTTPS_PORT'] } else { '8443' }
+    $httpsPort = if ($settings['APP_HTTPS_PORT']) { $settings['APP_HTTPS_PORT'] } else { '443' }
 
     if (-not (Ensure-Docker)) { throw 'Docker could not be started.' }
     $status.docker = $true
