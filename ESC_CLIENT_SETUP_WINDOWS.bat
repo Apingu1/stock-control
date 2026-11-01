@@ -1,26 +1,31 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Eaststone Stock Control - Client Setup
+title StkFlo - Client Setup
 
 set "STAGED=0"
+set "SELF_NAME=%~nx0"
 if /I "%~1"=="--staged" set "STAGED=1"
 set "SELF_NAME=%~nx0"
 
+rem Stage every invocation, even if launched as Administrator from N: or a UNC share.
+rem UAC may remove mapped network-drive visibility; execute solely from local files.
+if "!STAGED!"=="0" (
+  set "STAGE=%TEMP%\StkFlo-Client-%RANDOM%-%RANDOM%"
+  mkdir "!STAGE!" >nul 2>&1
+  robocopy "%~dp0" "!STAGE!" /E /R:2 /W:1 /NFL /NDL /NP >nul
+  if !ERRORLEVEL! GEQ 8 goto :stage_error
+  if not exist "!STAGE!\!SELF_NAME!" goto :stage_error
+  set "STAGE_PATH=!STAGE!"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ""'+$env:STAGE_PATH+'\'+$env:SELF_NAME+'" --staged') -WorkingDirectory $env:STAGE_PATH -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+  set "RESULT=!ERRORLEVEL!"
+  rmdir /s /q "!STAGE!" >nul 2>&1
+  exit /b !RESULT!
+)
 net session >nul 2>&1
 if errorlevel 1 (
-  echo Requesting administrator access...
-  set "STAGE=%TEMP%\EaststoneStockControlClientSetup-%RANDOM%-%RANDOM%"
-  mkdir "!STAGE!" >nul 2>&1
-  xcopy "%~dp0*" "!STAGE!\" /E /I /Y /Q >nul
-  if not exist "!STAGE!\!SELF_NAME!" (
-    echo ERROR: Client setup files could not be staged before elevation.
-    pause
-    exit /b 1
-  )
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!STAGE!\!SELF_NAME!' -ArgumentList '--staged' -Verb RunAs -WorkingDirectory '!STAGE!'"
-  exit /b
+  echo ERROR: Local administrator permissions are required.
+  exit /b 1
 )
-
 cd /d "%~dp0"
 set "CONFIG=client-config.ini"
 set "CA_CERT=stock-control-ca.crt"
@@ -36,7 +41,7 @@ if not exist "%CA_CERT%" (
   goto :finish
 )
 
-set "TLS_HOSTNAME=stock-control.test"
+set "TLS_HOSTNAME=stkflo"
 set "SERVER_IP="
 set "APP_HTTPS_PORT=8443"
 for /f "usebackq tokens=1,* delims==" %%A in ("%CONFIG%") do (
@@ -56,14 +61,14 @@ rem clients map the application hostname to the server LAN address, while the
 rem server itself uses loopback when deliberately running the client setup.
 set "HOSTS_IP=%SERVER_IP%"
 set "RUNNING_ON_SERVER=0"
-reg query "HKLM\SOFTWARE\Eaststone\StockControl" /v InstallPath >nul 2>&1
+reg query "HKLM\SOFTWARE\StkFlo\Server" /v InstallPath >nul 2>&1
 if not errorlevel 1 (
   set "HOSTS_IP=127.0.0.1"
   set "RUNNING_ON_SERVER=1"
 )
 
 echo ============================================================
-echo   Eaststone Stock Control - Client Setup
+echo   StkFlo - Client Setup
 echo ============================================================
 echo Server: https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%
 if "%RUNNING_ON_SERVER%"=="1" echo Local server installation detected - using 127.0.0.1 for this computer only.
@@ -85,7 +90,7 @@ if errorlevel 1 goto :hosts_failed
 
 set "APP_URL=https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/"
 echo Creating application shortcuts...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($dir in @($desktop,$start)){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir 'Eaststone Stock Control.lnk'));if(Test-Path $edge){$s.TargetPath=$edge;$s.Arguments='--app=%APP_URL%';$s.IconLocation=$edge}else{$s.TargetPath='%SystemRoot%\System32\cmd.exe';$s.Arguments='/c start "" "%APP_URL%"'};$s.Description='Eaststone Stock Control';$s.Save()}}"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($dir in @($env:PUBLIC+'\Desktop',$env:ProgramData+'\Microsoft\Windows\Start Menu\Programs')){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir 'StkFlo.lnk'));if(Test-Path $edge){$s.TargetPath=$edge;$s.Arguments='--app=%APP_URL%';$s.IconLocation=$edge}else{$s.TargetPath='%SystemRoot%\System32\cmd.exe';$s.Arguments='/c start "" "%APP_URL%"'};$s.Description='StkFlo';$s.Save()}}"
 if errorlevel 1 goto :shortcut_failed
 
 echo Verifying trusted HTTPS access...
@@ -97,11 +102,11 @@ rem revocation endpoint.
 curl.exe --ssl-revoke-best-effort -fsS "%APP_URL%api/health" >nul 2>&1
 if errorlevel 1 goto :health_failed
 
-reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerUrl /t REG_SZ /d "%APP_URL%" /f >nul
-reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerHostname /t REG_SZ /d "%TLS_HOSTNAME%" /f >nul
-reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v ServerIP /t REG_SZ /d "%SERVER_IP%" /f >nul
-if defined CA_THUMBPRINT reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v CAThumbprint /t REG_SZ /d "%CA_THUMBPRINT%" /f >nul
-reg add "HKLM\SOFTWARE\Eaststone\StockControlClient" /v InstalledOn /t REG_SZ /d "%DATE% %TIME%" /f >nul
+reg add "HKLM\SOFTWARE\StkFlo\Client" /v ServerUrl /t REG_SZ /d "%APP_URL%" /f >nul
+reg add "HKLM\SOFTWARE\StkFlo\Client" /v ServerHostname /t REG_SZ /d "%TLS_HOSTNAME%" /f >nul
+reg add "HKLM\SOFTWARE\StkFlo\Client" /v ServerIP /t REG_SZ /d "%SERVER_IP%" /f >nul
+if defined CA_THUMBPRINT reg add "HKLM\SOFTWARE\StkFlo\Client" /v CAThumbprint /t REG_SZ /d "%CA_THUMBPRINT%" /f >nul
+reg add "HKLM\SOFTWARE\StkFlo\Client" /v InstalledOn /t REG_SZ /d "%DATE% %TIME%" /f >nul
 
 echo.
 echo ============================================================
@@ -132,13 +137,9 @@ set "RESULT=1"
 :finish
 echo.
 pause
-if "%STAGED%"=="1" (
-  set "STAGE_DIR=%~dp0"
-  set "CLEANUP=%TEMP%\eaststone-client-stage-cleanup-%RANDOM%.cmd"
-  >"!CLEANUP!" echo @echo off
-  >>"!CLEANUP!" echo timeout /t 3 /nobreak ^>nul
-  >>"!CLEANUP!" echo rmdir /s /q "!STAGE_DIR!"
-  >>"!CLEANUP!" echo del /f /q "%%~f0"
-  start "" /min cmd.exe /c ""!CLEANUP!""
-)
 exit /b %RESULT%
+
+:stage_error
+echo ERROR: Client package could not be staged locally.
+pause
+exit /b 1
