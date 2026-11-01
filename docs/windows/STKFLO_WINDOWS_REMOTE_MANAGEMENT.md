@@ -63,6 +63,8 @@ The installer registers an independent SYSTEM management task, three on-demand D
 
 Both manager endpoints require HTTPS, Windows Integrated Authentication and membership in their local StkFlo Managers group. A browser may prompt for Windows credentials. Do not grant the group to general staff. Every requested management action requires a reason and is audit-logged.
 
+When StkFlo itself is healthy, enable its existing Admin maintenance mode before requesting a disruptive Stop or Restart. If the API is already down, emergency recovery remains permitted.
+
 A queued Docker operation is NOT the same as a successful restart. Verify the manager's latest-action status and health after submitting it. The Docker control tasks only work with the dedicated Docker user logged in; leave the proven auto-login mechanism in place.
 
 ## Local-first network backups and cloud coverage
