@@ -18,7 +18,7 @@ if "!STAGED!"=="0" (
   if not exist "!STAGE!\System\ESC_SERVER_SETUP_WINDOWS.bat" goto :stage_failed
   if not exist "!STAGE!\CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat" goto :stage_failed
   set "STAGE_PATH=!STAGE!"
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ""'+$env:STAGE_PATH+'\01 - INSTALL SERVER.bat"" --staged') -WorkingDirectory $env:STAGE_PATH -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Start-Process -FilePath (Join-Path $env:STAGE_PATH '01 - INSTALL SERVER.bat') -ArgumentList '--staged' -WorkingDirectory $env:STAGE_PATH -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
   set "RUN_RC=!ERRORLEVEL!"
   if not "!RUN_RC!"=="0" (
     echo ERROR: Elevated installation failed. Staged files remain at !STAGE! for troubleshooting.
