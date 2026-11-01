@@ -247,7 +247,7 @@ function Restore-Backup([string]$BackupFile, [hashtable]$Settings) {
         Write-Log "Restore completed. Active database=$recoveryDb; retained rollback database=$previousDb"
         [System.Windows.Forms.MessageBox]::Show(
             "Database restore completed successfully.`r`n`r`nThe previous database remains available for rollback: $previousDb",
-            'Eaststone Stock Control', 'OK', 'Information'
+            'StkFlo', 'OK', 'Information'
         ) | Out-Null
     } catch {
         $restoreError = $_.Exception.Message
@@ -285,7 +285,7 @@ try {
         $backupDir = Get-BackupDirectory $settings
         Clear-Host
         Write-Host '============================================================'
-        Write-Host ' Eaststone Stock Control - Backup and Restore Tool'
+        Write-Host ' StkFlo - Backup and Restore Tool'
         Write-Host '============================================================'
         Write-Host "Backup folder: $backupDir"
         Write-Host ''
@@ -328,7 +328,7 @@ try {
 } catch {
     Write-Log "ERROR: $($_.Exception.Message)"
     [System.Windows.Forms.MessageBox]::Show(
-        $_.Exception.Message, 'Eaststone Stock Control - Backup/Restore Error', 'OK', 'Error'
+        $_.Exception.Message, 'StkFlo - Backup/Restore Error', 'OK', 'Error'
     ) | Out-Null
     exit 1
 }
