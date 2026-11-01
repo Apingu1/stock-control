@@ -95,6 +95,11 @@ echo Waiting for StkFlo to become healthy...
 for /L %%I in (1,1,90) do (
   curl.exe -fsS "http://127.0.0.1:!APP_HTTP_PORT!/api/health" >nul 2>&1
   if not errorlevel 1 goto :ready
+  timeout /t 2 /nobreak >nul
+)
+goto :health_failed
+
+:ready
 echo.
 echo Preparing the one-time administrator credential...
 if not exist "deployment" mkdir "deployment"
