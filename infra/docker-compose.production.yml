@@ -1,4 +1,4 @@
-name: stock-control-prodtest
+name: stkflo
 
 services:
   db:
@@ -47,7 +47,7 @@ services:
     build:
       context: ../api
       dockerfile: Dockerfile
-    image: stock-control-prodtest-api
+    image: stkflo-api
     restart: unless-stopped
     env_file:
       - ../.env
@@ -89,7 +89,7 @@ services:
       - stock_control_internal
 
   backup-scheduler:
-    image: stock-control-prodtest-api
+    image: stkflo-api
     restart: unless-stopped
     env_file:
       - ../.env
@@ -137,7 +137,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "${APP_HTTP_PORT:-8088}:80"
+      - "127.0.0.1:${APP_HTTP_PORT:-8088}:80"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1"]
       interval: 10s
@@ -153,4 +153,4 @@ networks:
 
 volumes:
   prod_db_data:
-    name: stock-control-prodtest-db-data
+    name: stkflo-db-data
