@@ -84,7 +84,7 @@ if ($Role -eq 'VM') {
     if ($LASTEXITCODE -ne 0) { throw 'Docker user cannot read approved management scripts' }
     # Runtime state is intentionally writable by this user (task results, stop markers,
     # replication status); never grant modify rights to .env or the manager configuration.
-    foreach ($name in @('runtime-state','logs','deployment','Backups')) {
+    foreach ($name in @('runtime-state','logs','deployment','Backups','infra\certs')) {
         $dataPath = Join-Path $InstallRoot $name
         New-Item -Path $dataPath -ItemType Directory -Force | Out-Null
         & icacls.exe $dataPath /grant ("$($DockerUser):(OI)(CI)M") /T | Out-Null
@@ -107,6 +107,19 @@ if ($Role -eq 'VM') {
         $dockerPrincipal = New-ScheduledTaskPrincipal -UserId $DockerUser -LogonType Interactive -RunLevel Limited
         Register-ScheduledTask -TaskName $taskName -Action $taskAction -Principal $dockerPrincipal -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).AddYears(10)) -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -AllowStartIfOnBatteries) -Force | Out-Null
     }
+    # Rebind the legacy maintenance tasks to the actual logged-on Docker
+    # Desktop account, not the (possibly different) UAC elevation account.
+    $maintenancePrincipal = New-ScheduledTaskPrincipal -UserId $DockerUser -LogonType Interactive -RunLevel Limited
+    $maintenanceSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+    $healthAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $InstallRoot 'windows\Health-Monitor.ps1') + '" -InstallRoot "' + $InstallRoot + '"') -WorkingDirectory $InstallRoot
+    $healthTriggers = @(
+        (New-ScheduledTaskTrigger -AtLogOn -User $DockerUser),
+        (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 30))
+    )
+    Register-ScheduledTask -TaskName 'StkFlo - Health Monitor' -Action $healthAction -Principal $maintenancePrincipal -Trigger $healthTriggers -Settings $maintenanceSettings -Force | Out-Null
+    $certificateAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $InstallRoot 'windows\Certificate-Renewal.ps1') + '" -InstallRoot "' + $InstallRoot + '"') -WorkingDirectory $InstallRoot
+    Register-ScheduledTask -TaskName 'StkFlo - Certificate Renewal' -Action $certificateAction -Principal $maintenancePrincipal -Trigger (New-ScheduledTaskTrigger -Daily -At '02:15') -Settings $maintenanceSettings -Force | Out-Null
+
     $syncScript = Join-Path $root 'Sync-Backups.ps1'
     $syncArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $syncScript + '" -InstallRoot "' + $InstallRoot + '"'
     $syncAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $syncArgs -WorkingDirectory $root
