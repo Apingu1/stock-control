@@ -30,7 +30,10 @@ $groupName='StkFlo Managers'
 if (-not (Get-LocalGroup -Name $groupName -ErrorAction SilentlyContinue)) {
     New-LocalGroup -Name $groupName -Description 'Authorised remote StkFlo server management operators' | Out-Null
 }
-Add-LocalGroupMember -Group $groupName -Member $AuthorisedWindowsAccount -ErrorAction Stop
+$members = @(Get-LocalGroupMember -Group $groupName -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+if ($AuthorisedWindowsAccount -notin $members) {
+    Add-LocalGroupMember -Group $groupName -Member $AuthorisedWindowsAccount -ErrorAction Stop
+}
 $ca = Get-ChildItem 'Cert:\LocalMachine\My' | Where-Object {
     $_.Subject -eq "CN=$Hostname" -and $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date).AddDays(30)
 } | Sort-Object NotAfter -Descending | Select-Object -First 1
@@ -75,6 +78,19 @@ Move-Item -LiteralPath $tempFile -Destination $configFile -Force
 # Non-admin users must not be able to change which actions/VM are allowed.
 & icacls.exe $root /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'BUILTIN\Administrators:(OI)(CI)F' /T | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Could not protect management config and audit files' }
+if ($Role -eq 'VM') {
+    # The approved Docker Desktop user may read signed control scripts, but cannot modify them.
+    & icacls.exe $root /grant ("$($DockerUser):(OI)(CI)RX") /T | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Docker user cannot read approved management scripts' }
+    # Runtime state is intentionally writable by this user (task results, stop markers,
+    # replication status); never grant modify rights to .env or the manager configuration.
+    foreach ($name in @('runtime-state','logs','deployment','Backups')) {
+        $dataPath = Join-Path $InstallRoot $name
+        New-Item -Path $dataPath -ItemType Directory -Force | Out-Null
+        & icacls.exe $dataPath /grant ("$($DockerUser):(OI)(CI)M") /T | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Docker user cannot write required runtime folder: $dataPath" }
+    }
+}
 $managerName = "StkFlo - $Role Manager"
 $managerPath = Join-Path $root 'Server-Management.ps1'
 $actionArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $managerPath + '" -Role ' + $Role + ' -ConfigPath "' + $configFile + '"'
