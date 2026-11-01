@@ -26,7 +26,7 @@ if "!STAGED!"=="0" (
     exit /b !RUN_RC!
   )
   echo Publishing the verified client deployment files to the original release folder...
-  for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "stock-control-ca.crt" "README.txt") do (
+  for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "stock-control-ca.crt" "README.txt" "stkflo.ico") do (
     copy /Y "!STAGE!\CLIENT DEPLOYMENT\%%~F" "%PACKAGE_ROOT%CLIENT DEPLOYMENT\%%~F" >nul
     if errorlevel 1 goto :publish_failed
   )
@@ -56,7 +56,7 @@ if !ERRORLEVEL! GEQ 8 (
   exit /b 1
 )
 if not exist "%INSTALL_ROOT%\client-deployment" mkdir "%INSTALL_ROOT%\client-deployment"
-for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "README.txt") do (
+for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "README.txt" "stkflo.ico") do (
   copy /Y "%CLIENT_SOURCE%\%%~F" "%INSTALL_ROOT%\client-deployment\%%~F" >nul
   if errorlevel 1 exit /b 1
 )
