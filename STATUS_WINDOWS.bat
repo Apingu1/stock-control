@@ -44,7 +44,11 @@ if exist "infra\certs\stock-control.crt" (
   echo HTTPS API health:
   curl.exe -kfsS "https://127.0.0.1:%APP_HTTPS_PORT%/api/health" 2>nul || echo FAILED
   echo.
-  echo User address: https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/
+  if "%APP_HTTPS_PORT%"=="443" (
+    echo User address: https://%TLS_HOSTNAME%/
+  ) else (
+    echo User address: https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/
+  )
 )
 
 if exist "logs\health-status.json" (
