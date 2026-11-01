@@ -105,7 +105,7 @@ if ($Role -eq 'VM') {
         $args = '-NoProfile -ExecutionPolicy Bypass -File "' + $controller + '" -Action ' + $name + ' -InstallRoot "' + $InstallRoot + '"'
         $taskAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $args -WorkingDirectory $root
         $dockerPrincipal = New-ScheduledTaskPrincipal -UserId $DockerUser -LogonType Interactive -RunLevel Limited
-        Register-ScheduledTask -TaskName $taskName -Action $taskAction -Principal $dockerPrincipal -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -AllowStartIfOnBatteries) -Force | Out-Null
+        Register-ScheduledTask -TaskName $taskName -Action $taskAction -Principal $dockerPrincipal -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).AddYears(10)) -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -AllowStartIfOnBatteries) -Force | Out-Null
     }
     $syncScript = Join-Path $root 'Sync-Backups.ps1'
     $syncArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $syncScript + '" -InstallRoot "' + $InstallRoot + '"'
