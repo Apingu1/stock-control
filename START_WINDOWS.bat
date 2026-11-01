@@ -11,7 +11,7 @@ if not exist ".env" (
 
 if exist "deployment\manual-stop.flag" del /f /q "deployment\manual-stop.flag" >nul 2>&1
 
-echo Starting Docker and Stock Control services...
+echo Starting Docker and StkFlo services...
 if exist "windows\Health-Monitor.ps1" (
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "windows\Health-Monitor.ps1" -InstallRoot "%CD%"
 ) else (
@@ -32,11 +32,12 @@ for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"APP_HTTPS_PORT=" ".env" 2^>
 if exist "deployment\server-config.ini" for /f "usebackq tokens=1,* delims==" %%A in ("deployment\server-config.ini") do if /I "%%A"=="TLS_HOSTNAME" set "TLS_HOSTNAME=%%B"
 
 if exist "infra\certs\stock-control.crt" (
-  set "APP_URL=https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/"
+  set "APP_URL=https://%TLS_HOSTNAME%/"
+  if not "%APP_HTTPS_PORT%"=="443" set "APP_URL=https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/"
 ) else (
   set "APP_URL=http://localhost:%APP_HTTP_PORT%/"
 )
 
 start "" "%APP_URL%"
-echo Stock Control started at %APP_URL%
+echo StkFlo started at %APP_URL%
 pause
