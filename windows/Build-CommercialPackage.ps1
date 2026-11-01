@@ -13,6 +13,7 @@ $outputParent = Split-Path -Parent $OutputDirectory
 $systemDir = Join-Path $OutputDirectory 'System'
 $clientDir = Join-Path $OutputDirectory 'CLIENT DEPLOYMENT'
 $adminDir = Join-Path $OutputDirectory 'Administration & Recovery'
+$hostManagementDir = Join-Path $OutputDirectory 'HOST MANAGEMENT'
 $docsDir = Join-Path $OutputDirectory 'Documentation'
 $templatesDir = Join-Path $RepositoryRoot 'packaging\windows-commercial'
 
@@ -20,7 +21,7 @@ New-Item -ItemType Directory -Path $outputParent -Force | Out-Null
 if (Test-Path -LiteralPath $OutputDirectory) {
     Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
 }
-New-Item -ItemType Directory -Path $OutputDirectory, $systemDir, $clientDir, $adminDir, $docsDir -Force | Out-Null
+New-Item -ItemType Directory -Path $OutputDirectory, $systemDir, $clientDir, $adminDir, $hostManagementDir, $docsDir -Force | Out-Null
 
 function Copy-RequiredFile {
     param([string]$Source, [string]$Destination)
@@ -77,12 +78,18 @@ Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding as
 # UNINSTALL_WINDOWS.bat is supplied at package root with the server launchers.
 Copy-RequiredFile (Join-Path $templatesDir 'backup-settings.bat') (Join-Path $adminDir '01 - BACKUP SETTINGS.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'backup-restore.bat') (Join-Path $adminDir '02 - BACKUP AND RESTORE.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'install-vm-manager.bat') (Join-Path $adminDir '03 - ENABLE VM MANAGEMENT.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'install-host-manager.bat') (Join-Path $hostManagementDir '01 - INSTALL HOST MANAGER.bat')
+Copy-RequiredFile (Join-Path $RepositoryRoot 'windows\management\Install-Manager.ps1') (Join-Path $hostManagementDir 'Install-Manager.ps1')
+Copy-RequiredFile (Join-Path $RepositoryRoot 'windows\management\Server-Management.ps1') (Join-Path $hostManagementDir 'Server-Management.ps1')
 Set-Content -LiteralPath (Join-Path $adminDir 'README.txt') -Encoding ascii -Value @(
     'ADMINISTRATION & RECOVERY',
     '',
     'These controls are not required for routine operation.',
     '01 - BACKUP SETTINGS.bat changes the physical backup folder, daily time and retention.',
-    'Backup/restore should be used only by authorised administrators.'
+    'Backup/restore should be used only by authorised administrators.',
+    '03 - ENABLE VM MANAGEMENT.bat sets up an independent Windows HTTPS management endpoint.',
+    'HOST MANAGEMENT contains the one-time Hyper-V host agent installer.'
 )
 
 # Keep the full controlled Windows documentation available without cluttering
@@ -147,7 +154,8 @@ $requiredTopLevel = @(
     '02 - START SERVER.bat',
     '03 - STOP SERVER.bat',
     '04 - SERVER STATUS.bat',
-    'UNINSTALL_WINDOWS.bat'
+    'UNINSTALL_WINDOWS.bat',
+    'HOST MANAGEMENT\01 - INSTALL HOST MANAGER.bat'
 )
 foreach ($name in $requiredTopLevel) {
     if (-not (Test-Path -LiteralPath (Join-Path $OutputDirectory $name) -PathType Leaf)) {
@@ -190,6 +198,11 @@ foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WI
     }
 }
 
+foreach ($hostFile in @('01 - INSTALL HOST MANAGER.bat', 'Install-Manager.ps1', 'Server-Management.ps1')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $hostManagementDir $hostFile))) {
+        throw "Missing physical Hyper-V host management package file: $hostFile"
+    }
+}
 $serverUninstall = Join-Path $OutputDirectory 'UNINSTALL_WINDOWS.bat'
 $clientUninstall = Join-Path $clientDir '02 - UNINSTALL CLIENT.bat'
 if (-not (Test-Path -LiteralPath $serverUninstall -PathType Leaf)) {
