@@ -67,6 +67,7 @@ Copy-RequiredFile (Join-Path $RepositoryRoot 'ESC_CLIENT_SETUP_WINDOWS.bat') (Jo
 Copy-RequiredFile (Join-Path $templatesDir 'client-uninstall.bat') (Join-Path $clientDir '02 - UNINSTALL CLIENT.bat')
 Copy-RequiredFile (Join-Path $RepositoryRoot 'windows\Configure-Hosts.ps1') (Join-Path $clientDir 'Configure-Hosts.ps1')
 Copy-RequiredFile (Join-Path $templatesDir 'client-deployment-readme.txt') (Join-Path $clientDir 'README.txt')
+Copy-RequiredFile (Join-Path $RepositoryRoot 'web\public\icons\stkflo-favicon.ico') (Join-Path $clientDir 'stkflo.ico')
 Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding ascii -Value @(
     'TLS_HOSTNAME=stkflo',
     'SERVER_IP=',
@@ -169,7 +170,8 @@ $requiredClientFiles = @(
     '02 - UNINSTALL CLIENT.bat',
     'Configure-Hosts.ps1',
     'client-config.ini',
-    'README.txt'
+    'README.txt',
+    'stkflo.ico'
 )
 foreach ($name in $requiredClientFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $clientDir $name) -PathType Leaf)) {
