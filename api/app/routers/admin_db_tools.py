@@ -147,6 +147,8 @@ def _settings_response() -> Dict[str, Any]:
         "backup_dir_label": backup_dir_label(),
         "next_run_at_local": next_scheduled_run(settings),
         "scheduler": scheduler_status(),
+        "replication_settings": read_json(state_path("backup_replication_settings.json"), {}),
+        "replication_status": read_json(state_path("backup_replication_status.json"), {}),
     }
 
 
@@ -200,6 +202,10 @@ def system_info(
             "backup_dir_label": backup_dir_label(),
         },
         "maintenance": get_maintenance_state(),
+        "management": {
+            "host_manager_url": safe_env("STKFLO_HOST_MANAGER_URL", ""),
+            "vm_manager_url": safe_env("STKFLO_VM_MANAGER_URL", ""),
+        },
         "security": {"requested_by": admin.username, "requested_at_utc": utc_now_iso()},
     }
 
