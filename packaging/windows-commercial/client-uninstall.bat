@@ -51,7 +51,7 @@ echo ============================================================
 echo   StkFlo - Client Uninstall
 echo ============================================================
 echo.
-echo This removes this computer's Stock Control client configuration only.
+echo This removes this computer's StkFlo client configuration only.
 echo It does NOT remove the server, database, shared deployment folder or stock data.
 if "%RUNNING_ON_SERVER%"=="1" (
   echo.
@@ -67,11 +67,11 @@ del /f /q "%PUBLIC%\Desktop\StkFlo.lnk" >nul 2>&1
 del /f /q "%ProgramData%\Microsoft\Windows\Start Menu\Programs\StkFlo.lnk" >nul 2>&1
 
 if not "%RUNNING_ON_SERVER%"=="1" (
-  echo Removing the Stock Control hostname mapping...
+  echo Removing the StkFlo hostname mapping...
   if exist "Configure-Hosts.ps1" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Configure-Hosts.ps1" -Hostname "%TLS_HOSTNAME%" -Remove >nul 2>&1
 
   if defined CA_THUMBPRINT (
-    echo Removing the Stock Control trusted-root certificate from this client...
+    echo Removing the StkFlo trusted-root certificate from this client...
     powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p='Cert:\LocalMachine\Root\%CA_THUMBPRINT%'; if(Test-Path -LiteralPath $p){Remove-Item -LiteralPath $p -Force}" >nul 2>&1
   )
 )
