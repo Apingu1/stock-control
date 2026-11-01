@@ -29,6 +29,9 @@ if errorlevel 1 (
 cd /d "%~dp0"
 set "CONFIG=client-config.ini"
 set "CA_CERT=stock-control-ca.crt"
+set "ICON_SOURCE=stkflo.ico"
+set "ICON_DIR=%ProgramData%\StkFlo\Client"
+set "ICON_DEST=%ICON_DIR%\stkflo.ico"
 
 if not exist "%CONFIG%" (
   echo ERROR: client-config.ini is missing from the client deployment package.
@@ -41,6 +44,18 @@ if not exist "%CA_CERT%" (
   goto :finish
 )
 
+if not exist "%ICON_SOURCE%" (
+  echo ERROR: The StkFlo client icon is missing.
+  set "RESULT=1"
+  goto :finish
+)
+if not exist "%ICON_DIR%" mkdir "%ICON_DIR%"
+copy /Y "%ICON_SOURCE%" "%ICON_DEST%" >nul
+if errorlevel 1 (
+  echo ERROR: Unable to install the StkFlo shortcut icon.
+  set "RESULT=1"
+  goto :finish
+)
 set "TLS_HOSTNAME=stkflo"
 set "SERVER_IP="
 set "APP_HTTPS_PORT=443"
@@ -91,7 +106,7 @@ if errorlevel 1 goto :hosts_failed
 set "APP_URL=https://%TLS_HOSTNAME%/"
 if not "%APP_HTTPS_PORT%"=="443" set "APP_URL=https://%TLS_HOSTNAME%:%APP_HTTPS_PORT%/"
 echo Creating application shortcuts...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($dir in @($env:PUBLIC+'\Desktop',$env:ProgramData+'\Microsoft\Windows\Start Menu\Programs')){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir 'StkFlo.lnk'));if(Test-Path $edge){$s.TargetPath=$edge;$s.Arguments='--app=%APP_URL%';$s.IconLocation=$edge}else{$s.TargetPath='%SystemRoot%\System32\cmd.exe';$s.Arguments='/c start "" "%APP_URL%"'};$s.Description='StkFlo';$s.Save()}}"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$desktop=[Environment]::GetFolderPath('Desktop');$start=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs';$edge=(Get-Command msedge.exe -ErrorAction SilentlyContinue).Source;if(-not $edge){$edge=Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'};$shell=New-Object -ComObject WScript.Shell;foreach($dir in @($env:PUBLIC+'\Desktop',$env:ProgramData+'\Microsoft\Windows\Start Menu\Programs')){if(Test-Path $dir){$s=$shell.CreateShortcut((Join-Path $dir 'StkFlo.lnk'));if(Test-Path $edge){$s.TargetPath=$edge;$s.Arguments='--app=%APP_URL%';$s.IconLocation='%ICON_DEST%'}else{$s.TargetPath='%SystemRoot%\System32\cmd.exe';$s.Arguments='/c start "" "%APP_URL%"'};$s.IconLocation='%ICON_DEST%';$s.Description='StkFlo';$s.Save()}}"
 if errorlevel 1 goto :shortcut_failed
 
 echo Verifying trusted HTTPS access...
