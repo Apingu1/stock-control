@@ -3,7 +3,6 @@ setlocal EnableExtensions EnableDelayedExpansion
 title StkFlo - Client Setup
 
 set "STAGED=0"
-set "SELF_NAME=%~nx0"
 if /I "%~1"=="--staged" set "STAGED=1"
 set "SELF_NAME=%~nx0"
 
@@ -16,7 +15,8 @@ if "!STAGED!"=="0" (
   if !ERRORLEVEL! GEQ 8 goto :stage_error
   if not exist "!STAGE!\!SELF_NAME!" goto :stage_error
   set "STAGE_PATH=!STAGE!"
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ""'+$env:STAGE_PATH+'\'+$env:SELF_NAME+'" --staged') -WorkingDirectory $env:STAGE_PATH -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+  set "SELF_NAME=!SELF_NAME!"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Start-Process -FilePath (Join-Path $env:STAGE_PATH $env:SELF_NAME) -ArgumentList '--staged' -WorkingDirectory $env:STAGE_PATH -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
   set "RESULT=!ERRORLEVEL!"
   rmdir /s /q "!STAGE!" >nul 2>&1
   exit /b !RESULT!
