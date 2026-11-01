@@ -1,172 +1,78 @@
-PHARMAGROWTH STOCK CONTROL
-COMMERCIAL WINDOWS INSTALLATION GUIDE
-Publisher / Supplier: Pharmagrowth Consulting Ltd
+STKFLO
+WINDOWS INSTALLATION & REMOTE MANAGEMENT GUIDE
 
-============================================================
-1. PACKAGE CONTENTS
-============================================================
-
-IMPORTANT DISTRIBUTION NOTE
-
-Do NOT use GitHub's Code > Download ZIP as the installation package. That downloads the developer/source repository.
-
-Use the validated GitHub Actions artifact named:
-
-Pharmagrowth-Stock-Control-Commercial-Package
-
-The artifact only needs to be extracted once. It may be placed in an approved Windows shared folder so the server computer and authorised client computers can access the same commercial package.
-
-After extraction the top level is:
-
-Pharmagrowth Stock Control\
-  00 - START HERE - INSTALLATION GUIDE.txt
+PACKAGE
+-------
+Build with BUILD_COMMERCIAL_PACKAGE.bat from the approved source.
+Distribute the complete StkFlo-Windows-Installation.zip to a controlled
+network share (such as N:). The package contains:
   01 - INSTALL SERVER.bat
   02 - START SERVER.bat
   03 - STOP SERVER.bat
   04 - SERVER STATUS.bat
-  UNINSTALL_WINDOWS.bat
-  CLIENT DEPLOYMENT\
-  Administration & Recovery\
-  Documentation\
-  System\
+  CLIENT DEPLOYMENT
+  Administration & Recovery
+  HOST MANAGEMENT
+  Documentation
+  System
 
-The System folder contains controlled server runtime files. IT should not run files directly from System during normal installation.
+SERVER INSTALLATION
+-------------------
+Run 01 - INSTALL SERVER.bat directly from the network share on the
+Windows 11 VM. It stages the entire release locally BEFORE UAC elevation.
+The live server is installed to C:\ProgramData\StkFlo\Server.
+Only the server needs Docker Desktop and Docker/Windows administration.
+Record the installer-generated one-time administrator password.
+The application is then available at https://stkflo/ on HTTPS 443.
+Keep the proven Hyper-V/VM IP configuration and Docker auto-login unchanged.
+The installer publishes completed client files back to the same network folder.
 
-No self-extracting server or client EXE is required or created.
+CLIENT INSTALLATION
+-------------------
+After server installation, run CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat
+directly from N: on each staff workstation. It also stages locally before
+elevation. Clients do not need Docker or Python. They use a trusted public
+StkFlo CA, approved hostname mapping, a common desktop shortcut, and their
+individual StkFlo login credentials.
 
-============================================================
-2. SERVER PREREQUISITES
-============================================================
+INDEPENDENT RECOVERY
+--------------------
+On the PHYSICAL Hyper-V host, run:
+  HOST MANAGEMENT\01 - INSTALL HOST MANAGER.bat
+On the Windows 11 VM, run:
+  Administration & Recovery\03 - ENABLE VM MANAGEMENT.bat
+These one-time installers configure HTTPS Windows-authenticated management
+tasks independent of Docker. An approved Windows identity, network CIDR,
+and the actual Hyper-V VM/Docker user are required.
+Authorised admin URLs:
+  https://stkflo-host:9443/  (VM power recovery, physical host)
+  https://stkflo-manager:9444/ (Docker stack and backup share, VM)
+Create corresponding DNS/hosts entries and trust the verified PUBLIC
+manager certificates on authorised administrative computers.
 
-- Windows 10/11 Pro or another approved Windows host environment.
-- Docker Desktop installed and configured for Linux containers.
-- Docker Desktop running before installation.
-- Administrator access.
-- Stable private LAN IPv4 address or DHCP reservation.
-- TCP 8443 permitted between client computers and the server.
-- TCP 8088 may be retained for local diagnostics if approved.
+BACKUP TO THE EXISTING CLOUD-BACKED N: SHARE
+-------------------------------------------
+Database dumps are first created and SHA-256-verified in the VM-local
+C:\ProgramData\StkFlo\Server\Backups folder.
+From the VM Manager configure the real \\server\share UNC backup path,
+NOT the N: drive letter. The dedicated Windows task verifies copies on
+the share every 15 minutes; the existing cloud backup of the share provides
+off-host protection. StkFlo Admin controls backup time/retention and reports
+replication health. Test real database recovery before going live.
 
-The commercial package itself may be stored in a Windows shared folder. The LIVE application and database are not run from the share. "01 - INSTALL SERVER.bat" copies the controlled server runtime to:
+See Documentation\STKFLO_WINDOWS_REMOTE_MANAGEMENT.md for detailed
+network, certificate, security, installation and acceptance instructions.
 
-C:\ProgramData\Eaststone\StockControl
+SAFEGUARDS
+----------
+Force VM reset is disabled by default. Remote actions require Windows
+membership, HTTPS and a recorded reason. StkFlo manager pages remain
+reachable when Docker is stopped but not when their own Windows machine
+is powered off. A physical host outage requires independent IT recovery.
 
-The PostgreSQL database remains in its controlled local Docker volume.
+The test uninstall removes VM-local StkFlo data/volumes only after explicit
+confirmation; it does NOT delete the shared N: distribution package or
+external cloud-backed backup files.
 
-============================================================
-3. INSTALL THE SERVER
-============================================================
-
-1. Extract the complete Pharmagrowth Stock Control package. It may be stored in the approved shared folder used for client distribution.
-2. On the server computer, start Docker Desktop and wait until Docker is running.
-3. Run "01 - INSTALL SERVER.bat" as Administrator.
-4. Accept the Windows UAC prompt.
-5. The installer copies the controlled server files to C:\ProgramData\Eaststone\StockControl.
-6. Confirm the server's private LAN IPv4 address if automatic detection cannot determine it.
-   Typical private addresses begin 10.x.x.x, 172.16-31.x.x or 192.168.x.x.
-7. Leave the installer window open until both of these are confirmed:
-
-   Server installation completed
-   Client deployment verified for server IP: <server IP>
-
-8. Open https://stock-control.test:8443/.
-9. Initial login: admin / Admin123!
-10. The application requires the administrator to create a new private password before access is granted.
-11. Review the generated IQ report:
-
-C:\ProgramData\Eaststone\StockControl\deployment-records\ESC-IQ-Execution-Latest.html
-
-The server setup configures the database, application, HTTPS certificate, trusted private CA, local hostname, firewall rules, scheduled health monitoring, certificate renewal, the always-on configurable daily backup service and application shortcuts.
-
-After installation, open the ESC Backup Settings shortcut on the server to browse to the required backup folder and set the automatic daily time/retention. The settings can be changed again later without reinstalling.
-
-============================================================
-4. CLIENT DEPLOYMENT
-============================================================
-
-CLIENT DEPLOYMENT is a complete BAT-based client package from the moment the commercial ZIP is extracted.
-
-Before server installation it contains:
-
-01 - INSTALL CLIENT.bat
-02 - UNINSTALL CLIENT.bat
-Configure-Hosts.ps1
-client-config.ini
-README.txt
-
-Before server installation, SERVER_IP is intentionally blank and stock-control-ca.crt does not yet exist. Do not install clients until the server installer has finalised the folder.
-
-During server installation, "01 - INSTALL SERVER.bat" does NOT build or create a client installer or EXE. It finalises the SAME CLIENT DEPLOYMENT folder by:
-
-- writing the actual server hostname/IP into client-config.ini
-- adding stock-control-ca.crt, the public Stock Control CA certificate
-- verifying the published shared client package before reporting success
-
-After successful server installation the SAME shared folder must contain:
-
-01 - INSTALL CLIENT.bat
-02 - UNINSTALL CLIENT.bat
-Configure-Hosts.ps1
-client-config.ini
-stock-control-ca.crt
-README.txt
-
-To configure another Windows computer:
-
-1. On the client computer, browse to the same approved shared/network CLIENT DEPLOYMENT folder. You may also copy the complete folder locally if preferred.
-2. Right-click "01 - INSTALL CLIENT.bat" and select "Run as administrator".
-3. Accept UAC.
-4. The installer stages the required client files into a local temporary folder before elevation, then imports the public Stock Control CA, maps stock-control.test to the server LAN IP, creates the application shortcut and verifies HTTPS access.
-5. Open the Eaststone Stock Control shortcut.
-6. Log in using that user's individual Stock Control account.
-
-This reproduces the client deployment behaviour proven in the previous working Windows deployment checkpoint.
-
-Never copy server private keys to a client. Only stock-control-ca.crt is distributed.
-
-CLIENT UNINSTALL
-
-To remove Stock Control client configuration from a client computer, run:
-
-02 - UNINSTALL CLIENT.bat
-
-as Administrator. It removes only that computer's Stock Control shortcut, hosts mapping, trusted client CA and HKLM\SOFTWARE\Eaststone\StockControlClient registration. It does NOT remove the server, database, stock data or shared CLIENT DEPLOYMENT folder.
-
-============================================================
-5. NORMAL SERVER CONTROLS
-============================================================
-
-Use only the top-level controls during routine operation:
-
-02 - START SERVER.bat
-03 - STOP SERVER.bat
-04 - SERVER STATUS.bat
-
-The controlled stop preserves the PostgreSQL data volume. Do not use "docker compose down -v" during routine operation because -v destroys the database volume.
-
-============================================================
-6. ADMINISTRATION, RECOVERY AND SERVER UNINSTALL
-============================================================
-
-Administration & Recovery contains:
-
-01 - BACKUP SETTINGS.bat
-02 - BACKUP AND RESTORE.bat
-README.txt
-
-"01 - BACKUP SETTINGS.bat" browses to the physical server backup folder and changes the daily schedule/retention. "02 - BACKUP AND RESTORE.bat" creates manual backups and browses for a restore file.
-
-"UNINSTALL_WINDOWS.bat" at package root is the supported SERVER uninstall control. It sits beside "01 - INSTALL SERVER.bat" and there is no duplicate server uninstaller under Administration & Recovery or System.
-
-This is separate from "CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat", which only removes one client's local configuration.
-
-Server uninstall requires explicit confirmations before destroying the PostgreSQL data volume and generated application data. It can also remove:
-
-C:\ProgramData\Eaststone\StockControl
-
-and, when explicitly confirmed and the package is local, the extracted Pharmagrowth Stock Control folder. If the commercial package is on a UNC or mapped/shared location, the distribution copy is retained automatically.
-
-============================================================
-7. VALIDATION / RELEASE
-============================================================
-
-Before production use, review the IQ evidence and execute the approved release acceptance / validation activities. The automated IQ report supports installation evidence but does not replace URS, risk assessment, OQ/PQ/UAT, security review, backup/restore challenge, SOPs, training and change control.
+All new Windows functionality must be tested on the actual host and VM,
+with approved change control, before production use.
