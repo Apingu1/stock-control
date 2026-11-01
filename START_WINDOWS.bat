@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title Eaststone Stock Control - Start
+title StkFlo - Start
 cd /d "%~dp0"
 
 if not exist ".env" (
@@ -25,8 +25,8 @@ if errorlevel 1 (
 )
 
 set "APP_HTTP_PORT=8088"
-set "APP_HTTPS_PORT=8443"
-set "TLS_HOSTNAME=stock-control.test"
+set "APP_HTTPS_PORT=443"
+set "TLS_HOSTNAME=stkflo"
 for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"APP_HTTP_PORT=" ".env" 2^>nul') do set "APP_HTTP_PORT=%%B"
 for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"APP_HTTPS_PORT=" ".env" 2^>nul') do set "APP_HTTPS_PORT=%%B"
 if exist "deployment\server-config.ini" for /f "usebackq tokens=1,* delims==" %%A in ("deployment\server-config.ini") do if /I "%%A"=="TLS_HOSTNAME" set "TLS_HOSTNAME=%%B"
