@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title Eaststone Stock Control - Controlled Stop
+title StkFlo - Controlled Stop
 cd /d "%~dp0"
 
 if not exist ".env" (
