@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $RepositoryRoot 'release\Pharmagrowth Stock Control'
+    $OutputDirectory = Join-Path $RepositoryRoot 'release\StkFlo'
 }
 
 $outputParent = Split-Path -Parent $OutputDirectory
@@ -49,7 +49,7 @@ function Normalize-UnixShellScripts {
     Write-Host "Normalized $($shellScripts.Count) Unix shell script(s) to LF line endings."
 }
 
-Write-Host 'Creating clean Pharmagrowth Stock Control commercial package...'
+Write-Host 'Creating clean StkFlo commercial package...'
 
 # Customer-facing top level.
 Copy-RequiredFile (Join-Path $RepositoryRoot 'docs\windows\IT_INSTALLATION_GUIDE.txt') (Join-Path $OutputDirectory '00 - START HERE - INSTALLATION GUIDE.txt')
@@ -67,9 +67,9 @@ Copy-RequiredFile (Join-Path $templatesDir 'client-uninstall.bat') (Join-Path $c
 Copy-RequiredFile (Join-Path $RepositoryRoot 'windows\Configure-Hosts.ps1') (Join-Path $clientDir 'Configure-Hosts.ps1')
 Copy-RequiredFile (Join-Path $templatesDir 'client-deployment-readme.txt') (Join-Path $clientDir 'README.txt')
 Set-Content -LiteralPath (Join-Path $clientDir 'client-config.ini') -Encoding ascii -Value @(
-    'TLS_HOSTNAME=stock-control.test',
+    'TLS_HOSTNAME=stkflo',
     'SERVER_IP=',
-    'APP_HTTPS_PORT=8443'
+    'APP_HTTPS_PORT=443'
 )
 
 # Backup administration remains one level down so recovery tools are not
@@ -212,7 +212,7 @@ if ($bootstrapBytes -contains 13) {
     throw 'db\production-bootstrap.sh contains CR characters; Linux bootstrap would fail.'
 }
 
-$zipPath = Join-Path $outputParent 'Pharmagrowth-Stock-Control-Commercial-Package.zip'
+$zipPath = Join-Path $outputParent 'StkFlo-Windows-Installation.zip'
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
