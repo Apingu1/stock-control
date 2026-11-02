@@ -106,7 +106,7 @@ jobs:
           if($managerScript -ne $vmManagerScript) {
             throw 'Packaged Host and VM Manager installers diverge'
           }
-          $groupDescription = [regex]::Match($managerScript, "New-LocalGroup\\s+-Name\\s+\\\$groupName\\s+-Description\\s+'([^']+)'")
+          $groupDescription = [regex]::Match($managerScript, 'New-LocalGroup\s+-Name\s+\$groupName\s+-Description\s+''([^'']+)''')
           if(-not $groupDescription.Success) {
             throw 'Missing/changed StkFlo manager group creation. Recheck Windows description limit.'
           }
