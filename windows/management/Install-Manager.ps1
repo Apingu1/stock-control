@@ -28,7 +28,8 @@ $log = Join-Path $root 'logs'
 New-Item -Path $log -ItemType Directory -Force | Out-Null
 $groupName='StkFlo Managers'
 if (-not (Get-LocalGroup -Name $groupName -ErrorAction SilentlyContinue)) {
-    New-LocalGroup -Name $groupName -Description 'Authorised remote StkFlo server management operators' | Out-Null
+    # Windows New-LocalGroup limits Description to 48 characters.
+    New-LocalGroup -Name $groupName -Description 'Authorised StkFlo remote administrators' | Out-Null
 }
 $members = @(Get-LocalGroupMember -Group $groupName -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
 if ($AuthorisedWindowsAccount -notin $members) {
