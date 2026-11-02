@@ -11,7 +11,7 @@ rem UAC may remove mapped network-drive visibility; execute solely from local fi
 if "!STAGED!"=="0" (
   set "STAGE=%TEMP%\StkFlo-Client-%RANDOM%-%RANDOM%"
   mkdir "!STAGE!" >nul 2>&1
-  robocopy "%~dp0" "!STAGE!" /E /R:2 /W:1 /NFL /NDL /NP >nul
+  robocopy "%~dp0." "!STAGE!" /E /R:2 /W:1 /NFL /NDL /NP >nul
   if !ERRORLEVEL! GEQ 8 goto :stage_error
   if not exist "!STAGE!\!SELF_NAME!" goto :stage_error
   set "STAGE_PATH=!STAGE!"
