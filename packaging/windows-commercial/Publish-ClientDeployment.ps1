@@ -1,13 +1,14 @@
 #requires -Version 5.1
 <#
-  Complete an existing StkFlo commercial release's CLIENT DEPLOYMENT folder.
-  Run from the original logged-in Windows VM account to preserve access to
-  mapped network shares, which may disappear after UAC elevation.
-  Only the public CA certificate and client connection settings leave the VM.
+    Publish verified StkFlo client settings to the exact originating release.
+    Run under the original Windows account with access to N:/UNC; do not elevate.
+    The installed VM's deployment/server-config.ini is authoritative, not the
+    empty client-config.ini shipped as a commercial release template.
+    The only certificate ever copied is the public CA certificate (.crt).
 #>
 param(
-    [Parameter(Mandatory=$true)][string]$InstallRoot,
-    [Parameter(Mandatory=$true)][string]$Destination
+    [Parameter(Mandatory = $true)][string]$InstallRoot,
+    [Parameter(Mandatory = $true)][string]$Destination
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,105 +16,136 @@ $ErrorActionPreference = 'Stop'
 function Read-Settings([string]$Path) {
     $values = @{}
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "Required settings file is missing: $Path"
+        throw "Required server settings file is missing: $Path"
     }
     foreach ($line in Get-Content -LiteralPath $Path -ErrorAction Stop) {
         if ($line -match '^\s*([^#;][^=]*)=(.*)$') {
-            $values[$matches[1].Trim()] = $matches[2].Trim()
+            $values[$matches[1].Trim()] = $matches[2].Trim().Trim('"')
         }
     }
     return $values
 }
 
+function Assert-FileHash([string]$Source, [string]$Destination) {
+    $expected = (Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash
+    $actual = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
+    if ($expected -ne $actual) {
+        throw "Publication integrity check failed for $(Split-Path -Leaf $Destination)."
+    }
+}
+
 try {
     $InstallRoot = (Resolve-Path -LiteralPath $InstallRoot -ErrorAction Stop).Path
-    $source = Join-Path $InstallRoot 'client-deployment'
-    $caPath = Join-Path $source 'stock-control-ca.crt'
+    $localClient = Join-Path $InstallRoot 'client-deployment'
     $serverCaPath = Join-Path $InstallRoot 'infra\certs\stock-control-ca.crt'
-    $configPath = Join-Path $source 'client-config.ini'
     $serverConfigPath = Join-Path $InstallRoot 'deployment\server-config.ini'
+    $localConfigPath = Join-Path $localClient 'client-config.ini'
+    $localCaPath = Join-Path $localClient 'stock-control-ca.crt'
 
-    foreach ($file in @($caPath, $serverCaPath, $configPath, $serverConfigPath)) {
+    if (-not (Test-Path -LiteralPath $localClient -PathType Container)) {
+        throw "Installed server's client-deployment directory is missing."
+    }
+    foreach ($file in @($serverCaPath, $serverConfigPath)) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-            throw "Server installation has not finalised a required client file: $file"
+            throw "The installed server is not ready to publish client files: $file"
         }
     }
 
-    $clientConfig = Read-Settings $configPath
-    $serverConfig = Read-Settings $serverConfigPath
+    $server = Read-Settings $serverConfigPath
     foreach ($field in @('TLS_HOSTNAME', 'SERVER_IP', 'APP_HTTPS_PORT')) {
-        if ([string]::IsNullOrWhiteSpace($clientConfig[$field])) {
-            throw "The generated client configuration is missing $field."
+        if ([string]::IsNullOrWhiteSpace($server[$field])) {
+            throw "Installed server configuration has no $field. Run the server HTTPS setup first."
         }
     }
-    foreach ($field in @('TLS_HOSTNAME', 'SERVER_IP')) {
-        if ($clientConfig[$field] -ne $serverConfig[$field]) {
-            throw "Client $field does not match the installed server's recorded configuration."
-        }
+    if ($server['TLS_HOSTNAME'] -notmatch '^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$') {
+        throw 'Installed server configuration contains an invalid TLS hostname.'
     }
     $address = $null
-    if (-not [System.Net.IPAddress]::TryParse($clientConfig['SERVER_IP'], [ref]$address) -or
+    if (-not [System.Net.IPAddress]::TryParse($server['SERVER_IP'], [ref]$address) -or
         $address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
-        throw 'Client configuration has an invalid server IPv4 address.'
+        throw 'Installed server configuration contains an invalid server IPv4 address.'
     }
     $port = 0
-    if (-not [int]::TryParse($clientConfig['APP_HTTPS_PORT'], [ref]$port) -or
+    if (-not [int]::TryParse($server['APP_HTTPS_PORT'], [ref]$port) -or
         $port -lt 1 -or $port -gt 65535) {
-        throw 'Client configuration has an invalid HTTPS port.'
+        throw 'Installed server configuration contains an invalid HTTPS port.'
     }
 
-    $serverCa = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($serverCaPath)
-    $clientCa = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($caPath)
-    if ($serverCa.Thumbprint -ne $clientCa.Thumbprint) {
-        throw 'The client public CA certificate does not match the installed server private CA.'
-    }
-    if ($clientCa.NotAfter -le (Get-Date)) {
-        throw 'The client CA certificate has expired.'
+    $ca = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($serverCaPath)
+    if ($ca.NotAfter -le (Get-Date)) {
+        throw 'The server public CA certificate has expired.'
     }
 
+    # Do not create a new client distribution at another path silently.
+    # The caller passes the CLIENT DEPLOYMENT folder from the precise root
+    # where 01 - INSTALL SERVER.bat was originally launched.
     if (-not (Test-Path -LiteralPath $Destination -PathType Container)) {
-        throw "The original shared CLIENT DEPLOYMENT folder does not exist: $Destination"
+        throw "Original shared CLIENT DEPLOYMENT folder was not found: $Destination"
     }
     $Destination = (Resolve-Path -LiteralPath $Destination -ErrorAction Stop).Path
     foreach ($name in @('01 - INSTALL CLIENT.bat', '02 - UNINSTALL CLIENT.bat',
                         'Configure-Hosts.ps1', 'client-config.ini', 'README.txt', 'stkflo.ico')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Destination $name) -PathType Leaf)) {
-            throw "Incomplete commercial release; required client template file is missing: $name"
+            throw "Original commercial CLIENT DEPLOYMENT folder is incomplete: $name"
         }
     }
 
     $ready = Join-Path $Destination 'STKFLO_CLIENT_DEPLOYMENT_READY.txt'
-    if (Test-Path -LiteralPath $ready) {
+    # A previous marker must never survive an unsuccessful re-publication.
+    if (Test-Path -LiteralPath $ready -PathType Leaf) {
         Remove-Item -LiteralPath $ready -Force -ErrorAction Stop
     }
 
-    foreach ($name in @('client-config.ini', 'stock-control-ca.crt')) {
-        $from = Join-Path $source $name
-        $to = Join-Path $Destination $name
-        Copy-Item -LiteralPath $from -Destination $to -Force -ErrorAction Stop
-        $expected = (Get-FileHash -LiteralPath $from -Algorithm SHA256).Hash
-        $actual = (Get-FileHash -LiteralPath $to -Algorithm SHA256).Hash
-        if ($expected -ne $actual) {
-            throw "Client publication integrity check failed for $name."
+    $settingsLines = @(
+        ('TLS_HOSTNAME=' + $server['TLS_HOSTNAME']),
+        ('SERVER_IP=' + $server['SERVER_IP']),
+        ('APP_HTTPS_PORT=' + $server['APP_HTTPS_PORT'])
+    )
+
+    # First correct the installed client files in ProgramData, so they always
+    # reflect this server's actual confirmed hostname, IP and HTTPS port.
+    $settingsLines | Set-Content -LiteralPath $localConfigPath -Encoding ascii -ErrorAction Stop
+    Copy-Item -LiteralPath $serverCaPath -Destination $localCaPath -Force -ErrorAction Stop
+    Assert-FileHash -Source $serverCaPath -Destination $localCaPath
+
+    # Then publish to the originating N:/UNC distribution folder.
+    # Do not attempt to copy the server private CA key or TLS key.
+    $sharedConfigPath = Join-Path $Destination 'client-config.ini'
+    $sharedCaPath = Join-Path $Destination 'stock-control-ca.crt'
+    Copy-Item -LiteralPath $localConfigPath -Destination $sharedConfigPath -Force -ErrorAction Stop
+    Copy-Item -LiteralPath $localCaPath -Destination $sharedCaPath -Force -ErrorAction Stop
+    Assert-FileHash -Source $localConfigPath -Destination $sharedConfigPath
+    Assert-FileHash -Source $serverCaPath -Destination $sharedCaPath
+
+    $sharedSettings = Read-Settings $sharedConfigPath
+    foreach ($field in @('TLS_HOSTNAME', 'SERVER_IP', 'APP_HTTPS_PORT')) {
+        if ($sharedSettings[$field] -ne $server[$field]) {
+            throw "Shared client configuration does not match the VM's $field."
         }
     }
+    $sharedCa = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($sharedCaPath)
+    if ($sharedCa.Thumbprint -ne $ca.Thumbprint) {
+        throw 'Shared client public CA thumbprint does not match the installed server CA.'
+    }
 
-    $lines = @(
+    $readyText = @(
         'StkFlo CLIENT DEPLOYMENT - READY',
         ('Published UTC: {0}' -f (Get-Date).ToUniversalTime().ToString('o')),
-        ('Server hostname: {0}' -f $clientConfig['TLS_HOSTNAME']),
-        ('Server IPv4: {0}' -f $clientConfig['SERVER_IP']),
-        ('HTTPS port: {0}' -f $clientConfig['APP_HTTPS_PORT']),
-        ('Public CA thumbprint: {0}' -f $clientCa.Thumbprint),
-        'Only public certificate material is distributed; server private keys remain on the VM.'
+        ('Server hostname: {0}' -f $server['TLS_HOSTNAME']),
+        ('Server IPv4: {0}' -f $server['SERVER_IP']),
+        ('HTTPS port: {0}' -f $server['APP_HTTPS_PORT']),
+        ('Public CA thumbprint: {0}' -f $ca.Thumbprint),
+        'Public CA only; private keys remain on the Windows VM.'
     )
-    [System.IO.File]::WriteAllLines($ready, $lines, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Host "Published public CA and verified client settings to: $Destination"
-    Write-Host "Target: https://$($clientConfig['TLS_HOSTNAME'])/ ($($clientConfig['SERVER_IP']))"
-    Write-Host "Public CA thumbprint: $($clientCa.Thumbprint)"
-    Write-Host 'READY marker written. Client workstations can now use the shared installer.'
+    [System.IO.File]::WriteAllLines($ready, $readyText, (New-Object System.Text.UTF8Encoding($false)))
+
+    Write-Host "Installed VM client files updated: $localClient"
+    Write-Host "Original release client files published: $Destination"
+    Write-Host "Published server address: $($server['SERVER_IP'])"
+    Write-Host "Public CA thumbprint: $($ca.Thumbprint)"
+    Write-Host 'Publication verified; shared client installer is ready.'
     exit 0
 } catch {
-    Write-Error ("StkFlo client publication failed: " + $_.Exception.Message)
+    [Console]::Error.WriteLine("ERROR: StkFlo client publication failed: $($_.Exception.Message)")
     exit 1
 }
