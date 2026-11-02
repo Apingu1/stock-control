@@ -61,6 +61,16 @@ jobs:
           if(-not (Test-Path 'release\StkFlo-Windows-Installation.zip')) { throw 'Missing release ZIP' }
           $installer = Get-Content (Join-Path $root '01 - INSTALL SERVER.bat') -Raw
           if($installer -notmatch 'StkFlo-Installer') { throw 'Server network staging is missing' }
+          if($installer -notmatch 'ESC_SERVER_SETUP_WINDOWS.bat" --commercial') {
+            throw 'Elevated server setup must exit without a blocking pause so N-share publication runs'
+          }
+          if($installer -notmatch 'call "%PACKAGE_ROOT%05 - PUBLISH CLIENT DEPLOYMENT.bat" --quiet') {
+            throw 'The original network launch session must automatically publish client files after installation'
+          }
+          $serverSetup = Get-Content (Join-Path $root 'System\ESC_SERVER_SETUP_WINDOWS.bat') -Raw
+          if($serverSetup -notmatch 'QUIET_COMMERCIAL' -or $serverSetup -notmatch 'Returning to the original commercial installer') {
+            throw 'Server setup is not configured for uninterrupted commercial installation'
+          }
           $client = Get-Content (Join-Path $root 'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat') -Raw
           if($client -notmatch 'StkFlo-Client') { throw 'Client network staging is missing' }
           $hostsScript = Get-Content (Join-Path $root 'System\windows\Configure-Hosts.ps1') -Raw
@@ -117,8 +127,12 @@ jobs:
           Export-Certificate -Cert $cert -FilePath (Join-Path $vmCerts 'stock-control-ca.crt') -Type CERT | Out-Null
           Copy-Item (Join-Path $vmCerts 'stock-control-ca.crt') (Join-Path $vmClient 'stock-control-ca.crt')
           Set-Content -Path (Join-Path $vmCerts 'stock-control-ca.key') -Value 'Never publish a private key.' -Encoding ascii
-          @('TLS_HOSTNAME=stkflo','SERVER_IP=','APP_HTTPS_PORT=443') |
+          # Elevated server setup has generated the real VM-local configuration.
+          @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153','APP_HTTPS_PORT=443') |
             Set-Content -Path (Join-Path $vmClient 'client-config.ini') -Encoding ascii
+          # The original release on N: still contains its empty distribution template.
+          @('TLS_HOSTNAME=stkflo','SERVER_IP=','APP_HTTPS_PORT=443') |
+            Set-Content -Path (Join-Path $client 'client-config.ini') -Encoding ascii
           @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153') |
             Set-Content -Path (Join-Path $vmDeploy 'server-config.ini') -Encoding ascii
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'Support\Publish-ClientDeployment.ps1') -InstallRoot $install -Destination $client
