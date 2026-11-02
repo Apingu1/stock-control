@@ -33,7 +33,12 @@ if "!STAGED!"=="0" (
   if not exist "%PACKAGE_ROOT%CLIENT DEPLOYMENT\STKFLO_CLIENT_DEPLOYMENT_READY.txt" goto :publish_failed
   rmdir /s /q "!STAGE!" >nul 2>&1
   echo.
-  echo StkFlo installation and client package publishing completed.
+  echo ============================================================
+  echo   StkFlo installation AND original share publication complete
+  echo ============================================================
+  echo Server files: %INSTALL_ROOT%
+  echo Original client package: %PACKAGE_ROOT%CLIENT DEPLOYMENT
+  echo Both client-config.ini and stock-control-ca.crt are published and verified.
   echo Clients may now run CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat from this share.
   pause
   exit /b 0
@@ -62,7 +67,9 @@ for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hos
   if errorlevel 1 exit /b 1
 )
 pushd "%INSTALL_ROOT%"
-call "ESC_SERVER_SETUP_WINDOWS.bat"
+rem This child must RETURN without a pause; the original unelevated caller
+rem still needs to write the generated CA/config back to the source N: folder.
+call "ESC_SERVER_SETUP_WINDOWS.bat" --commercial
 set "RUN_RC=!ERRORLEVEL!"
 popd
 if not "!RUN_RC!"=="0" exit /b !RUN_RC!
