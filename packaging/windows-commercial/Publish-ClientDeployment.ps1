@@ -96,20 +96,24 @@ try {
         Remove-Item -LiteralPath $ready -Force -ErrorAction Stop
     }
 
-    $settingsLines = @(
-        ('TLS_HOSTNAME=' + $server['TLS_HOSTNAME']),
-        ('SERVER_IP=' + $server['SERVER_IP']),
-        ('APP_HTTPS_PORT=' + $server['APP_HTTPS_PORT'])
-    )
-
-    # First correct the installed client files in ProgramData, so they always
-    # reflect this server's actual confirmed hostname, IP and HTTPS port.
-    $settingsLines | Set-Content -LiteralPath $localConfigPath -Encoding ascii -ErrorAction Stop
-    Copy-Item -LiteralPath $serverCaPath -Destination $localCaPath -Force -ErrorAction Stop
+    # ESC_SERVER_SETUP_WINDOWS.bat writes the installed client files while
+    # elevated. Verify them here; the user who has N: mapped may have only READ
+    # permission to C:\ProgramData\StkFlo\Server and must not need elevation.
+    foreach ($localFile in @($localConfigPath, $localCaPath)) {
+        if (-not (Test-Path -LiteralPath $localFile -PathType Leaf)) {
+            throw "Elevated server setup did not generate client file: $localFile"
+        }
+    }
+    $installedSettings = Read-Settings $localConfigPath
+    foreach ($field in @('TLS_HOSTNAME', 'SERVER_IP', 'APP_HTTPS_PORT')) {
+        if ($installedSettings[$field] -ne $server[$field]) {
+            throw "Installed VM client settings do not match the recorded server $field. Re-run server setup before publication."
+        }
+    }
     Assert-FileHash -Source $serverCaPath -Destination $localCaPath
 
-    # Then publish to the originating N:/UNC distribution folder.
-    # Do not attempt to copy the server private CA key or TLS key.
+    # Copy the already-finalised VM configuration into the originating N:/UNC
+    # release folder without requiring elevation or touching private key files.
     $sharedConfigPath = Join-Path $Destination 'client-config.ini'
     $sharedCaPath = Join-Path $Destination 'stock-control-ca.crt'
     Copy-Item -LiteralPath $localConfigPath -Destination $sharedConfigPath -Force -ErrorAction Stop
@@ -139,7 +143,7 @@ try {
     )
     [System.IO.File]::WriteAllLines($ready, $readyText, (New-Object System.Text.UTF8Encoding($false)))
 
-    Write-Host "Installed VM client files updated: $localClient"
+    Write-Host "Installed VM client files verified: $localClient"
     Write-Host "Original release client files published: $Destination"
     Write-Host "Published server address: $($server['SERVER_IP'])"
     Write-Host "Public CA thumbprint: $($ca.Thumbprint)"
