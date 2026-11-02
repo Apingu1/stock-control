@@ -633,6 +633,28 @@
   transition: opacity 220ms ease-out;
 }
 .stkflo-login-video.is-playing { opacity: 1; }
+.stkflo-login-video-play {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  z-index: 3;
+  transform: translateX(-50%);
+  border: 1px solid rgba(164, 188, 255, .3);
+  border-radius: 999px;
+  padding: 7px 13px;
+  color: #edf4ff;
+  background: rgba(8, 21, 49, .92);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.stkflo-login-video-play:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 2px;
+}
+.stkflo-login-video-play:hover { background: rgba(19, 36, 72, .96); }
 .stkflo-login-media-copy {
   /* Use the area below the video for the slogans rather than leaving a
      large unused block above the bottom footer. Video sizing is unchanged. */
@@ -732,5 +754,7 @@
   .stkflo-login-media { padding-left: 18px; padding-right: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .stkflo-login-video { display: none; transition: none; }
+  /* Honour reduced-motion preferences unless the visitor explicitly presses Play. */
+  .stkflo-login-video:not(.is-user-enabled) { display: none; transition: none; }
+  .stkflo-login-video.is-user-enabled { transition: none; }
 }
