@@ -12,7 +12,7 @@ if "!STAGED!"=="0" (
   set "STAGE=%TEMP%\StkFlo-Installer-%RANDOM%-%RANDOM%"
   mkdir "!STAGE!" || goto :stage_failed
   echo Staging the release package locally before elevation...
-  robocopy "%PACKAGE_ROOT%" "!STAGE!" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP
+  robocopy "%PACKAGE_ROOT%." "!STAGE!" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP
   set "COPY_RC=!ERRORLEVEL!"
   if !COPY_RC! GEQ 8 goto :stage_failed
   if not exist "!STAGE!\System\ESC_SERVER_SETUP_WINDOWS.bat" goto :stage_failed
