@@ -17,7 +17,7 @@ jobs:
         shell: pwsh
         run: |
           $failed = @()
-          $sources = @(Get-ChildItem windows -Recurse -Filter '*.ps1' -File)
+          $sources = @(Get-ChildItem windows -Recurse -Filter '*.ps1' -File) + @(Get-ChildItem packaging/windows-commercial -Recurse -Filter '*.ps1' -File)
           foreach ($source in $sources) {
             $tokens = $null
             $errors = $null
@@ -41,6 +41,8 @@ jobs:
             '01 - INSTALL SERVER.bat',
             'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat',
             'CLIENT DEPLOYMENT\stkflo.ico',
+            '05 - PUBLISH CLIENT DEPLOYMENT.bat',
+            'Support\Publish-ClientDeployment.ps1',
             'System\web\public\branding\stkflo-login-loop.mp4',
             'System\web\public\branding\stkflo-login-poster.webp',
             'System\web\public\branding\stkflo-monogram.svg',
@@ -101,6 +103,35 @@ jobs:
             }
           }
           Write-Host 'All shared-folder staging launchers use safe source path quoting.'
+      - name: Test client CA publication from VM to extracted commercial release
+        shell: powershell
+        run: |
+          $install = Join-Path $env:RUNNER_TEMP 'StkFlo VM Installation With Spaces'
+          $release = Join-Path $PWD 'release\StkFlo'
+          $client = Join-Path $release 'CLIENT DEPLOYMENT'
+          $vmClient = Join-Path $install 'client-deployment'
+          $vmCerts = Join-Path $install 'infra\certs'
+          $vmDeploy = Join-Path $install 'deployment'
+          New-Item -ItemType Directory -Force -Path $vmClient,$vmCerts,$vmDeploy | Out-Null
+          $cert = New-SelfSignedCertificate -Subject 'CN=StkFlo CI Test CA' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 2048 -NotAfter (Get-Date).AddDays(2)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $vmCerts 'stock-control-ca.crt') -Type CERT | Out-Null
+          Copy-Item (Join-Path $vmCerts 'stock-control-ca.crt') (Join-Path $vmClient 'stock-control-ca.crt')
+          Set-Content -Path (Join-Path $vmCerts 'stock-control-ca.key') -Value 'Never publish a private key.' -Encoding ascii
+          @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153','APP_HTTPS_PORT=443') |
+            Set-Content -Path (Join-Path $vmClient 'client-config.ini') -Encoding ascii
+          @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153') |
+            Set-Content -Path (Join-Path $vmDeploy 'server-config.ini') -Encoding ascii
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'Support\Publish-ClientDeployment.ps1') -InstallRoot $install -Destination $client
+          if ($LASTEXITCODE -ne 0) { throw 'Public CA publication integration test failed' }
+          foreach ($required in @('stock-control-ca.crt','client-config.ini','STKFLO_CLIENT_DEPLOYMENT_READY.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $client $required) -PathType Leaf)) { throw "Unpublished client file: $required" }
+          }
+          if (Test-Path (Join-Path $client 'stock-control-ca.key')) { throw 'Private key leaked into commercial client deployment' }
+          $configured = Get-Content (Join-Path $client 'client-config.ini')
+          if ($configured -notcontains 'SERVER_IP=192.168.1.153') { throw 'Published client server IP incorrect' }
+          $published = Get-PfxCertificate (Join-Path $client 'stock-control-ca.crt')
+          if ($published.Thumbprint -ne $cert.Thumbprint) { throw 'Published public CA thumbprint mismatch' }
+          Write-Host 'Server-generated client deployment was published and verified without private key material.'
       - uses: actions/upload-artifact@v4
         with:
           name: StkFlo-Windows-Commercial-Package
