@@ -62,6 +62,39 @@ jobs:
           $client = Get-Content (Join-Path $root 'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat') -Raw
           if($client -notmatch 'StkFlo-Client') { throw 'Client network staging is missing' }
           Write-Host 'Release structure checks passed.'
+      - name: Smoke-test trailing slash with source and destination containing spaces
+        shell: powershell
+        run: |
+          $source = Join-Path $env:RUNNER_TEMP 'StkFlo Installer Source With Spaces'
+          $dest = Join-Path $env:RUNNER_TEMP 'StkFlo Installer Destination With Spaces'
+          New-Item -Path $source -ItemType Directory -Force | Out-Null
+          Set-Content -Path (Join-Path $source 'probe.txt') -Value 'success' -Encoding ascii
+          $batch = Join-Path $env:RUNNER_TEMP 'verify-stkflo-robocopy.bat'
+          $lines = @(
+            '@echo off',
+            'setlocal EnableExtensions EnableDelayedExpansion',
+            ('set "PACKAGE_ROOT=' + $source + '\ "').Replace('\ "','\"'),
+            ('robocopy "%PACKAGE_ROOT%." "' + $dest + '" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NP'),
+            'if !ERRORLEVEL! GEQ 8 exit /b 1',
+            'exit /b 0'
+          )
+          [IO.File]::WriteAllLines($batch, $lines)
+          & cmd.exe /d /c $batch
+          if ($LASTEXITCODE -ne 0) { throw 'ROBOCOPY quoted-path smoke test failed' }
+          if (-not (Test-Path (Join-Path $dest 'probe.txt'))) { throw 'ROBOCOPY did not copy expected file' }
+          $files = @(
+            (Join-Path $PWD 'release\StkFlo\01 - INSTALL SERVER.bat'),
+            (Join-Path $PWD 'release\StkFlo\CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat'),
+            (Join-Path $PWD 'release\StkFlo\CLIENT DEPLOYMENT\02 - UNINSTALL CLIENT.bat'),
+            (Join-Path $PWD 'release\StkFlo\HOST MANAGEMENT\01 - INSTALL HOST MANAGER.bat')
+          )
+          foreach ($file in $files) {
+            $commands = @(Get-Content $file | Where-Object { $_ -match '^\s*robocopy ' })
+            if (-not $commands -or $commands[0] -notmatch 'dp0\.|PACKAGE_ROOT%\.') {
+              throw "Unsafe ROBOCOPY source path quoting in $file"
+            }
+          }
+          Write-Host 'All shared-folder staging launchers use safe source path quoting.'
       - uses: actions/upload-artifact@v4
         with:
           name: StkFlo-Windows-Commercial-Package
