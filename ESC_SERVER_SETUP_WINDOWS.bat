@@ -11,8 +11,11 @@ if errorlevel 1 (
 
 cd /d "%~dp0"
 set "INSTALL_ROOT=%CD%"
+set "QUIET_COMMERCIAL=0"
+if /I "%~1"=="--commercial" set "QUIET_COMMERCIAL=1"
 set "TLS_HOSTNAME=%~1"
 set "SERVER_IP=%~2"
+if "%QUIET_COMMERCIAL%"=="1" set "TLS_HOSTNAME=stkflo"
 if not defined TLS_HOSTNAME set "TLS_HOSTNAME=stkflo"
 
 rem Automatically select only a private RFC1918 address on an active adapter
@@ -151,6 +154,11 @@ echo Initial login: admin / unique password shown once during base setup.
 echo A new private administrator password is mandatory at first login.
 echo IQ report: %INSTALL_ROOT%\deployment-records\StkFlo-IQ-Execution-Latest.html
 echo.
+if "%QUIET_COMMERCIAL%"=="1" (
+  echo Returning to the original commercial installer to publish and verify
+  echo the client certificate and server IP in the originating N: release.
+  exit /b 0
+)
 start "" "https://%TLS_HOSTNAME%/"
 pause
 exit /b 0
@@ -189,5 +197,5 @@ goto :failed
 :failed
 echo.
 echo Review the visible error and docs\windows\TROUBLESHOOTING.md.
-pause
+if "%QUIET_COMMERCIAL%"=="0" pause
 exit /b 1
