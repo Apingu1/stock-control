@@ -26,8 +26,14 @@ Only the server needs Docker Desktop and Docker/Windows administration.
 Record the installer-generated one-time administrator password.
 The application is then available at https://stkflo/ on HTTPS 443.
 Keep the proven Hyper-V/VM IP configuration and Docker auto-login unchanged.
-The installer publishes the completed client public CA and connection settings
-back to this same network folder using the original non-elevated user session.
+During an installation launched directly from N:, the elevated VM setup
+first creates C:\ProgramData\StkFlo\Server\client-deployment\client-config.ini
+with the actual confirmed VM IPv4 address and the real public CA .crt.
+It then RETURNS AUTOMATICALLY to the original non-elevated launcher,
+which publishes those two files to the exact CLIENT DEPLOYMENT folder
+beside the N:\...\01 - INSTALL SERVER.bat that was launched.
+The final success message appears ONLY after the N: copy and hash checks.
+Do not close the original install window before this final message.
 If publication fails (e.g. N: share write permissions), do not reinstall.
 On the Windows VM run 05 - PUBLISH CLIENT DEPLOYMENT.bat from the package root
 under an account with write access to the shared release folder. A READY
