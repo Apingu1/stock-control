@@ -20,6 +20,11 @@ curl.exe -fsS -X POST -H "Content-Type: application/json" --data-binary "@!LOGIN
 set "TEST_RC=!ERRORLEVEL!"
 del /f /q "!LOGIN_JSON!" >nul 2>&1
 if not "!TEST_RC!"=="0" goto :failed
+rem A verified recovery also completes the installer authentication checkpoint.
+rem Prevent the subsequent server setup run from generating a new password.
+if not exist "deployment" mkdir "deployment"
+> "deployment\admin-bootstrap-complete.flag" echo Administrator recovery verified at %DATE% %TIME%
+if errorlevel 1 goto :failed
 echo ============================================================
 echo   StkFlo administrator recovery verified
 echo ============================================================
