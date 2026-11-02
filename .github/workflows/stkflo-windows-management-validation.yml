@@ -117,7 +117,7 @@ jobs:
           Export-Certificate -Cert $cert -FilePath (Join-Path $vmCerts 'stock-control-ca.crt') -Type CERT | Out-Null
           Copy-Item (Join-Path $vmCerts 'stock-control-ca.crt') (Join-Path $vmClient 'stock-control-ca.crt')
           Set-Content -Path (Join-Path $vmCerts 'stock-control-ca.key') -Value 'Never publish a private key.' -Encoding ascii
-          @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153','APP_HTTPS_PORT=443') |
+          @('TLS_HOSTNAME=stkflo','SERVER_IP=','APP_HTTPS_PORT=443') |
             Set-Content -Path (Join-Path $vmClient 'client-config.ini') -Encoding ascii
           @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153') |
             Set-Content -Path (Join-Path $vmDeploy 'server-config.ini') -Encoding ascii
@@ -128,10 +128,31 @@ jobs:
           }
           if (Test-Path (Join-Path $client 'stock-control-ca.key')) { throw 'Private key leaked into commercial client deployment' }
           $configured = Get-Content (Join-Path $client 'client-config.ini')
+          $installed = Get-Content (Join-Path $vmClient 'client-config.ini')
           if ($configured -notcontains 'SERVER_IP=192.168.1.153') { throw 'Published client server IP incorrect' }
+          if ($installed -notcontains 'SERVER_IP=192.168.1.153') { throw 'Installed VM client config still has empty template IP' }
+          if (@(Compare-Object -ReferenceObject $installed -DifferenceObject $configured).Count -ne 0) {
+            throw 'Installed VM and original release client settings differ'
+          }
           $published = Get-PfxCertificate (Join-Path $client 'stock-control-ca.crt')
           if ($published.Thumbprint -ne $cert.Thumbprint) { throw 'Published public CA thumbprint mismatch' }
-          Write-Host 'Server-generated client deployment was published and verified without private key material.'
+
+          # Simulate a stale manually edited N: config, and ensure the next
+          # publication overwrites it from the VM server rather than using it.
+          @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.99','APP_HTTPS_PORT=443') |
+            Set-Content -Path (Join-Path $client 'client-config.ini') -Encoding ascii
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'Support\Publish-ClientDeployment.ps1') -InstallRoot $install -Destination $client
+          if ($LASTEXITCODE -ne 0) { throw 'Repeated N-drive client publication failed' }
+          $republished = Get-Content (Join-Path $client 'client-config.ini')
+          if ($republished -contains 'SERVER_IP=192.168.1.99' -or
+              $republished -notcontains 'SERVER_IP=192.168.1.153') {
+            throw 'Publication preserved stale N-share IP rather than installed VM IP'
+          }
+          if (-not (Test-Path (Join-Path $client 'STKFLO_CLIENT_DEPLOYMENT_READY.txt'))) {
+            throw 'Second publication did not produce a READY marker'
+          }
+          if (Test-Path (Join-Path $client 'stock-control-ca.key')) { throw 'Private CA key was published' }
+          Write-Host 'Blank template IP, stale original-share IP and public CA publishing all corrected and verified.'
       - uses: actions/upload-artifact@v4
         with:
           name: StkFlo-Windows-Commercial-Package
