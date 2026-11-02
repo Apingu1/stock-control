@@ -10,6 +10,7 @@ network share (such as N:). The package contains:
   02 - START SERVER.bat
   03 - STOP SERVER.bat
   04 - SERVER STATUS.bat
+  05 - PUBLISH CLIENT DEPLOYMENT.bat
   CLIENT DEPLOYMENT
   Administration & Recovery
   HOST MANAGEMENT
@@ -25,7 +26,13 @@ Only the server needs Docker Desktop and Docker/Windows administration.
 Record the installer-generated one-time administrator password.
 The application is then available at https://stkflo/ on HTTPS 443.
 Keep the proven Hyper-V/VM IP configuration and Docker auto-login unchanged.
-The installer publishes completed client files back to the same network folder.
+The installer publishes the completed client public CA and connection settings
+back to this same network folder using the original non-elevated user session.
+If publication fails (e.g. N: share write permissions), do not reinstall.
+On the Windows VM run 05 - PUBLISH CLIENT DEPLOYMENT.bat from the package root
+under an account with write access to the shared release folder. A READY
+marker must be present before distributing the client installer.
+Never distribute server private .key files.
 
 CLIENT INSTALLATION
 -------------------
