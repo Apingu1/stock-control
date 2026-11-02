@@ -137,3 +137,43 @@ PostgreSQL**. The PostgreSQL/API/web containers may already be healthy. On the
 The earlier `stkflo-api` pull error may be nonfatal if the Docker build
 subsequently succeeds. The installation now builds local images first to avoid
 that misleading output.
+
+
+## Login logo static in Microsoft Edge
+
+The commercial server includes the H.264 MP4 at
+`web/public/branding/stkflo-login-loop.mp4` and the poster still image.
+If the login shows only the poster, first open
+`https://stkflo/branding/stkflo-login-loop.mp4` directly in Edge and verify
+whether it plays. Check Windows **Settings > Accessibility > Visual effects >
+Animation effects**; the original login CSS intentionally hid the MP4 when
+Windows requested reduced motion.
+
+Newer releases offer a user-initiated **Play animated logo** control when
+reduced-motion preferences or autoplay restrictions prevent automatic playback.
+This preserves the default accessible static poster.
+
+To deploy **frontend-only** changes after successfully installing the server:
+
+1. Use a newly generated, verified commercial release from this branch.
+2. Stop staff access briefly or schedule a maintenance window, and copy only
+   the updated `System\web` directory into
+   `C:\ProgramData\StkFlo\Server\web`. Keep existing `.env`, database
+   volume, backups, TLS certificates and Windows management configuration.
+3. In Command Prompt on the Windows VM, run:
+   `cd /d "C:\ProgramData\StkFlo\Server"`
+   `docker compose -f infra\docker-compose.production.yml -f infra\docker-compose.production.tls.yml --env-file .env up -d --no-deps --build web`
+4. Verify `https://stkflo/` and reload Edge with **Ctrl+Shift+R**.
+   No administrator password reset or database reinitialisation is required.
+
+If the video URL fails or shows an error, inspect Edge DevTools/Network and
+`docker compose ... exec web ls -l /usr/share/nginx/html/branding/`
+before changing CSS. If the video plays directly but not in the login page,
+the issue is browser policy, animation preference or the React player state.
+
+The initial installer may have logged `ERROR: Container stkflo-api-1 Running`
+during Windows Health Monitor execution. Docker Compose prints normal progress
+to STDERR; new Health Monitor versions capture the exit code without treating
+normal progress output as a failure. Verify actual health using
+`logs\health-status.json` and the current `StkFlo - Health Monitor`
+Scheduled Task after installing the corrected script.
