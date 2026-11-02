@@ -25,11 +25,12 @@ if "!STAGED!"=="0" (
     pause
     exit /b !RUN_RC!
   )
-  echo Publishing the verified client deployment files to the original release folder...
-  for %%F in ("01 - INSTALL CLIENT.bat" "02 - UNINSTALL CLIENT.bat" "Configure-Hosts.ps1" "client-config.ini" "stock-control-ca.crt" "README.txt" "stkflo.ico") do (
-    copy /Y "!STAGE!\CLIENT DEPLOYMENT\%%~F" "%PACKAGE_ROOT%CLIENT DEPLOYMENT\%%~F" >nul
-    if errorlevel 1 goto :publish_failed
-  )
+  echo Publishing the verified public CA and connection settings back to the original share...
+  if not exist "%PACKAGE_ROOT%05 - PUBLISH CLIENT DEPLOYMENT.bat" goto :publish_failed
+  call "%PACKAGE_ROOT%05 - PUBLISH CLIENT DEPLOYMENT.bat" --quiet
+  if errorlevel 1 goto :publish_failed
+  if not exist "%PACKAGE_ROOT%CLIENT DEPLOYMENT\stock-control-ca.crt" goto :publish_failed
+  if not exist "%PACKAGE_ROOT%CLIENT DEPLOYMENT\STKFLO_CLIENT_DEPLOYMENT_READY.txt" goto :publish_failed
   rmdir /s /q "!STAGE!" >nul 2>&1
   echo.
   echo StkFlo installation and client package publishing completed.
@@ -65,11 +66,11 @@ call "ESC_SERVER_SETUP_WINDOWS.bat"
 set "RUN_RC=!ERRORLEVEL!"
 popd
 if not "!RUN_RC!"=="0" exit /b !RUN_RC!
-rem Copy completed client config into local staged package for publication by caller.
-for %%F in ("client-config.ini" "stock-control-ca.crt") do (
-  copy /Y "%INSTALL_ROOT%\client-deployment\%%~F" "%CLIENT_SOURCE%\%%~F" >nul
-  if errorlevel 1 exit /b 1
-)
+rem The unprivileged original caller publishes directly from the installed VM
+rem directory to the network share after UAC has exited. Never require an
+rem elevated process to write N: and never silently publish an incomplete client.
+if not exist "%INSTALL_ROOT%\client-deployment\client-config.ini" exit /b 1
+if not exist "%INSTALL_ROOT%\client-deployment\stock-control-ca.crt" exit /b 1
 exit /b 0
 
 :stage_failed
@@ -79,6 +80,9 @@ exit /b 1
 :publish_failed
 echo ERROR: StkFlo installed on VM, but the shared client package could not be updated.
 echo Completed client files remain at %INSTALL_ROOT%\client-deployment.
-echo Check share permissions and rerun publication before distributing to clients.
+echo StkFlo server is installed; only N: client publication remains incomplete.
+echo On this VM, log in as a user with write access to the approved share and run:
+echo   05 - PUBLISH CLIENT DEPLOYMENT.bat
+echo Do not distribute the client installer until the READY marker exists.
 pause
 exit /b 1
