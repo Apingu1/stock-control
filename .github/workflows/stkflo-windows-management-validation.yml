@@ -99,6 +99,21 @@ jobs:
           if ($hostsScript -match 'Join-Path\s+\$env:TEMP' -or $hostsScript -notmatch 'finally\s*\{') {
             throw 'Hosts-file staging must not depend on user TEMP, and cleanup must be protected'
           }
+          # Windows New-LocalGroup enforces a maximum description length of 48.
+          # Validate both emitted manager installers, not just the repository source.
+          $managerScript = Get-Content (Join-Path $root 'HOST MANAGEMENT\Install-Manager.ps1') -Raw
+          $vmManagerScript = Get-Content (Join-Path $root 'System\windows\management\Install-Manager.ps1') -Raw
+          if($managerScript -ne $vmManagerScript) {
+            throw 'Packaged Host and VM Manager installers diverge'
+          }
+          $groupDescription = [regex]::Match($managerScript, "New-LocalGroup\\s+-Name\\s+\\\$groupName\\s+-Description\\s+'([^']+)'")
+          if(-not $groupDescription.Success) {
+            throw 'Missing/changed StkFlo manager group creation. Recheck Windows description limit.'
+          }
+          if($groupDescription.Groups[1].Value.Length -gt 48) {
+            throw "Windows New-LocalGroup description has $($groupDescription.Groups[1].Value.Length) characters; maximum is 48"
+          }
+          Write-Host "Verified manager group description length: $($groupDescription.Groups[1].Value.Length)/48"
           Write-Host 'Release structure and hosts-file cleanup checks passed.'
       - name: Smoke-test trailing slash with source and destination containing spaces
         shell: powershell
