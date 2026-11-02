@@ -61,7 +61,13 @@ jobs:
           if($installer -notmatch 'StkFlo-Installer') { throw 'Server network staging is missing' }
           $client = Get-Content (Join-Path $root 'CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat') -Raw
           if($client -notmatch 'StkFlo-Client') { throw 'Client network staging is missing' }
-          Write-Host 'Release structure checks passed.'
+          $hostsScript = Get-Content (Join-Path $root 'System\windows\Configure-Hosts.ps1') -Raw
+          $clientHostsScript = Get-Content (Join-Path $root 'CLIENT DEPLOYMENT\Configure-Hosts.ps1') -Raw
+          if ($hostsScript -ne $clientHostsScript) { throw 'Server and client hosts configuration scripts differ' }
+          if ($hostsScript -match 'Join-Path\s+\$env:TEMP' -or $hostsScript -notmatch 'finally\s*\{') {
+            throw 'Hosts-file staging must not depend on user TEMP, and cleanup must be protected'
+          }
+          Write-Host 'Release structure and hosts-file cleanup checks passed.'
       - name: Smoke-test trailing slash with source and destination containing spaces
         shell: powershell
         run: |
