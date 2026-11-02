@@ -126,5 +126,31 @@ jobs:
           python-version: '3.11'
       - name: Compile Python services
         run: python -m compileall -q api/app
+      - name: Check safe first-install administrator provisioning
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          from types import SimpleNamespace
+          source = Path('api/app/bootstrap_admin.py').read_text()
+          sql = Path('db/init/phase-a_auth_users.sql').read_text()
+          tree = ast.parse(source)
+          assigned = next(n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'SCHEMA_SEEDED_ADMIN_HASH' for t in n.targets))
+          guard = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'is_unprovisioned_seed_admin')
+          ns = {'User': object}
+          exec(compile(ast.Module(body=[assigned, guard], type_ignores=[]), '<provisioning-test>', 'exec'), ns)
+          seeded_hash = ns['SCHEMA_SEEDED_ADMIN_HASH']
+          assert seeded_hash in sql, 'Schema placeholder and bootstrap guard have diverged'
+          seeded = SimpleNamespace(username='admin', created_by='system', password_hash=seeded_hash)
+          assert ns['is_unprovisioned_seed_admin'](seeded)
+          for record in (
+              SimpleNamespace(username='admin', created_by='system', password_hash='real-password-hash'),
+              SimpleNamespace(username='admin', created_by='actual-admin', password_hash=seeded_hash),
+              SimpleNamespace(username='operator', created_by='system', password_hash=seeded_hash),
+          ):
+              assert not ns['is_unprovisioned_seed_admin'](record), 'Non-placeholder administrator must not be reset'
+          assert 'INITIALISED_SCHEMA_SEED' in source
+          print('Safe seeded-admin initialisation regression checks passed')
+          PY
       - name: Syntax check Linux production scripts
         run: find scripts db -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
