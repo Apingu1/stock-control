@@ -6,7 +6,7 @@ if /I "%~1"=="--staged" set "STAGED=1"
 if "!STAGED!"=="0" (
   set "STAGE=%TEMP%\StkFlo-HostManager-%RANDOM%-%RANDOM%"
   mkdir "!STAGE!" >nul 2>&1
-  robocopy "%~dp0" "!STAGE!" /E /R:2 /W:1 /NFL /NDL /NP >nul
+  robocopy "%~dp0." "!STAGE!" /E /R:2 /W:1 /NFL /NDL /NP >nul
   if !ERRORLEVEL! GEQ 8 goto :failed
   if not exist "!STAGE!\Install-Manager.ps1" goto :failed
   set "STAGE_PATH=!STAGE!"
