@@ -67,6 +67,26 @@ jobs:
           if($installer -notmatch 'call "%PACKAGE_ROOT%05 - PUBLISH CLIENT DEPLOYMENT.bat" --quiet') {
             throw 'The original network launch session must automatically publish client files after installation'
           }
+          if($installer -notmatch 'call :show_login_summary' -or
+             $installer -notmatch 'setlocal DisableDelayedExpansion' -or
+             $installer -notmatch 'admin-first-install-created.flag') {
+            throw 'Final original-share installer must display correctly escaped login details only after verified initial setup'
+          }
+          if($installer.IndexOf('call :show_login_summary') -le $installer.IndexOf('call "%PACKAGE_ROOT%05 - PUBLISH CLIENT DEPLOYMENT.bat" --quiet')) {
+            throw 'Final administrator summary must come after client share publication'
+          }
+          $baseInstall = Get-Content (Join-Path $root 'System\INSTALL_WINDOWS.bat') -Raw
+          if($baseInstall -notmatch 'RESET_ADMIN_PASSWORD_WINDOWS.bat" --initial-setup' -or
+             $baseInstall -notmatch 'admin-first-install-created.flag') {
+            throw 'Initial administrator provisioning must be verified and recorded without distributing passwords'
+          }
+          $adminRecovery = Get-Content (Join-Path $root 'System\RESET_ADMIN_PASSWORD_WINDOWS.bat') -Raw
+          if($adminRecovery -notmatch 'DisableDelayedExpansion' -or
+             $adminRecovery -notmatch 'Admin123!' -or
+             $adminRecovery -notmatch 'INITIALISED_SCHEMA_SEED' -or
+             $adminRecovery -notmatch 'CREATED.') {
+            throw 'Fresh-install temporary credential flow or safe seed-only guard is missing'
+          }
           $serverSetup = Get-Content (Join-Path $root 'System\ESC_SERVER_SETUP_WINDOWS.bat') -Raw
           if($serverSetup -notmatch 'QUIET_COMMERCIAL' -or $serverSetup -notmatch 'Returning to the original commercial installer') {
             throw 'Server setup is not configured for uninterrupted commercial installation'
