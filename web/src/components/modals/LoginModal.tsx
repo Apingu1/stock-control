@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { changePassword, fetchMe, login } from "../../utils/api";
 import type { UserMe } from "../../types";
 
@@ -23,6 +23,42 @@ export default function LoginModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
+  const [videoBlocked, setVideoBlocked] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [motionOptIn, setMotionOptIn] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handlePreference = () => setReduceMotion(preference.matches);
+    handlePreference();
+    preference.addEventListener?.("change", handlePreference);
+    return () => preference.removeEventListener?.("change", handlePreference);
+  }, []);
+
+  useEffect(() => {
+    if (!open || (reduceMotion && !motionOptIn)) return;
+    const video = videoRef.current;
+    if (!video) return;
+    // Edge can refuse autoplay even when the video is muted, especially on
+    // remote desktops. Surface a manual play control rather than a frozen poster.
+    const request = video.play();
+    if (request) {
+      void request.catch(() => setVideoBlocked(true));
+    }
+  }, [open, reduceMotion, motionOptIn]);
+
+  const playAnimatedLogo = () => {
+    setMotionOptIn(true);
+    setVideoBlocked(false);
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    void video.play().catch(() => setVideoBlocked(true));
+  };
+
+  const offerManualPlay = (reduceMotion && !motionOptIn) || videoBlocked;
 
   useEffect(() => {
     if (!open) return;
@@ -105,20 +141,32 @@ export default function LoginModal({
               height="944"
             />
             <video
-              className={"stkflo-login-video" + (videoPlaying ? " is-playing" : "")}
+              ref={videoRef}
+              className={"stkflo-login-video" + (videoPlaying ? " is-playing" : "") + (motionOptIn ? " is-user-enabled" : "")}
               autoPlay
               muted
               loop
               playsInline
-              preload="metadata"
+              preload="auto"
               poster="/branding/stkflo-login-poster.webp"
               aria-hidden="true"
-              onPlaying={() => setVideoPlaying(true)}
+              onPlaying={() => { setVideoPlaying(true); setVideoBlocked(false); }}
+              onTimeUpdate={() => { if (!videoPlaying) setVideoPlaying(true); }}
               onPause={() => setVideoPlaying(false)}
-              onError={() => setVideoPlaying(false)}
+              onError={() => { setVideoPlaying(false); setVideoBlocked(true); }}
             >
               <source src="/branding/stkflo-login-loop.mp4" type="video/mp4" />
             </video>
+            {offerManualPlay && (
+              <button
+                className="stkflo-login-video-play"
+                type="button"
+                onClick={playAnimatedLogo}
+                aria-label="Play StkFlo animated logo"
+              >
+                Play animated logo
+              </button>
+            )}
           </div>
           <div className="stkflo-login-media-copy">
             <span className="stkflo-login-eyebrow"><span /> CONNECTED OPERATIONS</span>
