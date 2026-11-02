@@ -14,6 +14,7 @@ $systemDir = Join-Path $OutputDirectory 'System'
 $clientDir = Join-Path $OutputDirectory 'CLIENT DEPLOYMENT'
 $adminDir = Join-Path $OutputDirectory 'Administration & Recovery'
 $hostManagementDir = Join-Path $OutputDirectory 'HOST MANAGEMENT'
+$supportDir = Join-Path $OutputDirectory 'Support'
 $docsDir = Join-Path $OutputDirectory 'Documentation'
 $templatesDir = Join-Path $RepositoryRoot 'packaging\windows-commercial'
 
@@ -21,7 +22,7 @@ New-Item -ItemType Directory -Path $outputParent -Force | Out-Null
 if (Test-Path -LiteralPath $OutputDirectory) {
     Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
 }
-New-Item -ItemType Directory -Path $OutputDirectory, $systemDir, $clientDir, $adminDir, $hostManagementDir, $docsDir -Force | Out-Null
+New-Item -ItemType Directory -Path $OutputDirectory, $systemDir, $clientDir, $adminDir, $hostManagementDir, $supportDir, $docsDir -Force | Out-Null
 
 function Copy-RequiredFile {
     param([string]$Source, [string]$Destination)
@@ -58,6 +59,8 @@ Copy-RequiredFile (Join-Path $templatesDir 'install-server.bat') (Join-Path $Out
 Copy-RequiredFile (Join-Path $templatesDir 'start-server.bat') (Join-Path $OutputDirectory '02 - START SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'stop-server.bat') (Join-Path $OutputDirectory '03 - STOP SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'server-status.bat') (Join-Path $OutputDirectory '04 - SERVER STATUS.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'publish-client-deployment.bat') (Join-Path $OutputDirectory '05 - PUBLISH CLIENT DEPLOYMENT.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'Publish-ClientDeployment.ps1') (Join-Path $supportDir 'Publish-ClientDeployment.ps1')
 Copy-RequiredFile (Join-Path $RepositoryRoot 'UNINSTALL_WINDOWS.bat') (Join-Path $OutputDirectory 'UNINSTALL_WINDOWS.bat')
 
 # CLIENT DEPLOYMENT is visibly complete in the downloaded ZIP. The install and
@@ -156,6 +159,7 @@ $requiredTopLevel = @(
     '02 - START SERVER.bat',
     '03 - STOP SERVER.bat',
     '04 - SERVER STATUS.bat',
+    '05 - PUBLISH CLIENT DEPLOYMENT.bat',
     'UNINSTALL_WINDOWS.bat',
     'HOST MANAGEMENT\01 - INSTALL HOST MANAGER.bat'
 )
@@ -201,6 +205,9 @@ foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WI
     }
 }
 
+if (-not (Test-Path -LiteralPath (Join-Path $supportDir 'Publish-ClientDeployment.ps1') -PathType Leaf)) {
+    throw 'Required network client publication utility is missing from Support.'
+}
 foreach ($hostFile in @('01 - INSTALL HOST MANAGER.bat', 'Install-Manager.ps1', 'Server-Management.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $hostManagementDir $hostFile))) {
         throw "Missing physical Hyper-V host management package file: $hostFile"
