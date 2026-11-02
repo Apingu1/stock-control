@@ -40,6 +40,7 @@ if "!STAGED!"=="0" (
   echo Original client package: %PACKAGE_ROOT%CLIENT DEPLOYMENT
   echo Both client-config.ini and stock-control-ca.crt are published and verified.
   echo Clients may now run CLIENT DEPLOYMENT\01 - INSTALL CLIENT.bat from this share.
+  call :show_login_summary
   pause
   exit /b 0
 )
@@ -93,3 +94,28 @@ echo   05 - PUBLISH CLIENT DEPLOYMENT.bat
 echo Do not distribute the client installer until the READY marker exists.
 pause
 exit /b 1
+
+:show_login_summary
+rem Run in a separate scope without delayed expansion so password punctuation
+rem displays exactly as the operator requested; no credential file is written.
+setlocal DisableDelayedExpansion
+echo.
+echo ============================================================
+echo            STKFLO - ADMINISTRATOR LOGIN
+echo ============================================================
+echo Application: https://stkflo/
+echo Username: admin
+if exist "%INSTALL_ROOT%\deployment\admin-first-install-created.flag" (
+  echo Temporary password: Admin123!
+  echo.
+  echo IMPORTANT: A private administrator password must be created
+  echo at the first login. Never use the temporary password long-term.
+  del /f /q "%INSTALL_ROOT%\deployment\admin-first-install-created.flag" >nul 2>&1
+) else (
+  echo Password: Existing administrator password, not changed.
+  echo If this is an existing installation, its credentials are retained.
+)
+echo ============================================================
+echo.
+endlocal
+exit /b 0
