@@ -40,6 +40,10 @@ if not exist "%CONFIG%" (
 )
 if not exist "%CA_CERT%" (
   echo ERROR: stock-control-ca.crt is missing from the client deployment package.
+  echo The server must first publish its public CA to the shared CLIENT DEPLOYMENT folder.
+  echo On the Windows VM, open the parent commercial package folder and run:
+  echo   05 - PUBLISH CLIENT DEPLOYMENT.bat
+  echo Never copy any .key private certificate files to the shared folder.
   set "RESULT=1"
   goto :finish
 )
