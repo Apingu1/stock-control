@@ -133,7 +133,7 @@ jobs:
           # The original release on N: still contains its empty distribution template.
           @('TLS_HOSTNAME=stkflo','SERVER_IP=','APP_HTTPS_PORT=443') |
             Set-Content -Path (Join-Path $client 'client-config.ini') -Encoding ascii
-          @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153') |
+          @('TLS_HOSTNAME=stkflo','SERVER_IP=192.168.1.153','APP_HTTP_PORT=8088','APP_HTTPS_PORT=443','INSTALL_ROOT=' + $install) |
             Set-Content -Path (Join-Path $vmDeploy 'server-config.ini') -Encoding ascii
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'Support\Publish-ClientDeployment.ps1') -InstallRoot $install -Destination $client
           if ($LASTEXITCODE -ne 0) { throw 'Public CA publication integration test failed' }
