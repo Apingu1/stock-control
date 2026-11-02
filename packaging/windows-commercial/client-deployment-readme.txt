@@ -17,6 +17,17 @@ The server installation does NOT build or create a client EXE. It finalises this
 - writing the real server IP/hostname into client-config.ini
 - adding stock-control-ca.crt, the public Stock Control CA certificate
 
+If the client CA or SERVER_IP is absent after server installation, run the parent
+05 - PUBLISH CLIENT DEPLOYMENT.bat ON THE WINDOWS VM under your normal account
+with access to the approved network share. This republishes ONLY the public CA
+and validated connection settings from the installed server. No server
+reinstall, Docker restart or database reset is needed.
+
+A successful publication writes STKFLO_CLIENT_DEPLOYMENT_READY.txt and checks
+that the published public CA matches the server public CA and that the
+published settings match the server. Do not distribute the client template
+until it is ready. NEVER copy a CA/private-key .key file to this folder.
+
 After successful server installation this folder must contain:
 
 - 01 - INSTALL CLIENT.bat
@@ -24,6 +35,7 @@ After successful server installation this folder must contain:
 - Configure-Hosts.ps1
 - client-config.ini
 - stock-control-ca.crt
+- STKFLO_CLIENT_DEPLOYMENT_READY.txt
 - README.txt
 
 The server installer verifies that SERVER_IP is populated and stock-control-ca.crt exists before it reports the shared CLIENT DEPLOYMENT package as ready.
