@@ -77,8 +77,14 @@ $tempFile = "$configFile.tmp"
 $config | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $tempFile -Encoding UTF8
 Move-Item -LiteralPath $tempFile -Destination $configFile -Force
 # Non-admin users must not be able to change which actions/VM are allowed.
+# Grant SYSTEM/Administrators access before restricting inheritance.
+# Apply inheritance restriction to the ROOT only: recursively stripping
+# inherited ACEs from existing leaf files can make scripts/certificates
+# unreadable and cause the manager startup task to exit immediately.
 & icacls.exe $root /grant:r 'SYSTEM:(OI)(CI)F' 'BUILTIN\Administrators:(OI)(CI)F' /T | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Could not protect management config and audit files' }
+if ($LASTEXITCODE -ne 0) { throw 'Could not grant management file access' }
+& icacls.exe $root /inheritance:r | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Could not restrict management root inheritance' }
 if ($Role -eq 'VM') {
     # The approved Docker Desktop user may read signed control scripts, but cannot modify them.
     & icacls.exe $root /grant ("$($DockerUser):(OI)(CI)RX") /T | Out-Null
