@@ -114,6 +114,14 @@ jobs:
             throw "Windows New-LocalGroup description has $($groupDescription.Groups[1].Value.Length) characters; maximum is 48"
           }
           Write-Host "Verified manager group description length: $($groupDescription.Groups[1].Value.Length)/48"
+          foreach ($requiredCheck in @('Management service script disappeared after task launch',
+                                     'Get-NetTCPConnection -State Listen -LocalPort $port',
+                                     'LastTaskResult:')) {
+            if (-not $managerScript.Contains($requiredCheck)) {
+              throw "Packaged Host/VM Manager is missing startup verification: $requiredCheck"
+            }
+          }
+          Write-Host 'Manager installation verifies its HTTPS listener and detects missing or quarantined startup scripts.'
           Write-Host 'Release structure and hosts-file cleanup checks passed.'
       - name: Smoke-test trailing slash with source and destination containing spaces
         shell: powershell
