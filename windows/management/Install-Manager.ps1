@@ -139,7 +139,30 @@ if (Get-NetFirewallRule -DisplayName $firewallName -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -DisplayName $firewallName
 }
 New-NetFirewallRule -DisplayName $firewallName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port -Profile Domain,Private -RemoteAddress $AdminSubnet | Out-Null
+# Registration of an automatic startup task is NOT proof the management
+# endpoint is running. Endpoint protection or file errors can remove the
+# PowerShell entrypoint after staging and before the task starts.
+if (-not (Test-Path -LiteralPath $managerPath -PathType Leaf)) {
+    throw "Management service script is missing: $managerPath. Check endpoint-security detections and installation logs."
+}
 Start-ScheduledTask -TaskName $managerName
+$managerReady = $false
+for ($attempt = 0; $attempt -lt 6; $attempt++) {
+    Start-Sleep -Seconds 2
+    if (-not (Test-Path -LiteralPath $managerPath -PathType Leaf)) {
+        throw "Management service script disappeared after task launch: $managerPath. Check endpoint-security quarantine events."
+    }
+    $taskState = (Get-ScheduledTask -TaskName $managerName -ErrorAction Stop).State
+    $isListening = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue).Count -gt 0
+    if ($taskState -eq 'Running' -and $isListening) {
+        $managerReady = $true
+        break
+    }
+}
+if (-not $managerReady) {
+    $taskInfo = Get-ScheduledTaskInfo -TaskName $managerName -ErrorAction Stop
+    throw "Management task registered but service did not become ready on HTTPS port $port. State: $taskState; LastTaskResult: $($taskInfo.LastTaskResult). Check Windows Task Scheduler and endpoint-security detections."
+}
 Write-Host ''
 Write-Host "Installed StkFlo $Role management endpoint."
 Write-Host "Access: https://$($Hostname):$port/"
