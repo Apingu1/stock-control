@@ -12,7 +12,16 @@ When the commercial package is first downloaded it contains:
 
 Run "01 - INSTALL SERVER.bat" on the server before installing any clients.
 
-The server installation does NOT build or create a client EXE. It finalises this SAME CLIENT DEPLOYMENT folder in place by:
+The server installation does NOT build or create a client EXE. The elevated VM
+setup first writes the actual server IP and public CA in
+C:\ProgramData\StkFlo\Server\client-deployment. The original network installer
+then returns automatically and publishes them to the SAME network folder
+from which 01 - INSTALL SERVER.bat was launched, under the original
+unelevated account (so N: remains accessible). Do not close the original
+install window before it reports that server installation AND original
+share publication are complete.
+
+It finalises this SAME CLIENT DEPLOYMENT folder in place by:
 
 - writing the real server IP/hostname into client-config.ini
 - adding stock-control-ca.crt, the public Stock Control CA certificate
