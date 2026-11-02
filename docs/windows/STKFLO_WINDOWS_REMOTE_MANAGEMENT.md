@@ -102,3 +102,38 @@ External share files are not automatically pruned when local backups expire. App
 10. Complete formal change control, IQ/OQ/PQ and Windows/Hyper-V-specific installation qualification.
 
 Passing source checks or an automated package build does not substitute for real Windows, Hyper-V, Docker Desktop and SMB testing.
+
+
+## Recovering from an interrupted first server setup (initial administrator)
+
+The database schema deliberately seeds an administrator row with a placeholder hash.
+Fresh installations now recognise only that exact placeholder and provision the
+one-time password. Real administrator credentials are never overwritten by an
+ordinary reinstall or upgrade.
+
+If an older package stopped with `Bootstrap administrator 'admin': UNCHANGED`
+followed by an HTTP 401 login check, **do not remove Docker volumes or reinstall
+PostgreSQL**. The PostgreSQL/API/web containers may already be healthy. On the
+**Windows VM**, with an administrator-approved recovery action:
+
+1. Open an **elevated Command Prompt**.
+2. Run `cd /d "C:\ProgramData\StkFlo\Server"`.
+3. Run `RESET_ADMIN_PASSWORD_WINDOWS.bat`, and record the one-time recovery
+   password securely **only if the script reports that its login test passed**.
+   This deliberately changes the `admin` password; use it only with authority.
+4. If using the older installed reset script (which doesn't automatically mark
+   verified recovery), run:
+   `if not exist "deployment" mkdir "deployment"`
+   and then `echo Administrator recovery verified > "deployment\admin-bootstrap-complete.flag"`.
+5. Resume remaining setup with
+   `call "ESC_SERVER_SETUP_WINDOWS.bat" stkflo 192.168.1.153` **only if**
+   `192.168.1.153` is the VM's current confirmed LAN address; otherwise supply
+   its actual address. The script completes HTTPS, trusted CA, firewall, backup,
+   Windows maintenance tasks, and IQ checks without recreating the database.
+6. Review `deployment-records\StkFlo-IQ-Execution-Latest.html` and check
+   `https://stkflo/`. Re-distribute the final `client-deployment` folder or
+   rerun the commercial release entrypoint to publish its client files.
+
+The earlier `stkflo-api` pull error may be nonfatal if the Docker build
+subsequently succeeds. The installation now builds local images first to avoid
+that misleading output.
