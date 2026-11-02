@@ -110,6 +110,10 @@ rem Controlled fresh-install setup via the same verified recovery utility.
 rem New/placeholder administrator only; an existing real admin is never reset.
 call "RESET_ADMIN_PASSWORD_WINDOWS.bat" --initial-setup
 if errorlevel 1 goto :admin_failed
+rem The fresh-admin marker contains no password and is removed after the
+rem original network launcher has shown the first-login summary.
+> "deployment\admin-first-install-created.flag" echo Verified first-install administrator.
+if errorlevel 1 goto :admin_failed
 
 :installation_success
 echo.
