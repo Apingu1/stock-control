@@ -79,6 +79,10 @@ if not exist "client-deployment\client-config.ini" goto :client_template_failed
 if not exist "client-deployment\README.txt" goto :client_template_failed
 if not exist "client-deployment\stkflo.ico" goto :client_template_failed
 
+rem Clear the password-free indicator from any earlier install attempt. The
+rem original N: installer must never display fresh credentials based on a
+rem stale file from a previous install.
+if exist "deployment\admin-first-install-created.flag" del /f /q "deployment\admin-first-install-created.flag" >nul 2>&1
 echo Running controlled application and database installation...
 call "INSTALL_WINDOWS.bat" --quiet
 if errorlevel 1 goto :base_install_failed
