@@ -152,7 +152,7 @@ export default function LoginModal({
               aria-hidden="true"
               onPlaying={() => { setVideoPlaying(true); setVideoBlocked(false); }}
               onTimeUpdate={() => { if (!videoPlaying) setVideoPlaying(true); }}
-              onPause={() => setVideoPlaying(false)}
+              onPause={() => { setVideoPlaying(false); setVideoBlocked(true); }}
               onError={() => { setVideoPlaying(false); setVideoBlocked(true); }}
             >
               <source src="/branding/stkflo-login-loop.mp4" type="video/mp4" />
