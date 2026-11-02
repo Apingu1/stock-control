@@ -177,3 +177,41 @@ to STDERR; new Health Monitor versions capture the exit code without treating
 normal progress output as a failure. Verify actual health using
 `logs\health-status.json` and the current `StkFlo - Health Monitor`
 Scheduled Task after installing the corrected script.
+
+
+## Missing client CA when installing directly from N: share
+
+The commercial ZIP contains a **template** `CLIENT DEPLOYMENT` folder. The server
+creates `client-deployment\stock-control-ca.crt` and writes its actual server
+address to `client-deployment\client-config.ini` during installation.
+The public CA and generated settings must then be published to the **original**
+shared package, not merely to the locally staged UAC install copy.
+
+Current commercial releases include `05 - PUBLISH CLIENT DEPLOYMENT.bat` at
+the package root and `Support\Publish-ClientDeployment.ps1`. The ordinary
+server installer automatically invokes this publisher after elevated server
+setup finishes, **from the original unprivileged network-share session**, so
+mapped drive access is not lost to UAC. Publication validates the server
+configuration and the public certificate thumbprint, copies only the public
+`.crt` and `client-config.ini` files, SHA-256 verifies both shared copies and
+writes `STKFLO_CLIENT_DEPLOYMENT_READY.txt`. Any failure leaves a visible
+error; the VM installation remains intact and the publisher can be rerun.
+
+For an existing installed VM using an older commercial ZIP, without this
+publisher, manually copy the **contents** of
+`C:\ProgramData\StkFlo\Server\client-deployment\` to the existing
+`N:\...\CLIENT DEPLOYMENT\` directory, not to a newly named folder.
+Then copy `C:\ProgramData\StkFlo\Server\windows\Configure-Hosts.ps1` into
+the shared client directory to include the latest hosts-file fix. Confirm
+`SERVER_IP`, hostname and HTTPS port are correct before running client setup.
+Do not copy `infra\certs` or any private `.key` file.
+
+If an updated package has been extracted to N: **on the Windows VM**, run its
+`05 - PUBLISH CLIENT DEPLOYMENT.bat` to publish verified settings without
+rebuilding Docker, resetting the database, restarting StkFlo or reinstalling
+the server. Run it under a Windows account with write permission to the share.
+A new package initially lacks the generated public certificate by design.
+
+Keep release/share write access restricted: client setup installs the published
+public CA into the Windows trusted-root store. Verify the CA thumbprint
+matches the installed server before distributing to staff machines.
