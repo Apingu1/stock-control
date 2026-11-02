@@ -97,12 +97,26 @@ try {
     $serverCert = Join-Path $InstallRoot 'infra\certs\stock-control.crt'
     $useTls = Test-Path $serverCert
 
-    if ($useTls) {
-        & docker compose -f $base -f $tls --env-file $envPath up -d 2>&1 | ForEach-Object { Write-Log ([string]$_) }
-    } else {
-        & docker compose -f $base --env-file $envPath up -d 2>&1 | ForEach-Object { Write-Log ([string]$_) }
+    # On Windows PowerShell 5.1, Docker Compose prints healthy progress lines
+    # to STDERR. With ErrorActionPreference=Stop, redirecting 2>&1 can convert
+    # those ordinary progress messages into terminating NativeCommandErrors.
+    # Capture Compose's real process exit code while retaining full log output.
+    $previousErrorAction = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        if ($useTls) {
+            $composeOutput = & docker compose -f $base -f $tls --env-file $envPath up -d 2>&1
+        } else {
+            $composeOutput = & docker compose -f $base --env-file $envPath up -d 2>&1
+        }
+        $composeExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
     }
-    if ($LASTEXITCODE -ne 0) { throw 'Docker Compose could not start the application.' }
+    foreach ($line in @($composeOutput)) {
+        Write-Log ([string]$line)
+    }
+    if ($composeExitCode -ne 0) { throw "Docker Compose could not start the application (exit code $composeExitCode)." }
     $status.containers = $true
 
     try {
