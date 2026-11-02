@@ -23,7 +23,17 @@ Run 01 - INSTALL SERVER.bat directly from the network share on the
 Windows 11 VM. It stages the entire release locally BEFORE UAC elevation.
 The live server is installed to C:\ProgramData\StkFlo\Server.
 Only the server needs Docker Desktop and Docker/Windows administration.
-Record the installer-generated one-time administrator password.
+On a fresh test installation, StkFlo provisions the temporary login
+  Username: admin
+  Temporary password: Admin123!
+The final ORIGINAL N: installer window clearly displays the credentials
+after the server and shared CLIENT DEPLOYMENT folder are both verified.
+Do not close the original window before recording the final login summary.
+A password change is REQUIRED immediately at first sign-in.
+An existing real administrator account is never silently reset on upgrade;
+the original window says the existing password was retained.
+This fixed known password is for controlled testing only. Use a unique
+installer-generated secret before production deployment.
 The application is then available at https://stkflo/ on HTTPS 443.
 Keep the proven Hyper-V/VM IP configuration and Docker auto-login unchanged.
 During an installation launched directly from N:, the elevated VM setup
