@@ -8,6 +8,7 @@ import type {
   Receipt,
 } from "../types";
 import { apiFetch } from "../utils/api";
+import { fetchAllMaterials } from "../utils/materials";
 
 type LoadOptions = { silent?: boolean };
 
@@ -70,8 +71,7 @@ export function useStockData() {
   const loadMaterials = useCallback((options: LoadOptions = {}) => {
     return runOnce("materials", async () => {
       try {
-        const res = await apiFetch("/materials/");
-        const data = (await res.json()) as Material[];
+        const data = await fetchAllMaterials();
         setMaterials(data);
       } catch (e) {
         console.error(e);
