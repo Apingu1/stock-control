@@ -14,6 +14,7 @@ import {
 import { useAuth } from "./hooks/useAuth";
 import { usePermissions } from "./hooks/usePermissions";
 import { useStockData } from "./hooks/useStockData";
+import { fetchAllMaterials } from "./utils/materials";
 import { useBackgroundRefresh } from "./hooks/useBackgroundRefresh";
 import { useAlertsBadge } from "./hooks/useAlertsBadge";
 import { useIdleLogout } from "./hooks/useIdleLogout";
@@ -184,8 +185,13 @@ const App: React.FC = () => {
         : kind === "receipt"
           ? ["/materials/", "/lot-balances/"]
           : ["/materials/", "/products/", "/lot-balances/"];
-      const replies = await Promise.all([...urls, "/auth/my-permissions"].map((url) => apiFetch(url)));
-      const values = await Promise.all(replies.map((reply) => reply.json()));
+      // The default materials endpoint returns only 200 rows. Always load
+      // all pages when validating a new draft (products, receipts and issues).
+      const values = await Promise.all([
+        fetchAllMaterials(),
+        ...urls.slice(1).map(async (url) => (await apiFetch(url)).json()),
+        apiFetch("/auth/my-permissions").then((reply) => reply.json()),
+      ]);
       if (epoch !== draftSessionEpoch.current) return; // logout/inactivity invalidated this request
       const latestPermissions = values[values.length - 1] as { permissions?: string[] };
       perms.setMyPermissions(latestPermissions.permissions || []);
