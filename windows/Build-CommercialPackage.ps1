@@ -60,6 +60,8 @@ Copy-RequiredFile (Join-Path $templatesDir 'start-server.bat') (Join-Path $Outpu
 Copy-RequiredFile (Join-Path $templatesDir 'stop-server.bat') (Join-Path $OutputDirectory '03 - STOP SERVER.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'server-status.bat') (Join-Path $OutputDirectory '04 - SERVER STATUS.bat')
 Copy-RequiredFile (Join-Path $templatesDir 'publish-client-deployment.bat') (Join-Path $OutputDirectory '05 - PUBLISH CLIENT DEPLOYMENT.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'update-server.bat') (Join-Path $OutputDirectory '06 - UPDATE SERVER.bat')
+Copy-RequiredFile (Join-Path $templatesDir 'Update-Server.ps1') (Join-Path $supportDir 'Update-Server.ps1')
 Copy-RequiredFile (Join-Path $templatesDir 'Publish-ClientDeployment.ps1') (Join-Path $supportDir 'Publish-ClientDeployment.ps1')
 Copy-RequiredFile (Join-Path $RepositoryRoot 'UNINSTALL_WINDOWS.bat') (Join-Path $OutputDirectory 'UNINSTALL_WINDOWS.bat')
 
@@ -160,6 +162,7 @@ $requiredTopLevel = @(
     '03 - STOP SERVER.bat',
     '04 - SERVER STATUS.bat',
     '05 - PUBLISH CLIENT DEPLOYMENT.bat',
+    '06 - UPDATE SERVER.bat',
     'UNINSTALL_WINDOWS.bat',
     'HOST MANAGEMENT\01 - INSTALL HOST MANAGER.bat'
 )
@@ -207,6 +210,9 @@ foreach ($forbiddenSystemFile in @('ESC_CLIENT_SETUP_WINDOWS.bat', 'UNINSTALL_WI
 
 if (-not (Test-Path -LiteralPath (Join-Path $supportDir 'Publish-ClientDeployment.ps1') -PathType Leaf)) {
     throw 'Required network client publication utility is missing from Support.'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $supportDir 'Update-Server.ps1') -PathType Leaf)) {
+    throw 'Required backup-first in-place server updater is missing from Support.'
 }
 foreach ($hostFile in @('01 - INSTALL HOST MANAGER.bat', 'Install-Manager.ps1', 'Server-Management.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $hostManagementDir $hostFile))) {
