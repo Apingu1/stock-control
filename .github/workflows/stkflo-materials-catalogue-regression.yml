@@ -6,6 +6,14 @@ on:
       - "api/app/routers/materials.py"
       - "api/app/schemas.py"
       - "api/tests/test_material_auto_code.py"
+      - "api/tests/test_operational_pagination.py"
+      - "api/app/routers/receipts.py"
+      - "api/app/routers/issues.py"
+      - "api/app/routers/lot_balances.py"
+      - "api/app/routers/products.py"
+      - "api/app/routers/quarantine.py"
+      - "web/src/components/quarantine/QuarantineView.tsx"
+      - "web/src/utils/pagination.ts"
       - "web/src/utils/materials.ts"
       - "web/src/hooks/useStockData.ts"
       - "web/src/App.tsx"
@@ -32,3 +40,4 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_material_library_migration.py' -v
           python -m unittest discover -s tests -p 'test_material_auto_code.py' -v
+          python -m unittest discover -s tests -p 'test_operational_pagination.py' -v
