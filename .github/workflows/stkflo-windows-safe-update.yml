@@ -62,6 +62,14 @@ jobs:
           if ($updater.IndexOf('Start-Transcript') -gt $updater.IndexOf('docker.exe info')) {
             throw 'Preflight failures must be logged before the Docker check.'
           }
+          if ($updater -match 'docker\.exe\s+@baseArgs\s+ps\s+-q\s+db\s*\|\s*Select-Object\s+-First') {
+            throw 'Native Docker database lookup must not be prematurely terminated by Select-Object -First.'
+          }
+          if ($updater -notmatch 'ps --status running -q db' -or
+              $updater -notmatch 'dbLookupExit' -or
+              $updater -notmatch 'Existing database container confirmed') {
+            throw 'Read-only database preflight must capture the complete Docker process output and exit status.'
+          }
           if ($updater -notmatch 'Automatic-Backup.ps1' -or
               $updater -notmatch 'update-source-rollback' -or
               $updater -notmatch 'build api web' -or
