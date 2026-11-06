@@ -80,11 +80,29 @@ try {
     & docker.exe info *> $null
     Assert-NativeSuccess 'Docker engine availability'
     $baseArgs = @('compose', '-f', $composePath, '--env-file', $envPath)
-    $dbContainer = (& docker.exe @baseArgs ps -q db | Select-Object -First 1)
-    Assert-NativeSuccess 'Existing database lookup'
-    if ([string]::IsNullOrWhiteSpace($dbContainer)) {
-        throw 'No existing StkFlo database container is running. Update cancelled to protect data.'
+
+    # IMPORTANT: Do not pipe docker.exe into Select-Object -First.
+    # On Windows PowerShell, early pipeline termination can close the native
+    # process output stream and report exit code -1 even when Docker is healthy.
+    # Collect the COMPLETE process output and inspect it only after exit.
+    Write-Host 'Verifying the existing StkFlo PostgreSQL container (read-only)...'
+    $dbContainerLines = @(& docker.exe @baseArgs ps --status running -q db)
+    $dbLookupExit = $LASTEXITCODE
+
+    if ($dbLookupExit -ne 0) {
+        Write-Host "Docker Compose database lookup failed with exit code $dbLookupExit."
+        Write-Host 'Read-only Docker diagnostics follow (no containers will be changed):'
+        & docker.exe context show
+        & docker.exe @baseArgs ps db
+        throw "Existing database lookup failed (exit code $dbLookupExit). Review Docker diagnostics above."
     }
+    $dbContainer = @($dbContainerLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($dbContainer.Count -eq 0) {
+        Write-Host 'Compose did not return a running database container.'
+        & docker.exe @baseArgs ps -a db
+        throw 'No running StkFlo PostgreSQL container was found in the existing Docker Compose project. Update cancelled to protect data.'
+    }
+    Write-Host "Existing database container confirmed: $($dbContainer[0])"
 
     Write-Host '===== STKFLO IN-PLACE UPDATE ====='
     Write-Host "Existing installation: $InstallRoot"
