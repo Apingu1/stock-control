@@ -9,6 +9,7 @@ import type {
 } from "../types";
 import { apiFetch } from "../utils/api";
 import { fetchAllMaterials } from "../utils/materials";
+import { fetchAllPages } from "../utils/pagination";
 
 type LoadOptions = { silent?: boolean };
 
@@ -56,8 +57,7 @@ export function useStockData() {
           setLoadingLots(true);
           setLotsError(null);
         }
-        const res = await apiFetch("/lot-balances/");
-        const data = (await res.json()) as LotBalance[];
+        const data = await fetchAllPages<LotBalance>("/lot-balances/");
         setLotBalances(data);
       } catch (e: any) {
         console.error(e);
@@ -90,8 +90,7 @@ export function useStockData() {
           setLoadingProducts(true);
           setProductsError(null);
         }
-        const res = await apiFetch("/products/");
-        const data = (await res.json()) as Product[];
+        const data = await fetchAllPages<Product>("/products/");
         setProducts(data);
       } catch (e: unknown) {
         console.error(e);
@@ -126,8 +125,7 @@ export function useStockData() {
           setLoadingReceipts(true);
           setReceiptsError(null);
         }
-        const res = await apiFetch("/receipts/");
-        const data = (await res.json()) as Receipt[];
+        const data = await fetchAllPages<Receipt>("/receipts/");
         setReceipts(data);
       } catch (e: any) {
         console.error(e);
@@ -146,8 +144,7 @@ export function useStockData() {
           setLoadingIssues(true);
           setIssuesError(null);
         }
-        const res = await apiFetch("/issues/");
-        const data = (await res.json()) as Issue[];
+        const data = await fetchAllPages<Issue>("/issues/");
         setIssues(data);
       } catch (e: any) {
         console.error(e);
