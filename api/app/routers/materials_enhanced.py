@@ -20,6 +20,7 @@ from ..models import (
 )
 from ..schemas import MaterialCreate, MaterialOut
 from ..security import require_permission
+from .materials import _next_material_code
 
 
 router = APIRouter(prefix="/materials", tags=["materials"])
@@ -40,19 +41,16 @@ def _ensure_lookup_exists(db: Session, model, key: str, label: str) -> None:
         raise HTTPException(status_code=400, detail=f"{label} code '{key}' does not exist")
 
 
-def _format_material_code(number: int) -> str:
-    return f"MAT{number:04d}"
-
-
 def _allocate_material_code(db: Session) -> str:
-    """Allocate a unique server-side code. Sequence gaps are acceptable and auditable."""
-    for _ in range(25):
-        number = db.execute(text("SELECT nextval('material_code_seq')")).scalar_one()
-        candidate = _format_material_code(int(number))
-        exists = db.query(Material.id).filter(Material.material_code == candidate).first()
-        if not exists:
-            return candidate
-    raise HTTPException(status_code=500, detail="Unable to allocate a unique material code")
+    """Allocate from persisted MAT codes, including material-library imports.
+
+    Use the same PostgreSQL transaction advisory lock as the legacy create
+    endpoint. The lock is retained through db.commit()/rollback(), so two
+    concurrent creates cannot pick the same code. Codes from old/imported
+    records are included regardless of their active/inactive status.
+    """
+    db.execute(text("SELECT pg_advisory_xact_lock(62534593)"))
+    return _next_material_code(db)
 
 
 @router.get("/next-code")
@@ -60,19 +58,8 @@ def preview_next_material_code(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("materials.view")),
 ):
-    """Return a non-reserving preview for the create modal."""
-    row = db.execute(
-        text(
-            """
-            SELECT CASE
-              WHEN is_called THEN last_value + 1
-              ELSE last_value
-            END AS next_number
-            FROM material_code_seq
-            """
-        )
-    ).mappings().one()
-    return {"material_code": _format_material_code(int(row["next_number"]))}
+    """Read-only preview from the real catalogue; POST assigns under lock."""
+    return {"material_code": _next_material_code(db)}
 
 
 @router.post("/", response_model=MaterialOut, status_code=201)
