@@ -5,7 +5,7 @@ from typing import List, Optional, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -1084,57 +1084,76 @@ def create_cancelled_batch(
 @router.get("/", response_model=List[IssueOut])
 def list_issues(
     limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("issues.view")),
 ) -> List[IssueOut]:
-    stmt = (
-        select(StockTransaction, MaterialLot, Material)
-        .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
-        .join(Material, MaterialLot.material_id == Material.id)
-        .where(StockTransaction.txn_type == "ISSUE")
-        .order_by(StockTransaction.created_at.desc())
-        .limit(limit)
+    """Page the combined issue and cancelled-BMR ledger in database order.
+
+    The two event sources must be merged *before* applying offset/limit;
+    applying the page limit independently to each source would silently hide
+    older entries and misorder boundary pages.
+    """
+    history = union_all(
+        select(
+            StockTransaction.id.label("row_id"),
+            StockTransaction.created_at.label("at"),
+            literal("ISSUE").label("kind"),
+        ).where(StockTransaction.txn_type == "ISSUE"),
+        select(
+            ConsumptionBatch.id.label("row_id"),
+            ConsumptionBatch.created_at.label("at"),
+            literal("CANCELLED").label("kind"),
+        ).where(ConsumptionBatch.disposition == "CANCELLED"),
+    ).subquery("history")
+
+    page = db.execute(
+        select(history.c.kind, history.c.row_id)
+        .order_by(history.c.at.desc(), history.c.kind.desc(), history.c.row_id.desc())
+        .offset(offset).limit(limit)
+    ).all()
+
+    issue_ids = [row_id for kind, row_id in page if kind == "ISSUE"]
+    cancelled_ids = [row_id for kind, row_id in page if kind == "CANCELLED"]
+
+    issue_rows = (
+        db.execute(
+            select(StockTransaction, MaterialLot, Material)
+            .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
+            .join(Material, MaterialLot.material_id == Material.id)
+            .where(StockTransaction.id.in_(issue_ids))
+        ).all()
+        if issue_ids else []
     )
-
-    rows = db.execute(stmt).all()
-    results: List[IssueOut] = []
-
     group_ids = {
-        txn.consumption_group_id
-        for txn, _, _ in rows
-        if txn.consumption_group_id
+        txn.consumption_group_id for txn, _, _ in issue_rows if txn.consumption_group_id
     }
     batches = (
         db.query(ConsumptionBatch)
-        .filter(ConsumptionBatch.consumption_group_id.in_(group_ids))
-        .all()
-        if group_ids
-        else []
+        .filter(ConsumptionBatch.consumption_group_id.in_(group_ids)).all()
+        if group_ids else []
     )
     batch_by_group = {batch.consumption_group_id: batch for batch in batches}
-
-    for txn, lot, material in rows:
-        results.append(
-            _issue_out(
-                txn,
-                lot,
-                material,
-                batch=batch_by_group.get(txn.consumption_group_id or ""),
-            )
+    issue_by_id = {
+        txn.id: _issue_out(
+            txn, lot, material,
+            batch=batch_by_group.get(txn.consumption_group_id or ""),
         )
+        for txn, lot, material in issue_rows
+    }
 
     cancelled_batches = (
-        db.query(ConsumptionBatch)
-        .filter(ConsumptionBatch.disposition == "CANCELLED")
-        .order_by(ConsumptionBatch.created_at.desc())
-        .limit(limit)
-        .all()
+        db.query(ConsumptionBatch).filter(ConsumptionBatch.id.in_(cancelled_ids)).all()
+        if cancelled_ids else []
     )
-    results.extend(_cancelled_issue_out(batch) for batch in cancelled_batches)
-    results.sort(key=lambda issue: issue.created_at, reverse=True)
+    cancelled_by_id = {
+        batch.id: _cancelled_issue_out(batch) for batch in cancelled_batches
+    }
 
-    return results[:limit]
-
+    return [
+        issue_by_id[row_id] if kind == "ISSUE" else cancelled_by_id[row_id]
+        for kind, row_id in page
+    ]
 
 @router.put("/{issue_id}", response_model=IssueOut)
 def update_issue(
