@@ -52,7 +52,16 @@ jobs:
               throw "Commercial package missing: $f"
             }
           }
+          $launcher = Get-Content (Join-Path $root '06 - UPDATE SERVER.bat') -Raw
+          if ($launcher -notmatch 'Start-Process -FilePath .*06 - UPDATE SERVER\.bat' -or
+              $launcher -notmatch 'if /I "%~1"=="--staged"' -or
+              $launcher -notmatch 'pause') {
+            throw 'Server updater must use an elevated CMD batch window and remain open on errors.'
+          }
           $updater = Get-Content (Join-Path $root 'Support\Update-Server.ps1') -Raw
+          if ($updater.IndexOf('Start-Transcript') -gt $updater.IndexOf('docker.exe info')) {
+            throw 'Preflight failures must be logged before the Docker check.'
+          }
           if ($updater -notmatch 'Automatic-Backup.ps1' -or
               $updater -notmatch 'update-source-rollback' -or
               $updater -notmatch 'build api web' -or
