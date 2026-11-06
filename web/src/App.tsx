@@ -15,6 +15,8 @@ import { useAuth } from "./hooks/useAuth";
 import { usePermissions } from "./hooks/usePermissions";
 import { useStockData } from "./hooks/useStockData";
 import { fetchAllMaterials } from "./utils/materials";
+import { fetchAllPages } from "./utils/pagination";
+import type { LotBalance, Product } from "./types";
 import { useBackgroundRefresh } from "./hooks/useBackgroundRefresh";
 import { useAlertsBadge } from "./hooks/useAlertsBadge";
 import { useIdleLogout } from "./hooks/useIdleLogout";
@@ -189,7 +191,11 @@ const App: React.FC = () => {
       // all pages when validating a new draft (products, receipts and issues).
       const values = await Promise.all([
         fetchAllMaterials(),
-        ...urls.slice(1).map(async (url) => (await apiFetch(url)).json()),
+        ...urls.slice(1).map((url) => {
+          if (url === "/products/") return fetchAllPages<Product>(url);
+          if (url === "/lot-balances/") return fetchAllPages<LotBalance>(url);
+          return apiFetch(url).then((reply) => reply.json());
+        }),
         apiFetch("/auth/my-permissions").then((reply) => reply.json()),
       ]);
       if (epoch !== draftSessionEpoch.current) return; // logout/inactivity invalidated this request
