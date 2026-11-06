@@ -406,7 +406,7 @@ def product_batches(
                   consumption_group_id
                 FROM analytics_product_batches_cost
                 WHERE es_product_code = :product_code
-                ORDER BY last_issue_at DESC
+                ORDER BY last_issue_at DESC, product_batch_no DESC
                 LIMIT :limit OFFSET :offset;
                 """,
                 {"product_code": product_code, "limit": limit, "offset": offset},
@@ -454,7 +454,7 @@ def product_batches(
               a.consumption_group_id
             FROM analytics_product_batches_cost a
             WHERE {where_sql}
-            ORDER BY a.last_issue_at DESC
+            ORDER BY a.last_issue_at DESC, a.product_batch_no DESC
             LIMIT :limit OFFSET :offset;
             """,
             params,
