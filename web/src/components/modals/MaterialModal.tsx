@@ -110,7 +110,7 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
           const response = await apiFetch("/materials/next-code", { cache: "no-store" });
           const preview = (await response.json()) as { material_code?: string };
           if (!cancelled) {
-            const valid = /^MAT\\d{4,}$/.test(preview.material_code || "");
+            const valid = /^MAT\d{4,}$/.test(preview.material_code || "");
             setMaterialCode(valid ? preview.material_code! : "Assigned automatically on save");
           }
         } catch (previewError) {
