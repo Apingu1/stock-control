@@ -21,7 +21,7 @@ class OperationalPaginationTests(unittest.TestCase):
             with self.subTest(endpoint=endpoint.__name__):
                 parameter = inspect.signature(endpoint).parameters["offset"]
                 self.assertEqual(parameter.default.default, 0)
-                self.assertGreaterEqual(parameter.default.ge, 0)
+                self.assertTrue(any(getattr(m, "ge", None) == 0 for m in parameter.default.metadata))
 
     def test_receipt_query_offsets_after_ordering(self):
         db = Mock()
