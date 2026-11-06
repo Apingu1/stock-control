@@ -397,13 +397,17 @@ function LogTab(props: { canView: boolean }) {
 
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<"ALL" | "STATUS_CHANGE" | "DESTRUCTION">("ALL");
-  const [limit, setLimit] = useState(400);
+  const [limit, setLimit] = useState(200);
+  const [offset, setOffset] = useState(0);
+  const [appliedQuery, setAppliedQuery] = useState("");
+  const hasMore = rows.length === limit;
 
-  function buildParams(): URLSearchParams {
+  function buildParams(forExport = false): URLSearchParams {
     const params = new URLSearchParams();
-    params.set("limit", String(limit));
+    params.set("limit", String(forExport ? 20000 : limit));
+    if (!forExport) params.set("offset", String(offset));
     if (typeFilter !== "ALL") params.set("event_type", typeFilter);
-    if (q.trim()) params.set("q", q.trim());
+    if (appliedQuery) params.set("q", appliedQuery);
     return params;
   }
 
@@ -430,7 +434,7 @@ function LogTab(props: { canView: boolean }) {
     setExportingCsv(true);
     setError(null);
     try {
-      const params = buildParams();
+      const params = buildParams(true);
       const res = await apiFetch(`/quarantine/log.csv?${params.toString()}`);
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
@@ -448,7 +452,8 @@ function LogTab(props: { canView: boolean }) {
     setExportingPdf(true);
     setError(null);
     try {
-      const params = buildParams();
+      const params = buildParams(true);
+      params.set("limit", "5000");
       const res = await apiFetch(`/quarantine/log.pdf?${params.toString()}`);
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
@@ -464,22 +469,15 @@ function LogTab(props: { canView: boolean }) {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canView, limit, typeFilter]);
+  }, [canView, limit, offset, typeFilter, appliedQuery]);
 
   useBackgroundRefresh(
     () => load(true),
-    { enabled: canView, intervalMs: 2_500, label: "quarantine log refresh" }
+    { enabled: canView, intervalMs: 10_000, label: "quarantine log refresh" }
   );
 
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return rows;
-    return rows.filter((r) => {
-      const displayName = (r.material_name ?? r.name ?? "");
-      const hay = `${r.material_code} ${displayName} ${r.lot_number} ${r.reason ?? ""} ${r.created_by ?? ""}`.toLowerCase();
-      return hay.includes(qq);
-    });
-  }, [q, rows]);
+  // API search runs before pagination, including older events.
+  const filtered = rows;
 
   return (
     <div className="page sf-ops-subpage" style={{ paddingTop: 0 }}>
@@ -487,6 +485,7 @@ function LogTab(props: { canView: boolean }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { setOffset(0); setAppliedQuery(q.trim()); } }}
           placeholder="Search material / lot / user / reason…"
           className="input"
           style={{ width: 320, height: 36, fontSize: 13 }}
@@ -496,7 +495,7 @@ function LogTab(props: { canView: boolean }) {
           className="input"
           style={{ width: 180, height: 36, fontSize: 13 }}
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as any)}
+          onChange={(e) => { setOffset(0); setTypeFilter(e.target.value as any); }}
           title="Filter"
         >
           <option value="ALL">All events</option>
@@ -508,22 +507,25 @@ function LogTab(props: { canView: boolean }) {
           className="input"
           style={{ width: 160, height: 36, fontSize: 13 }}
           value={limit}
-          onChange={(e) => setLimit(Number(e.target.value))}
-          title="Limit"
+          onChange={(e) => { setOffset(0); setLimit(Number(e.target.value)); }}
+          title="Page size"
         >
-          <option value={200}>Last 200</option>
-          <option value={400}>Last 400</option>
-          <option value={800}>Last 800</option>
-          <option value={2000}>Last 2000</option>
+          <option value={200}>200 per page</option>
+          <option value={400}>400 per page</option>
+          <option value={800}>800 per page</option>
+          <option value={2000}>2000 per page</option>
         </select>
 
+        <button className="btn" type="button" onClick={() => { setOffset(0); setAppliedQuery(q.trim()); }}>
+          Search
+        </button>
         <button className="btn" type="button" onClick={() => void load()} disabled={loading}>
           {loading ? "Loading…" : "Refresh"}
         </button>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           <span className="muted" style={{ fontSize: 12 }}>
-            Showing {filtered.length} events
+            Showing {filtered.length ? offset + 1 : 0}–{offset + filtered.length} events
           </span>
 
           {/* ADDITIVE: export buttons */}
@@ -550,6 +552,12 @@ function LogTab(props: { canView: boolean }) {
       </div>
 
       {error && <div className="error-row">{error}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "8px 0" }}>
+        <button className="btn" type="button" disabled={loading || offset === 0}
+          onClick={() => setOffset(Math.max(0, offset - limit))}>Previous page</button>
+        <button className="btn" type="button" disabled={loading || !hasMore}
+          onClick={() => setOffset(offset + limit)}>Next page</button>
+      </div>
 
       <div className="table-wrapper" style={{ maxHeight: 680, overflowY: "auto" }}>
         <table className="table">
