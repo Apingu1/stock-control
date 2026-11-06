@@ -129,6 +129,9 @@ class MaterialBase(ApiBaseModel):
 
 
 class MaterialCreate(MaterialBase):
+    # A new material is allocated its MAT code by the server. Explicit codes
+    # remain accepted for backwards compatibility with existing API clients.
+    material_code: Optional[str] = None
     created_by: Optional[str] = None
 
 

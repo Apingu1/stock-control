@@ -103,7 +103,8 @@ def _sig(
 
 @router.get("/log", response_model=List[QuarantineLogRow])
 def quarantine_log(
-    limit: int = Query(400, ge=50, le=5000),
+    limit: int = Query(400, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
     event_type: Optional[str] = Query(None, description="STATUS_CHANGE | DESTRUCTION"),
     q: Optional[str] = Query(None, description="Search filter (material/lot/user/reason)"),
     db: Session = Depends(get_db),
@@ -126,6 +127,8 @@ def quarantine_log(
     search = (q or "").strip().lower()
 
     out: List[QuarantineLogRow] = []
+    # Read the leading merged window before applying the requested page.
+    scan_limit = offset + limit
 
     # --- 1) Recorded (structured) events -------------------------------------
     qev_stmt = (
@@ -133,7 +136,7 @@ def quarantine_log(
         .join(MaterialLot, QuarantineEvent.material_lot_id == MaterialLot.id)
         .join(Material, MaterialLot.material_id == Material.id)
         .order_by(QuarantineEvent.event_at.desc())
-        .limit(limit)
+        .limit(scan_limit)
     )
     if et:
         qev_stmt = qev_stmt.where(QuarantineEvent.event_type == et)
@@ -187,7 +190,7 @@ def quarantine_log(
             .where(StockTransaction.txn_type == "ISSUE")
             .where(func.upper(func.coalesce(StockTransaction.consumption_type, "USAGE")) == "DESTRUCTION")
             .order_by(StockTransaction.created_at.desc())
-            .limit(limit)
+            .limit(scan_limit)
         )
 
         for txn, lot, mat in db.execute(destr_stmt).all():
@@ -225,7 +228,7 @@ def quarantine_log(
             .join(Material, MaterialLot.material_id == Material.id)
             .where((func.upper(LotStatusChange.old_status) == "QUARANTINE") | (func.upper(LotStatusChange.new_status) == "QUARANTINE"))
             .order_by(LotStatusChange.changed_at.desc())
-            .limit(limit)
+            .limit(scan_limit)
         )
 
         for sc, lot, mat in db.execute(sc_stmt).all():
@@ -254,8 +257,8 @@ def quarantine_log(
             )
 
     # sort merged list (recorded + derived)
-    out.sort(key=lambda r: r.event_at, reverse=True)
-    return out[:limit]
+    out.sort(key=lambda r: (r.event_at, r.id), reverse=True)
+    return out[offset:offset + limit]
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +282,7 @@ def quarantine_log_csv(
     user: User = Depends(require_permission("lots.status_change")),
 ):
     # IMPORTANT: reuse existing logic exactly, so export matches UI
-    rows = quarantine_log(limit=limit, event_type=event_type, q=q, db=db, _=user)
+    rows = quarantine_log(limit=limit, offset=0, event_type=event_type, q=q, db=db, _=user)
 
     def iter_csv():
         buf = io.StringIO()
@@ -341,7 +344,7 @@ def quarantine_log_pdf(
     user: User = Depends(require_permission("lots.status_change")),
 ):
     # IMPORTANT: reuse existing logic exactly, so export matches UI
-    rows = quarantine_log(limit=limit, event_type=event_type, q=q, db=db, _=user)
+    rows = quarantine_log(limit=limit, offset=0, event_type=event_type, q=q, db=db, _=user)
 
     filters_lines: List[str] = []
     if event_type:

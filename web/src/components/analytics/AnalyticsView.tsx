@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../utils/api";
+import { fetchAllPages } from "../../utils/pagination";
 import { useBackgroundRefresh } from "../../hooks/useBackgroundRefresh";
 import { SearchModal } from "./SearchModal";
 import type { SearchResult } from "./SearchModal";
@@ -137,15 +138,20 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   async function loadProduct(productCode: string, silent = false) {
     if (!silent) setErrorMsg(null);
     const qp = rangeQuery();
-    const [sRes, bRes] = await Promise.all([
-      apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/summary?${qp}`),
-      apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/batches?limit=200&offset=0&${qp}`),
-    ]);
-    if (sRes.status === 403 || bRes.status === 403) return setPage({ kind: "permission_error" });
-    if (!sRes.ok) return setErrorMsg(`Product summary failed: ${await sRes.text()}`);
-    if (!bRes.ok) return setErrorMsg(`Product batches failed: ${await bRes.text()}`);
-    setProductSummary((await sRes.json()) as ProductSummary);
-    setProductBatches((await bRes.json()) as ProductBatchRow[]);
+    try {
+      const [sRes, batches] = await Promise.all([
+        apiFetch(`/analytics/products/${encodeURIComponent(productCode)}/summary?${qp}`),
+        fetchAllPages<ProductBatchRow>(
+          `/analytics/products/${encodeURIComponent(productCode)}/batches?${qp}`, 200
+        ),
+      ]);
+      if (sRes.status === 403) return setPage({ kind: "permission_error" });
+      setProductSummary((await sRes.json()) as ProductSummary);
+      setProductBatches(batches);
+    } catch (error: any) {
+      if (error?.status === 403) return setPage({ kind: "permission_error" });
+      throw error;
+    }
   }
 
   async function loadBatch(batchNo: string, silent = false) {

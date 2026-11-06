@@ -43,10 +43,20 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
 
+  // The Cancelled BMR marker is an internal non-stock workflow record, not a
+  // real catalogue material. Keep it available to consumption logic but do
+  // not count, search or export it from the controlled Materials Library.
+  const catalogueMaterials = useMemo(
+    () => materials.filter((material) =>
+      !material.is_cancelled_bmr_marker && material.material_code !== "Cancelled BMR"
+    ),
+    [materials]
+  );
+
   const libraryFilteredMaterials = useMemo(() => {
     const q = materialsSearch.trim().toLowerCase();
 
-    return materials.filter((m) => {
+    return catalogueMaterials.filter((m) => {
       if (categoryFilter !== "ALL" && m.category_code !== categoryFilter) {
         return false;
       }
@@ -63,7 +73,7 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
         (m.supplier || "").toLowerCase().includes(q)
       );
     });
-  }, [materials, materialsSearch, categoryFilter, typeFilter]);
+  }, [catalogueMaterials, materialsSearch, categoryFilter, typeFilter]);
 
   const handleExport = () => {
     const header = [
@@ -148,7 +158,7 @@ const MaterialsLibraryView: React.FC<MaterialsLibraryViewProps> = ({
           </div>
         </div>
 
-        <OperationalResultBar total={materials.length} visible={libraryFilteredMaterials.length}
+        <OperationalResultBar total={catalogueMaterials.length} visible={libraryFilteredMaterials.length}
           noun="materials"
           isFiltered={Boolean(materialsSearch.trim()) || categoryFilter !== "ALL" || typeFilter !== "ALL"}
           onClear={() => { setMaterialsSearch(""); setCategoryFilter("ALL"); setTypeFilter("ALL"); }}

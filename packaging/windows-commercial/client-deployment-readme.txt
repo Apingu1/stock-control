@@ -55,3 +55,27 @@ To remove Stock Control access/configuration from a client computer, run "02 - U
 
 No client EXE is required or created.
 Do not use a CLIENT DEPLOYMENT folder from a different Stock Control server installation.
+
+CHROME TASKBAR APP (ONE WINDOW, NOT A NEW TAB ON EACH CLICK)
+------------------------------------------------------------
+StkFlo is supplied with a standards-based installable web-app manifest.
+The standard Windows client shortcut launches the application through
+Microsoft Edge in app mode. If users instead prefer Google Chrome, the
+following is a one-time setup for each Windows user profile:
+
+1. Open https://stkflo/ in Chrome and sign in normally.
+2. Chrome three-dot menu > Cast, save and share > Install page as app.
+   If Chrome shows an install icon in the address bar, use that instead.
+3. Name the app StkFlo. Open its separate application window.
+4. Right-click the RUNNING StkFlo app icon on the Windows taskbar and
+   choose Pin to taskbar.
+5. Unpin any older browser/bookmark shortcut that opens another Chrome tab.
+
+StkFlo's web-app manifest requests focus-existing launch behaviour in
+supported Chrome/Edge versions, so launching the INSTALLED web app again
+focuses the existing app window rather than opening a duplicate. This
+does not force ordinary Chrome tabs to become app windows.
+Once installed and pinned, click the running taskbar button to minimise
+or restore it like any other Windows app. Chrome installs are per Windows
+user profile; do not reuse an installer or browser shortcut from another
+user profile. No database, client certificate or server reinstall needed.
