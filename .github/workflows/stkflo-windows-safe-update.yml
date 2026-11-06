@@ -1,0 +1,72 @@
+name: StkFlo Windows Safe Update Validation
+
+on:
+  pull_request:
+    paths:
+      - "packaging/windows-commercial/**"
+      - "windows/Build-CommercialPackage.ps1"
+      - "docs/windows/IT_INSTALLATION_GUIDE.txt"
+      - ".github/workflows/stkflo-windows-safe-update.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify-updater:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse updater PowerShell on Windows
+        shell: powershell
+        run: |
+          $files = @(
+            'packaging/windows-commercial/Update-Server.ps1',
+            'windows/Build-CommercialPackage.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count) { throw "$file : $($errors | Out-String)" }
+          }
+      - name: Build complete commercial Windows ZIP
+        shell: powershell
+        run: |
+          & .\windows\Build-CommercialPackage.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify release updater and non-destructive safeguards
+        shell: powershell
+        run: |
+          $root = 'release\StkFlo'
+          foreach ($f in @(
+            '06 - UPDATE SERVER.bat',
+            'Support\Update-Server.ps1',
+            'System\api\app\routers\materials.py',
+            'System\web\src\utils\pagination.ts'
+          )) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root $f))) {
+              throw "Commercial package missing: $f"
+            }
+          }
+          $updater = Get-Content (Join-Path $root 'Support\Update-Server.ps1') -Raw
+          if ($updater -notmatch 'Automatic-Backup.ps1' -or
+              $updater -notmatch 'update-source-rollback' -or
+              $updater -notmatch 'build api web' -or
+              $updater -notmatch 'up -d --no-build') {
+            throw 'Required backup-first, source rollback and rebuild safeguards missing.'
+          }
+          if ($updater -match '(?m)^\s*(&\s*)?docker(?:\.exe)?\s+.*\b(down|volume\s+rm|system\s+prune)\b') {
+            throw 'Updater must never execute destructive Docker operations.'
+          }
+          if (-not (Test-Path -LiteralPath 'release\StkFlo-Windows-Installation.zip')) {
+            throw 'No distributable Windows installer ZIP was produced.'
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StkFlo-Windows-Installation-With-Safe-Updater
+          path: release/StkFlo-Windows-Installation.zip
+          if-no-files-found: error
