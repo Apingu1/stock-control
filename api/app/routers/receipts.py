@@ -252,6 +252,7 @@ def create_receipt(
 @router.get("/", response_model=List[ReceiptOut])
 def list_receipts(
     limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("receipts.view")),
 ) -> List[ReceiptOut]:
@@ -260,7 +261,8 @@ def list_receipts(
         .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
         .join(Material, MaterialLot.material_id == Material.id)
         .where(StockTransaction.txn_type == "RECEIPT")
-        .order_by(StockTransaction.created_at.desc())
+        .order_by(StockTransaction.created_at.desc(), StockTransaction.id.desc())
+        .offset(offset)
         .limit(limit)
     )
 
