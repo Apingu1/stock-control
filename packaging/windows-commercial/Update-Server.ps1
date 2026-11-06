@@ -48,35 +48,8 @@ function Get-ConfigValue {
     return $value
 }
 
-$admin = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'StkFlo server updates require administrator approval.'
-}
-
-$PayloadRoot = (Resolve-Path -LiteralPath $PayloadRoot).Path
-if (-not (Test-Path -LiteralPath $InstallRoot -PathType Container)) {
-    throw 'StkFlo is not installed in the expected location. Use the server installer for a new installation.'
-}
-$InstallRoot = (Resolve-Path -LiteralPath $InstallRoot).Path
-$envPath = Join-Path $InstallRoot '.env'
-$composePath = Join-Path $InstallRoot 'infra\docker-compose.production.yml'
-$payloadCompose = Join-Path $PayloadRoot 'infra\docker-compose.production.yml'
-$backupScript = Join-Path $InstallRoot 'windows\Automatic-Backup.ps1'
-
-foreach ($file in @($envPath, $composePath, $backupScript, $payloadCompose)) {
-    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-        throw "Update blocked; missing installed or release file: $file"
-    }
-}
-& docker.exe info *> $null
-Assert-NativeSuccess 'Docker engine availability'
-$baseArgs = @('compose', '-f', $composePath, '--env-file', $envPath)
-$dbContainer = (& docker.exe @baseArgs ps -q db | Select-Object -First 1)
-Assert-NativeSuccess 'Existing database lookup'
-if ([string]::IsNullOrWhiteSpace($dbContainer)) {
-    throw 'No existing StkFlo database container is running. Update cancelled to protect data.'
-}
-
+# Open an update transcript BEFORE validating permissions, Docker or the
+# existing install; preflight failures must be recorded and explained.
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss')
 $logDir = Join-Path $InstallRoot 'deployment\update-history'
 New-Item -Path $logDir -ItemType Directory -Force | Out-Null
@@ -84,6 +57,35 @@ $logPath = Join-Path $logDir ("update-" + $stamp + ".log")
 Start-Transcript -LiteralPath $logPath -Force | Out-Null
 
 try {
+    Write-Host 'Pre-update checks are running in the elevated CMD session.'
+    Write-Host "Diagnostic log: $logPath"
+    $admin = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+    if (-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'StkFlo server updates require administrator approval.'
+    }
+    $PayloadRoot = (Resolve-Path -LiteralPath $PayloadRoot).Path
+    if (-not (Test-Path -LiteralPath $InstallRoot -PathType Container)) {
+        throw 'StkFlo is not installed in the expected location. Use the server installer for a new installation.'
+    }
+    $InstallRoot = (Resolve-Path -LiteralPath $InstallRoot).Path
+    $envPath = Join-Path $InstallRoot '.env'
+    $composePath = Join-Path $InstallRoot 'infra\docker-compose.production.yml'
+    $payloadCompose = Join-Path $PayloadRoot 'infra\docker-compose.production.yml'
+    $backupScript = Join-Path $InstallRoot 'windows\Automatic-Backup.ps1'
+    foreach ($file in @($envPath, $composePath, $backupScript, $payloadCompose)) {
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+            throw "Update blocked; missing installed or release file: $file"
+        }
+    }
+    & docker.exe info *> $null
+    Assert-NativeSuccess 'Docker engine availability'
+    $baseArgs = @('compose', '-f', $composePath, '--env-file', $envPath)
+    $dbContainer = (& docker.exe @baseArgs ps -q db | Select-Object -First 1)
+    Assert-NativeSuccess 'Existing database lookup'
+    if ([string]::IsNullOrWhiteSpace($dbContainer)) {
+        throw 'No existing StkFlo database container is running. Update cancelled to protect data.'
+    }
+
     Write-Host '===== STKFLO IN-PLACE UPDATE ====='
     Write-Host "Existing installation: $InstallRoot"
     Write-Host 'Preserving: PostgreSQL volume, .env, TLS certificate/keys, runtime-state, backup settings and client-deployment.'
