@@ -5,7 +5,8 @@ from unittest.mock import Mock, patch
 
 from sqlalchemy.dialects import postgresql
 
-from app.routers import issues, lot_balances, materials, products, quarantine, receipts
+from app.routers import issues, issues_enhanced, lot_balances, materials, products, quarantine, receipts
+from app.main import app
 
 
 class OperationalPaginationTests(unittest.TestCase):
@@ -82,6 +83,47 @@ class OperationalPaginationTests(unittest.TestCase):
             dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
         )).upper()
         self.assertIn("LIMIT 600", first_sql)
+
+
+class EnhancedConsumptionPaginationTests(unittest.TestCase):
+    """Catch integration defects in the endpoint the deployed API actually uses."""
+
+    def test_registered_consumption_get_is_enhanced_handler(self):
+        route = next(
+            route for route in app.routes
+            if getattr(route, "path", None) == "/issues/"
+            and "GET" in getattr(route, "methods", set())
+        )
+        self.assertIs(route.endpoint, issues_enhanced.list_issues_with_customer)
+
+    @patch("app.routers.issues_enhanced.legacy_issues.list_issues", return_value=[])
+    def test_enhanced_handler_passes_offset_instead_of_fastapi_query(self, legacy):
+        for offset in (0, 500, 1500):
+            with self.subTest(offset=offset):
+                self.assertEqual(
+                    issues_enhanced.list_issues_with_customer(
+                        limit=500, offset=offset, db=Mock(), user=Mock()
+                    ),
+                    [],
+                )
+                self.assertEqual(legacy.call_args.kwargs["offset"], offset)
+
+    def test_empty_consumption_history_uses_numeric_offset_not_query_object(self):
+        db = Mock()
+        db.execute.return_value.all.return_value = []
+        # Exercise the enhanced handler through the REAL merged history SQL.
+        result = issues_enhanced.list_issues_with_customer(
+            limit=500, offset=0, db=db, user=Mock()
+        )
+        self.assertEqual(result, [])
+        self.assertEqual(db.execute.call_count, 1)
+        compiled = str(db.execute.call_args.args[0].compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )).upper()
+        self.assertIn("UNION ALL", compiled)
+        self.assertIn("OFFSET 0", compiled)
+
 
 
 if __name__ == "__main__":
