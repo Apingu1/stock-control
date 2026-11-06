@@ -196,10 +196,15 @@ def create_cancelled_batch_with_customer(
 @router.get("/", response_model=List[CustomerIssueOut])
 def list_issues_with_customer(
     limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("issues.view")),
 ) -> List[CustomerIssueOut]:
-    results = legacy_issues.list_issues(limit=limit, db=db, _=user)
+    # Forward both pagination parameters explicitly. Calling the underlying
+    # FastAPI handler as an ordinary Python function does NOT resolve the
+    # Query(0) default: omitting offset sends a Query object to SQLAlchemy,
+    # causing HTTP 500 even for an empty consumption history.
+    results = legacy_issues.list_issues(limit=limit, offset=offset, db=db, _=user)
     group_ids = {
         str(issue.consumption_group_id)
         for issue in results
