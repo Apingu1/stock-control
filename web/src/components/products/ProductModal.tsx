@@ -60,7 +60,9 @@ export default function ProductModal({ open, product, materials, onClose, onSave
     setMaterialSearch("");
     setFormulaBasis(product?.formula_basis || "");
     setFormulaLines(Object.fromEntries(
-      (product?.formula_lines || []).filter(line => line.material_id !== null)
+      (product?.formula_lines || [])
+        .filter((line): line is ProductFormulaLine & { material_id: number } =>
+          line.material_id !== null)
         .map(line => [line.material_id, line])
     ));
     const generic = product?.formula_lines?.find(line => line.ingredient_code);
@@ -164,6 +166,31 @@ export default function ProductModal({ open, product, materials, onClose, onSave
         ? previousSlot.qs_target_unit : "",
       conditional_material: flavourSlot === "FLAVOUR_OPTIONAL",
     }] : [];
+    const physicalFormulaLines: ProductFormulaLine[] = [...materialIds].map((id, index) => ({
+      material_id: id,
+      ingredient_code: null,
+      material_sequence: index + 1,
+      source_material_name: materials.find(m => m.id === id)?.name || "",
+      material_strength: formulaLines[id]?.material_strength || "",
+      master_formula_raw: formulaLines[id]?.master_formula_raw || "",
+      quantity_type: formulaLines[id]?.quantity_type || "",
+      quantity_value: formulaLines[id]?.quantity_value || null,
+      quantity_unit: formulaLines[id]?.quantity_unit || "",
+      qs_target_value: formulaLines[id]?.qs_target_value || null,
+      qs_target_unit: formulaLines[id]?.qs_target_unit || "",
+      conditional_material: formulaLines[id]?.conditional_material || false,
+    }));
+    // Retain the original BMR formula sequence for surviving ingredients,
+    // including the generic flavour slot when an imported BMR is edited.
+    const previousPosition = (line: ProductFormulaLine) =>
+      product?.formula_lines.find(previous =>
+        line.ingredient_code
+          ? previous.ingredient_code === line.ingredient_code
+          : previous.material_id === line.material_id
+      )?.material_sequence ?? Number.MAX_SAFE_INTEGER;
+    const orderedFormulaLines = [...physicalFormulaLines, ...genericFlavourLine]
+      .sort((a, b) => previousPosition(a) - previousPosition(b))
+      .map((line, index) => ({ ...line, material_sequence: index + 1 }));
     const payload = {
       ...fields,
       product_code: fields.product_code.trim().toUpperCase(),
@@ -175,20 +202,7 @@ export default function ProductModal({ open, product, materials, onClose, onSave
       formula_basis: formulaBasis.trim(),
       ...(((product?.formula_lines?.length || 0) > 0 || flavourSlot ||
           [...materialIds].some(id => (formulaLines[id]?.master_formula_raw || formulaLines[id]?.material_strength))) ? {
-        formula_lines: [...[...materialIds].map((id, index) => ({
-          material_id: id,
-          ingredient_code: null,
-          material_sequence: index + 1,
-          source_material_name: materials.find(m => m.id === id)?.name || "",
-          material_strength: formulaLines[id]?.material_strength || "",
-          master_formula_raw: formulaLines[id]?.master_formula_raw || "",
-          quantity_type: formulaLines[id]?.quantity_type || "",
-          quantity_value: formulaLines[id]?.quantity_value || null,
-          quantity_unit: formulaLines[id]?.quantity_unit || "",
-          qs_target_value: formulaLines[id]?.qs_target_value || null,
-          qs_target_unit: formulaLines[id]?.qs_target_unit || "",
-          conditional_material: formulaLines[id]?.conditional_material || false
-        })), ...genericFlavourLine]
+        formula_lines: orderedFormulaLines
       } : {}),
       ...(product
         ? { edit_reason: auditReason.trim() }
