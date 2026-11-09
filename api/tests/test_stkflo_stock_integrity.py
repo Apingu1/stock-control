@@ -19,8 +19,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class StkFloStockIntegrityTests(unittest.TestCase):
-    def test_exactly_twelve_supported_combinations(self) -> None:
-        self.assertEqual(sum(len(types) for types in ALLOWED_CATEGORY_TYPES.values()), 12)
+    def test_supported_classifications_include_flavouring(self) -> None:
+        self.assertEqual(sum(len(types) for types in ALLOWED_CATEGORY_TYPES.values()), 13)
+        self.assertEqual(ALLOWED_CATEGORY_TYPES["FLAVOURING"], {"NA"})
         self.assertEqual(ALLOWED_CATEGORY_TYPES["PACKAGING"], {"NA"})
         for category, kinds in ALLOWED_CATEGORY_TYPES.items():
             for kind in kinds:

@@ -31,6 +31,8 @@ export default function ProductModal({ open, product, materials, onClose, onSave
   const [materialSearch, setMaterialSearch] = useState("");
   const [formulaBasis, setFormulaBasis] = useState("");
   const [formulaLines, setFormulaLines] = useState<Record<number, ProductFormulaLine>>({});
+  const [flavourSlot, setFlavourSlot] = useState<"" | "FLAVOUR_OPTIONAL" | "FLAVOUR_REQUIRED">("");
+  const [flavourFormulaRaw, setFlavourFormulaRaw] = useState("");
   const [auditReason, setAuditReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -57,7 +59,13 @@ export default function ProductModal({ open, product, materials, onClose, onSave
     setMaterialIds(new Set(product?.materials.map((material) => material.id) || []));
     setMaterialSearch("");
     setFormulaBasis(product?.formula_basis || "");
-    setFormulaLines(Object.fromEntries((product?.formula_lines || []).map(line => [line.material_id, line])));
+    setFormulaLines(Object.fromEntries(
+      (product?.formula_lines || []).filter(line => line.material_id !== null)
+        .map(line => [line.material_id, line])
+    ));
+    const generic = product?.formula_lines?.find(line => line.ingredient_code);
+    setFlavourSlot(generic?.ingredient_code || "");
+    setFlavourFormulaRaw(generic?.master_formula_raw || "");
     setAuditReason("");
     setError(null);
   }, [open, product]);
@@ -86,7 +94,7 @@ export default function ProductModal({ open, product, materials, onClose, onSave
       ...current,
       [id]: {
         ...(current[id] || {
-          material_id: id, material_sequence: 1, source_material_name: "",
+          material_id: id, ingredient_code: null, material_sequence: 1, source_material_name: "",
           material_strength: "", master_formula_raw: "",
           quantity_type: "", quantity_value: null, quantity_unit: "",
           qs_target_value: null, qs_target_unit: "", conditional_material: false
@@ -136,6 +144,21 @@ export default function ProductModal({ open, product, materials, onClose, onSave
       return;
     }
 
+    const previousSlot = product?.formula_lines?.find(line => line.ingredient_code);
+    const genericFlavourLine: ProductFormulaLine[] = flavourSlot ? [{
+      material_id: null,
+      ingredient_code: flavourSlot,
+      material_sequence: materialIds.size + 1,
+      source_material_name: flavourSlot,
+      material_strength: previousSlot?.material_strength || "",
+      master_formula_raw: flavourFormulaRaw,
+      quantity_type: previousSlot?.quantity_type || "",
+      quantity_value: previousSlot?.quantity_value || null,
+      quantity_unit: previousSlot?.quantity_unit || "",
+      qs_target_value: previousSlot?.qs_target_value || null,
+      qs_target_unit: previousSlot?.qs_target_unit || "",
+      conditional_material: flavourSlot === "FLAVOUR_OPTIONAL",
+    }] : [];
     const payload = {
       ...fields,
       product_code: fields.product_code.trim().toUpperCase(),
@@ -145,10 +168,11 @@ export default function ProductModal({ open, product, materials, onClose, onSave
       shelf_life_days: Number(fields.shelf_life_days),
       material_ids: [...materialIds],
       formula_basis: formulaBasis.trim(),
-      ...(((product?.formula_lines?.length || 0) > 0 ||
+      ...(((product?.formula_lines?.length || 0) > 0 || flavourSlot ||
           [...materialIds].some(id => (formulaLines[id]?.master_formula_raw || formulaLines[id]?.material_strength))) ? {
-        formula_lines: [...materialIds].map((id, index) => ({
+        formula_lines: [...[...materialIds].map((id, index) => ({
           material_id: id,
+          ingredient_code: null,
           material_sequence: index + 1,
           source_material_name: materials.find(m => m.id === id)?.name || "",
           material_strength: formulaLines[id]?.material_strength || "",
@@ -159,7 +183,7 @@ export default function ProductModal({ open, product, materials, onClose, onSave
           qs_target_value: formulaLines[id]?.qs_target_value || null,
           qs_target_unit: formulaLines[id]?.qs_target_unit || "",
           conditional_material: formulaLines[id]?.conditional_material || false
-        }))
+        })), ...genericFlavourLine]
       } : {}),
       ...(product
         ? { edit_reason: auditReason.trim() }
@@ -260,8 +284,8 @@ export default function ProductModal({ open, product, materials, onClose, onSave
           <section className="product-material-picker">
             <div className="issue-batch-section-heading">
               <div>
-                <div className="issue-batch-section-title">Mandatory materials</div>
-                <div className="issue-batch-section-help">Every selected material must be present in a compliant batch.</div>
+                <div className="issue-batch-section-title">Formula materials</div>
+                <div className="issue-batch-section-help">Select fixed ingredients here. Individual optional ingredients can be omitted when marked in the Master Formula.</div>
               </div>
               <span className="issue-material-count">{materialIds.size} selected</span>
             </div>
@@ -292,6 +316,27 @@ export default function ProductModal({ open, product, materials, onClose, onSave
                   Changing the BMR version retains prior formula versions.
                 </div>
               </div>
+            </div>
+            <div className="form-group" style={{marginBottom:12}}>
+              <label className="label">Generic flavour requirement</label>
+              <select className="input" value={flavourSlot}
+                onChange={e => setFlavourSlot(e.target.value as typeof flavourSlot)}>
+                <option value="">No generic flavour</option>
+                <option value="FLAVOUR_OPTIONAL">Flavouring — optional</option>
+                <option value="FLAVOUR_REQUIRED">Flavouring — mandatory</option>
+              </select>
+              <small className="muted">
+                Any active Flavouring-category material can satisfy this formula slot.
+                Select the actual flavour and physical lot during consumption.
+              </small>
+              {flavourSlot && (
+                <div style={{marginTop:8}}>
+                  <label className="label">Flavour formula quantity / instruction (as in BMR)</label>
+                  <input className="input" value={flavourFormulaRaw}
+                    onChange={e => setFlavourFormulaRaw(e.target.value)}
+                    placeholder="e.g. 0.5 mL or q.s." />
+                </div>
+              )}
             </div>
             <div className="form-group" style={{marginBottom:12}}>
               <label className="label">Formula basis</label>
