@@ -15,7 +15,7 @@ type StockUseLine = {
   error: string | null;
 };
 
-type StockUseSection = "material" | "packaging";
+type StockUseSection = "material" | "packaging" | "flavour";
 
 const newLine = (section: StockUseSection): StockUseLine => ({
   clientId: `${section}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -100,6 +100,8 @@ export default function BatchIssueCreateModal({
   const [packagingLines, setPackagingLines] = useState<StockUseLine[]>([
     newLine("packaging"),
   ]);
+  const [flavourLines, setFlavourLines] = useState<StockUseLine[]>([newLine("flavour")]);
+  const [includeOptionalFlavour, setIncludeOptionalFlavour] = useState(false);
   const [allowQuarantine, setAllowQuarantine] = useState<boolean | null>(null);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -110,6 +112,12 @@ export default function BatchIssueCreateModal({
     () => products.find((product) => product.product_code === productCode) || null,
     [productCode, products]
   );
+
+  const flavourSlot = selectedProduct?.formula_lines?.find(
+    (line) => line.ingredient_code === "FLAVOUR_OPTIONAL" || line.ingredient_code === "FLAVOUR_REQUIRED"
+  )?.ingredient_code || null;
+  const flavourRequired = flavourSlot === "FLAVOUR_REQUIRED";
+  const flavourIncluded = flavourRequired || includeOptionalFlavour;
 
   const selectableLots = useMemo(
     () =>
@@ -135,26 +143,44 @@ export default function BatchIssueCreateModal({
     [selectableLots]
   );
 
-  const expectedCodes = useMemo(
-    () =>
-      new Set(
-        selectedProduct?.materials
-          .filter((material) => !isPackagingStock(material))
-          .map((material) => material.material_code) || []
-      ),
+  const expectedCodes = useMemo(() => {
+    if (!selectedProduct) return new Set<string>();
+    const fixedLines = selectedProduct.formula_lines.filter((line) => line.material_id !== null);
+    const hasFormula = fixedLines.length > 0;
+    return new Set(selectedProduct.materials
+      .filter((material) => !isPackagingStock(material))
+      .filter((material) => !hasFormula || fixedLines.some(
+        (line) => line.material_id === material.id && !line.conditional_material
+      ))
+      .map((material) => material.material_code));
+  }, [selectedProduct]);
+  const permittedCodes = useMemo(
+    () => new Set(selectedProduct?.materials
+      .filter((material) => !isPackagingStock(material))
+      .map((material) => material.material_code) || []),
     [selectedProduct]
   );
+  const actualLines = useMemo(
+    () => [...materialLines, ...(flavourSlot && flavourIncluded ? flavourLines : [])],
+    [materialLines, flavourSlot, flavourIncluded, flavourLines]
+  );
   const actualCodes = useMemo(
-    () =>
-      new Set(
-        materialLines.flatMap((line) =>
-          line.selectedLot ? [line.selectedLot.material_code] : []
-        )
-      ),
-    [materialLines]
+    () => new Set(actualLines.flatMap((line) =>
+      line.selectedLot ? [line.selectedLot.material_code] : [])),
+    [actualLines]
+  );
+  const flavourCodes = useMemo(
+    () => new Set(actualLines.flatMap((line) =>
+      line.selectedLot?.category_code === "FLAVOURING"
+        ? [line.selectedLot.material_code] : [])),
+    [actualLines]
   );
   const missingCodes = [...expectedCodes].filter((code) => !actualCodes.has(code));
-  const unexpectedCodes = [...actualCodes].filter((code) => !expectedCodes.has(code));
+  if (flavourRequired && flavourCodes.size === 0) missingCodes.push("FLAVOUR_REQUIRED");
+  const unexpectedCodes = [...actualCodes].filter(
+    (code) => !permittedCodes.has(code) && !(flavourSlot && flavourCodes.has(code))
+  );
+  const multipleFlavours = Boolean(flavourSlot && flavourCodes.size > 1);
   const inactiveProduct = selectedProduct?.status === "INACTIVE";
   const productControlsApply =
     !cancelledMode &&
@@ -162,7 +188,7 @@ export default function BatchIssueCreateModal({
     (consumptionType === "USAGE" || consumptionType === "R_AND_D");
   const hasComplianceProblem =
     productControlsApply &&
-    (inactiveProduct || missingCodes.length > 0 || unexpectedCodes.length > 0);
+    (inactiveProduct || missingCodes.length > 0 || unexpectedCodes.length > 0 || multipleFlavours);
   const displayComplianceProblem = complianceReviewed && hasComplianceProblem;
 
   useEffect(() => {
@@ -184,6 +210,8 @@ export default function BatchIssueCreateModal({
     setInactiveOverrideReason("");
     setMaterialLines([newLine("material")]);
     setPackagingLines([newLine("packaging")]);
+    setFlavourLines([newLine("flavour")]);
+    setIncludeOptionalFlavour(false);
     setSubmitError(null);
     setComplianceReviewed(false);
     setPolicyError(null);
@@ -230,6 +258,7 @@ export default function BatchIssueCreateModal({
     };
     setMaterialLines(refreshSelectedLots);
     setPackagingLines(refreshSelectedLots);
+    setFlavourLines(refreshSelectedLots);
   }, [open, lotBalances]);
 
   useBackgroundRefresh(
@@ -248,6 +277,8 @@ export default function BatchIssueCreateModal({
 
   const chooseProduct = (code: string) => {
     setProductCode(code);
+    setFlavourLines([newLine("flavour")]);
+    setIncludeOptionalFlavour(false);
     setApproveRejected(false);
     setRejectionReason("");
     setComplianceReviewed(false);
@@ -267,6 +298,8 @@ export default function BatchIssueCreateModal({
     setComplianceReviewed(false);
     setMaterialLines([newLine("material")]);
     setPackagingLines([newLine("packaging")]);
+    setFlavourLines([newLine("flavour")]);
+    setIncludeOptionalFlavour(false);
   };
 
   const blockedReason = (lot: LotBalance) => {
@@ -292,17 +325,26 @@ export default function BatchIssueCreateModal({
     const update = (current: StockUseLine[]) =>
       current.map((line) => (line.clientId === id ? { ...line, ...patch } : line));
     if (section === "packaging") setPackagingLines(update);
+    else if (section === "flavour") setFlavourLines(update);
     else setMaterialLines(update);
   };
 
   const suggestionsFor = (section: StockUseSection, line: StockUseLine) => {
     if (!line.lotSearch.trim() || line.selectedLot) return [];
     const query = line.lotSearch.trim().toLowerCase();
-    const stock =
-      section === "packaging" ? selectablePackagingLots : selectableMaterialLots;
+    const stock = section === "packaging" ? selectablePackagingLots : selectableMaterialLots;
     return stock
-      // Lot number is the only permitted search key for consumption selection.
-      .filter((lot) => lot.lot_number.toLowerCase().includes(query))
+      .filter((lot) => section === "flavour"
+        ? lot.category_code === "FLAVOURING"
+        : section === "material" && flavourSlot
+          ? lot.category_code !== "FLAVOURING"
+          : true)
+      .filter((lot) =>
+        lot.lot_number.toLowerCase().includes(query) ||
+        (lot.category_code === "FLAVOURING" &&
+          (lot.material_name.toLowerCase().includes(query) ||
+           lot.material_code.toLowerCase().includes(query)))
+      )
       .slice(0, 18);
   };
 
@@ -314,7 +356,7 @@ export default function BatchIssueCreateModal({
     const blocked = blockedReason(lot);
     if (blocked) return updateLine(section, line.clientId, { error: blocked });
     if (
-      [...materialLines, ...packagingLines].some(
+      [...materialLines, ...packagingLines, ...flavourLines].some(
         (other) =>
           other.clientId !== line.clientId &&
           other.selectedLot?.material_lot_id === lot.material_lot_id
@@ -372,7 +414,8 @@ export default function BatchIssueCreateModal({
       section: StockUseSection
     ) =>
       current.map((line, index) => {
-        const label = section === "packaging" ? "Packaging entry" : "Material entry";
+        const label = section === "packaging" ? "Packaging entry" :
+          section === "flavour" ? "Flavour entry" : "Material entry";
         let error: string | null = null;
         if (!line.selectedLot) error = `${label} ${index + 1}: select a lot.`;
         else if (seen.has(line.selectedLot.material_lot_id)) {
@@ -382,6 +425,11 @@ export default function BatchIssueCreateModal({
           !isPackagingStock(line.selectedLot)
         ) {
           error = `${label} ${index + 1}: select packaging stock.`;
+        } else if (
+          section === "flavour" &&
+          line.selectedLot.category_code !== "FLAVOURING"
+        ) {
+          error = `${label} ${index + 1}: select a Flavouring material.`;
         } else if (
           section === "material" &&
           isPackagingStock(line.selectedLot)
@@ -400,6 +448,9 @@ export default function BatchIssueCreateModal({
         return { ...line, error };
       });
     setMaterialLines(validateLines(materialLines, "material"));
+    if (showBatchFields && flavourSlot && flavourIncluded) {
+      setFlavourLines(validateLines(flavourLines, "flavour"));
+    }
     if (showBatchFields) {
       setPackagingLines(validateLines(packagingLines, "packaging"));
     }
@@ -496,7 +547,7 @@ export default function BatchIssueCreateModal({
             rejection_reason: hasComplianceProblem
               ? rejectionReason.trim() || null
               : null,
-            items: materialLines.map((line) => ({
+            items: actualLines.map((line) => ({
               material_code: line.selectedLot!.material_code,
               lot_number: line.selectedLot!.lot_number,
               material_lot_id: line.selectedLot!.material_lot_id,
@@ -531,8 +582,11 @@ export default function BatchIssueCreateModal({
     sectionLines: StockUseLine[]
   ) => {
     const packagingSection = section === "packaging";
-    const entryLabel = packagingSection ? "Packaging entry" : "Material entry";
-    const selectedLabel = packagingSection ? "Packaging" : "Material";
+    const flavourSection = section === "flavour";
+    const entryLabel = packagingSection ? "Packaging entry" :
+      flavourSection ? "Flavour entry" : "Material entry";
+    const selectedLabel = packagingSection ? "Packaging" :
+      flavourSection ? "Flavouring" : "Material";
 
     return (
       <section className="issue-batch-section">
@@ -557,7 +611,8 @@ export default function BatchIssueCreateModal({
                 complianceReviewed &&
                 lot &&
                 productControlsApply &&
-                !expectedCodes.has(lot.material_code)
+                !permittedCodes.has(lot.material_code) &&
+                !(flavourSlot && lot.category_code === "FLAVOURING")
             );
             return (
               <div
@@ -581,6 +636,7 @@ export default function BatchIssueCreateModal({
                         const remove = (current: StockUseLine[]) =>
                           current.filter((item) => item.clientId !== line.clientId);
                         if (packagingSection) setPackagingLines(remove);
+                        else if (flavourSection) setFlavourLines(remove);
                         else setMaterialLines(remove);
                       }}
                     >
@@ -591,7 +647,7 @@ export default function BatchIssueCreateModal({
 
                 <div className="issue-material-grid">
                   <div className="form-group">
-                    <label className="label">Lot number</label>
+                    <label className="label">{flavourSection ? "Flavour material / lot" : "Lot number"}</label>
                     <div className="typeahead-wrap">
                       <input
                         className="input"
@@ -604,7 +660,9 @@ export default function BatchIssueCreateModal({
                             error: null,
                           })
                         }
-                        placeholder="Start typing the receipt lot number…"
+                        placeholder={flavourSection
+                          ? "Type flavour name to see available lots…"
+                          : "Start typing the receipt lot number…"}
                       />
                       {suggestions.length > 0 && (
                         <div className="typeahead-dropdown issue-lot-dropdown">
@@ -621,7 +679,9 @@ export default function BatchIssueCreateModal({
                                 onClick={() => selectLot(section, line, suggestion)}
                               >
                                 <div className="typeahead-main">
-                                  {suggestion.lot_number} — {suggestion.material_name} (
+                                  {flavourSection
+                                    ? `${suggestion.material_name} — Lot ${suggestion.lot_number}`
+                                    : `${suggestion.lot_number} — ${suggestion.material_name}`} (
                                   {suggestion.material_code})
                                 </div>
                                 <div className="typeahead-meta">
@@ -693,12 +753,14 @@ export default function BatchIssueCreateModal({
             setRejectionReason("");
             if (packagingSection) {
               setPackagingLines((current) => [...current, newLine("packaging")]);
+            } else if (flavourSection) {
+              setFlavourLines((current) => [...current, newLine("flavour")]);
             } else {
               setMaterialLines((current) => [...current, newLine("material")]);
             }
           }}
         >
-          ＋ Add {packagingSection ? "packaging" : "material"}
+          ＋ Add {packagingSection ? "packaging" : flavourSection ? "flavour lot" : "material"}
         </button>
       </section>
     );
@@ -913,6 +975,31 @@ export default function BatchIssueCreateModal({
               materialLines
             )}
 
+          {!cancelledMode && showBatchFields && flavourSlot && (
+            <>
+              {!flavourRequired && (
+                <section className="issue-batch-section">
+                  <label className="product-material-option">
+                    <input type="checkbox" checked={includeOptionalFlavour}
+                      onChange={event => {
+                        setIncludeOptionalFlavour(event.target.checked);
+                        setFlavourLines([newLine("flavour")]);
+                        setComplianceReviewed(false);
+                        setApproveRejected(false);
+                      }} />
+                    Add optional flavouring (if used in this batch)
+                  </label>
+                </section>
+              )}
+              {flavourIncluded && renderStockUseSection(
+                "flavour",
+                flavourRequired ? "Flavouring — required" : "Flavouring — optional",
+                "Search by flavour material name. Choose the exact lot and enter quantity consumed.",
+                flavourLines
+              )}
+            </>
+          )}
+
           {!cancelledMode &&
             showBatchFields &&
             renderStockUseSection(
@@ -931,6 +1018,9 @@ export default function BatchIssueCreateModal({
               )}
               {!cancelledMode && unexpectedCodes.length > 0 && (
                 <div>Materials not configured for this product: <strong>{unexpectedCodes.join(", ")}</strong></div>
+              )}
+              {!cancelledMode && multipleFlavours && (
+                <div>Only one distinct flavour material is allowed for a generic flavour slot.</div>
               )}
               {canApproveRejectedBatch ? (
                 <>
@@ -991,7 +1081,7 @@ export default function BatchIssueCreateModal({
                   : displayComplianceProblem
                     ? "Approve as rejected batch"
                     : showBatchFields
-                      ? `Post consumption (${materialLines.length} material + ${packagingLines.length} packaging)`
+                      ? `Post consumption (${actualLines.length} material + ${packagingLines.length} packaging)`
                       : `Post consumption (${materialLines.length} line${materialLines.length === 1 ? "" : "s"})`}
             </button>
           </div>
