@@ -23,7 +23,7 @@ def read_formula(db: Session, product_id: int, version: str) -> dict:
     lines = db.execute(text("""
         SELECT material_id, material_sequence, source_material_name, material_strength,
                master_formula_raw, quantity_type, quantity_value, quantity_unit,
-               qs_target_value, qs_target_unit, conditional_material
+               qs_target_value, qs_target_unit, conditional_material, ingredient_code
         FROM product_formula_lines WHERE formula_version_id=:id ORDER BY material_sequence
     """), {"id": header["id"]}).mappings().all()
     return {"formula_basis": header["formula_basis"], "formula_lines": [
@@ -38,9 +38,15 @@ def save_formula(db: Session, product_id: int, version: str, basis: str,
         raise HTTPException(400, "BMR version is required when saving a formula")
     if not lines:
         raise HTTPException(400, "Formula cannot be empty")
-    ids = [line.material_id for line in lines]
-    if set(ids) != expected_ids:
-        raise HTTPException(400, "Formula materials must match selected mandatory materials exactly")
+    ids = [line.material_id for line in lines if line.material_id is not None]
+    if len(ids) != len(set(ids)) or set(ids) != expected_ids:
+        raise HTTPException(400, "Formula materials must match selected product materials exactly")
+    slots = [line.ingredient_code for line in lines if line.ingredient_code]
+    if len(slots) > 1:
+        raise HTTPException(400, "Only one generic flavour slot is permitted per formula")
+    for line in lines:
+        if line.ingredient_code and line.conditional_material != (line.ingredient_code == "FLAVOUR_OPTIONAL"):
+            raise HTTPException(400, "Generic flavour optionality conflicts with its identifier")
     sequences = [line.material_sequence for line in lines]
     if len(sequences) != len(set(sequences)):
         raise HTTPException(400, "Duplicate material sequence")
@@ -69,8 +75,8 @@ def save_formula(db: Session, product_id: int, version: str, basis: str,
             INSERT INTO product_formula_lines
             (formula_version_id,material_id,material_sequence,source_material_name,
              material_strength,master_formula_raw,quantity_type,quantity_value,
-             quantity_unit,qs_target_value,qs_target_unit,conditional_material)
-            VALUES (:fid,:mid,:seq,:name,:strength,:raw,:qtype,:qty,:unit,:qs,:qsunit,:cond)
+             quantity_unit,qs_target_value,qs_target_unit,conditional_material,ingredient_code)
+            VALUES (:fid,:mid,:seq,:name,:strength,:raw,:qtype,:qty,:unit,:qs,:qsunit,:cond,:slot)
         """), {"fid":existing_id,"mid":line.material_id,"seq":line.material_sequence,
                "name":line.source_material_name or "",
                "strength":line.material_strength or "",
@@ -80,4 +86,5 @@ def save_formula(db: Session, product_id: int, version: str, basis: str,
                "unit":line.quantity_unit or "",
                "qs":line.qs_target_value,
                "qsunit":line.qs_target_unit or "",
-               "cond":bool(line.conditional_material)})
+               "cond":bool(line.conditional_material),
+               "slot":line.ingredient_code})

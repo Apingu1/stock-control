@@ -233,6 +233,28 @@ def _expected_material_codes(db: Session, product: Product) -> set[str]:
     return {row[0] for row in rows}
 
 
+def _formula_requirements(db: Session, product: Product) -> tuple[set[str], set[str], str | None]:
+    """Required and permitted fixed materials plus the current-version flavour slot.
+
+    Products without an imported/saved formula retain the historical mandatory
+    membership behaviour. Only current BMR version lines affect compliance.
+    """
+    configured = _expected_material_codes(db, product)
+    rows = db.execute(text("""
+        SELECT pfl.conditional_material, pfl.ingredient_code, m.material_code
+        FROM product_formula_versions pfv
+        JOIN product_formula_lines pfl ON pfl.formula_version_id = pfv.id
+        LEFT JOIN materials m ON m.id = pfl.material_id
+        WHERE pfv.product_id=:product_id AND pfv.version_number=:version
+    """), {"product_id": product.id, "version": product.version_number}).mappings().all()
+    if not rows:
+        return configured, configured, None
+    required = {r["material_code"] for r in rows
+                if r["material_code"] and not r["conditional_material"]}
+    flavour_slot = next((r["ingredient_code"] for r in rows if r["ingredient_code"]), None)
+    return required, configured, flavour_slot
+
+
 def _batch_snapshot(batch: ConsumptionBatch) -> dict:
     return {
         "consumption_group_id": batch.consumption_group_id,
@@ -703,11 +725,22 @@ def create_issue_batch(
                 ),
             )
 
-    expected_codes = _expected_material_codes(db, product) if product else set()
+    required_codes, permitted_codes, flavour_slot = (
+        _formula_requirements(db, product) if product else (set(), set(), None)
+    )
     actual_codes = {item.material_code for item in payload.items}
-    missing_codes = sorted(expected_codes - actual_codes) if product else []
-    unexpected_codes = sorted(actual_codes - expected_codes) if product else []
+    flavour_codes = {
+        code for code in actual_codes
+        if materials_by_code[code].category_code == "FLAVOURING"
+    }
+    missing_codes = sorted(required_codes - actual_codes) if product else []
+    if flavour_slot == "FLAVOUR_REQUIRED" and not flavour_codes:
+        missing_codes.append("FLAVOUR_REQUIRED")
+    unexpected_codes = sorted(actual_codes - permitted_codes -
+                              (flavour_codes if flavour_slot else set())) if product else []
     compliance_triggers: list[str] = []
+    if flavour_slot and len(flavour_codes) > 1:
+        compliance_triggers.append("MULTIPLE_FLAVOURS")
     if product and product.status != "ACTIVE":
         compliance_triggers.append("PRODUCT_INACTIVE")
     if missing_codes:

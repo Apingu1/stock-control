@@ -12,6 +12,7 @@ ALLOWED_CATEGORY_TYPES: dict[str, frozenset[str]] = {
     "CREAMS_OINTMENTS": frozenset({"LICENSED FP", "EXCIPIENT"}),
     "AMPOULES": frozenset({"API", "LICENSED FP", "EXCIPIENT"}),
     "PACKAGING": frozenset({"NA"}),
+    "FLAVOURING": frozenset({"NA"}),
 }
 
 STOCK_UOMS = frozenset({"G", "MG", "ML", "L", "TAB", "CAP", "AMP", "UNIT"})

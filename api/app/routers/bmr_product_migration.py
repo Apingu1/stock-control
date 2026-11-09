@@ -31,6 +31,7 @@ P_REQUIRED = {
     "product_code", "product_name_bmr", "bmr_version", "bmr_shelf_life_days",
     "licensed_status", "medisource_line", "formula_basis"
 }
+FLAVOUR_SLOTS = frozenset({"FLAVOUR_OPTIONAL", "FLAVOUR_REQUIRED"})
 F_REQUIRED = {
     "product_code", "bmr_version", "material_sequence", "material_name",
     "master_formula_raw", "quantity_type", "material_strength", "formula_basis"
@@ -102,6 +103,12 @@ def _num(value: str):
 def _validate(payload: ImportPreview, db: Session):
     if db.execute(text("SELECT to_regclass('public.product_formula_versions')")).scalar() is None:
         raise HTTPException(503, "Apply database migration 130_product_formula_import.sql first")
+    if not db.execute(text("""
+        SELECT EXISTS(SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='product_formula_lines'
+        AND column_name='ingredient_code')
+    """)).scalar():
+        raise HTTPException(503, "Apply database migration 131_flavouring_formula_slots.sql first")
     ps = _read(payload.products_csv, P_REQUIRED, "Products.csv")
     fs = _read(payload.formulas_csv, F_REQUIRED, "Master_Formulas.csv")
     errors, warnings = [], []
@@ -160,7 +167,8 @@ def _validate(payload: ImportPreview, db: Session):
     existing = {
         p.product_code: p for p in db.query(Product).filter(Product.product_code.in_(codes)).all()
     }
-    raw_names = {f["material_name"].strip().casefold() for arr in lines.values() for _, f, _ in arr}
+    raw_names = {f["material_name"].strip().casefold() for arr in lines.values() for _, f, _ in arr
+                 if f["material_name"].strip().upper() not in FLAVOUR_SLOTS}
     found_materials = db.query(Material).filter(func.lower(Material.name).in_(raw_names)).all()
     by_name = defaultdict(list)
     for material in found_materials:
@@ -186,7 +194,23 @@ def _validate(payload: ImportPreview, db: Session):
                 errors.append({"file": "Products.csv", "row": rownum, "message": "Existing BMR version cannot be compared"})
                 continue
         used_ids, used_sequences, matched = set(), set(), []
+        flavour_slots = 0
         for line_no, f, seq in formula:
+            slot = f["material_name"].strip().upper()
+            if seq in used_sequences:
+                errors.append({"file": "Master_Formulas.csv", "row": line_no,
+                               "message": "Duplicate formula sequence"})
+            used_sequences.add(seq)
+            if slot in FLAVOUR_SLOTS:
+                flavour_slots += 1
+                if flavour_slots > 1:
+                    errors.append({"file": "Master_Formulas.csv", "row": line_no,
+                                   "message": "Only one generic flavour entry is allowed per product"})
+                if _yes(f.get("conditional_material", "")) != (slot == "FLAVOUR_OPTIONAL"):
+                    errors.append({"file": "Master_Formulas.csv", "row": line_no,
+                                   "message": f"{slot} contradicts conditional_material flag"})
+                matched.append((None, f, seq, slot))
+                continue
             candidates = by_name[f["material_name"].strip().casefold()]
             if len(candidates) != 1:
                 errors.append({"file": "Master_Formulas.csv", "row": line_no,
@@ -196,12 +220,11 @@ def _validate(payload: ImportPreview, db: Session):
             if material.status != "ACTIVE" or material.is_cancelled_bmr_marker:
                 errors.append({"file": "Master_Formulas.csv", "row": line_no,
                                "message": f"Material unavailable: {f['material_name']}"})
-            if seq in used_sequences:
+            if material.id in used_ids:
                 errors.append({"file": "Master_Formulas.csv", "row": line_no,
-                               "message": "Duplicate formula sequence"})
+                               "message": f"Duplicate material in formula: {material.name}"})
             used_ids.add(material.id)
-            used_sequences.add(seq)
-            matched.append((material, f, seq))
+            matched.append((material, f, seq, None))
         action = "UPDATE_TO_NEW_VERSION" if current else "CREATE"
         plan.append({"product_code": code, "version": ver, "action": action,
                      "material_count": len(formula)})
@@ -282,7 +305,7 @@ def commit(payload: ImportCommit,
                 r.material_id: r for r in db.query(ProductMaterial).filter(
                     ProductMaterial.product_id == current.id).all()
             }
-            required_ids = {m.id for m, _, _ in formula}
+            required_ids = {m.id for m, _, _, _ in formula if m is not None}
             for matid, relation in old_materials.items():
                 relation.is_active = matid in required_ids
                 relation.updated_by = user.username
@@ -298,17 +321,18 @@ def commit(payload: ImportCommit,
             """), {"pid":current.id,"ver":ver,"basis":p.get("formula_basis",""),
                    "bmr":p.get("bmr_file",""),"doc":p.get("bmr_document_number",""),
                    "actor":user.username}).scalar_one()
-            for mat, f, seq in formula:
+            for mat, f, seq, slot in formula:
                 db.execute(text("""
                     INSERT INTO product_formula_lines
                     (formula_version_id,material_id,material_sequence,source_material_name,
                      material_strength,master_formula_raw,quantity_type,quantity_value,
                      quantity_unit,qs_target_value,qs_target_unit,conditional_material,
-                     manufacturer_supplier,section4_table,section4_row)
+                     manufacturer_supplier,section4_table,section4_row,ingredient_code)
                     VALUES (:header,:material,:seq,:source_name,:strength,:raw,:qtype,:qty,
-                     :unit,:qs,:qsunit,:conditional,:supplier,:table,:row)
+                     :unit,:qs,:qsunit,:conditional,:supplier,:table,:row,:slot)
                 """), {
-                    "header":header,"material":mat.id,"seq":seq,
+                    "header":header,"material":mat.id if mat is not None else None,"seq":seq,
+                    "slot":slot,
                     "source_name":f["material_name"],"strength":f["material_strength"],
                     "raw":f["master_formula_raw"],"qtype":f["quantity_type"],
                     "qty":_num(f.get("quantity_value","")),
