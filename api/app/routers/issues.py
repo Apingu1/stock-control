@@ -5,7 +5,7 @@ from typing import List, Optional, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal, or_, select, text, union_all
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -157,7 +157,9 @@ def _enforce_issue_status_policy(
         return
     if lot.expiry_date and lot.expiry_date < date.today():
         raise HTTPException(status_code=400, detail=f"Lot {lot.lot_number} is expired")
-    if (lot.status or "").upper() == "AVAILABLE" and lot.expiry_date:
+    if lot.expiry_date and (
+        (lot.status or "").upper() == "AVAILABLE" or material.category_code == "FLAVOURING"
+    ):
         threshold = (
             db.query(ExpiryThresholdSetting)
             .filter(
@@ -170,6 +172,10 @@ def _enforce_issue_status_policy(
         days = (material.auto_quarantine_override_days
                 if material.auto_quarantine_override_days is not None
                 else threshold.threshold_days if threshold is not None else 0)
+        if material.category_code == "FLAVOURING":
+            # Flavouring is never eligible in the final day, even when general
+            # quarantine stock issuing is enabled. Extensions may be stricter.
+            days = max(1, days)
         if lot.expiry_date <= date.today() + timedelta(days=days):
             raise HTTPException(status_code=400, detail=(
                 f"Lot {lot.lot_number} is within the automatic quarantine window. "
@@ -231,6 +237,50 @@ def _expected_material_codes(db: Session, product: Product) -> set[str]:
         .all()
     )
     return {row[0] for row in rows}
+
+
+def _formula_requirements(db: Session, product: Product) -> tuple[set[str], set[str], str | None]:
+    """Required and permitted fixed materials plus the current-version flavour slot.
+
+    Products without an imported/saved formula retain the historical mandatory
+    membership behaviour. Only current BMR version lines affect compliance.
+    """
+    configured = _expected_material_codes(db, product)
+    rows = db.execute(text("""
+        SELECT pfl.conditional_material, pfl.ingredient_code, m.material_code
+        FROM product_formula_versions pfv
+        JOIN product_formula_lines pfl ON pfl.formula_version_id = pfv.id
+        LEFT JOIN materials m ON m.id = pfl.material_id
+        WHERE pfv.product_id=:product_id AND pfv.version_number=:version
+    """), {"product_id": product.id, "version": product.version_number}).mappings().all()
+    if not rows:
+        return configured, configured, None
+    required = {r["material_code"] for r in rows
+                if r["material_code"] and not r["conditional_material"]}
+    flavour_slot = next((r["ingredient_code"] for r in rows if r["ingredient_code"]), None)
+    return required, configured, flavour_slot
+
+
+def _assess_formula_compliance(
+    required: set[str], permitted: set[str], flavour_slot: str | None,
+    actual_codes: set[str], materials_by_code: dict[str, Material],
+) -> tuple[list[str], list[str], bool]:
+    """Assess current-version product membership using real stock identities.
+
+    A generic flavour slot accepts exactly one distinct FLAVOURING material,
+    which may be issued across more than one explicitly selected stock lot.
+    """
+    flavour_codes = {
+        code for code in actual_codes
+        if materials_by_code[code].category_code == "FLAVOURING"
+    }
+    missing = sorted(required - actual_codes)
+    if flavour_slot == "FLAVOUR_REQUIRED" and not flavour_codes:
+        missing.append("FLAVOUR_REQUIRED")
+    unexpected = sorted(actual_codes - permitted -
+                        (flavour_codes if flavour_slot else set()))
+    multiple = bool(flavour_slot and len(flavour_codes) > 1)
+    return missing, unexpected, multiple
 
 
 def _batch_snapshot(batch: ConsumptionBatch) -> dict:
@@ -703,11 +753,16 @@ def create_issue_batch(
                 ),
             )
 
-    expected_codes = _expected_material_codes(db, product) if product else set()
+    required_codes, permitted_codes, flavour_slot = (
+        _formula_requirements(db, product) if product else (set(), set(), None)
+    )
     actual_codes = {item.material_code for item in payload.items}
-    missing_codes = sorted(expected_codes - actual_codes) if product else []
-    unexpected_codes = sorted(actual_codes - expected_codes) if product else []
+    missing_codes, unexpected_codes, multiple_flavours = _assess_formula_compliance(
+        required_codes, permitted_codes, flavour_slot, actual_codes, materials_by_code
+    ) if product else ([], [], False)
     compliance_triggers: list[str] = []
+    if multiple_flavours:
+        compliance_triggers.append("MULTIPLE_FLAVOURS")
     if product and product.status != "ACTIVE":
         compliance_triggers.append("PRODUCT_INACTIVE")
     if missing_codes:
@@ -1084,57 +1139,76 @@ def create_cancelled_batch(
 @router.get("/", response_model=List[IssueOut])
 def list_issues(
     limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("issues.view")),
 ) -> List[IssueOut]:
-    stmt = (
-        select(StockTransaction, MaterialLot, Material)
-        .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
-        .join(Material, MaterialLot.material_id == Material.id)
-        .where(StockTransaction.txn_type == "ISSUE")
-        .order_by(StockTransaction.created_at.desc())
-        .limit(limit)
+    """Page the combined issue and cancelled-BMR ledger in database order.
+
+    The two event sources must be merged *before* applying offset/limit;
+    applying the page limit independently to each source would silently hide
+    older entries and misorder boundary pages.
+    """
+    history = union_all(
+        select(
+            StockTransaction.id.label("row_id"),
+            StockTransaction.created_at.label("at"),
+            literal("ISSUE").label("kind"),
+        ).where(StockTransaction.txn_type == "ISSUE"),
+        select(
+            ConsumptionBatch.id.label("row_id"),
+            ConsumptionBatch.created_at.label("at"),
+            literal("CANCELLED").label("kind"),
+        ).where(ConsumptionBatch.disposition == "CANCELLED"),
+    ).subquery("history")
+
+    page = db.execute(
+        select(history.c.kind, history.c.row_id)
+        .order_by(history.c.at.desc(), history.c.kind.desc(), history.c.row_id.desc())
+        .offset(offset).limit(limit)
+    ).all()
+
+    issue_ids = [row_id for kind, row_id in page if kind == "ISSUE"]
+    cancelled_ids = [row_id for kind, row_id in page if kind == "CANCELLED"]
+
+    issue_rows = (
+        db.execute(
+            select(StockTransaction, MaterialLot, Material)
+            .join(MaterialLot, StockTransaction.material_lot_id == MaterialLot.id)
+            .join(Material, MaterialLot.material_id == Material.id)
+            .where(StockTransaction.id.in_(issue_ids))
+        ).all()
+        if issue_ids else []
     )
-
-    rows = db.execute(stmt).all()
-    results: List[IssueOut] = []
-
     group_ids = {
-        txn.consumption_group_id
-        for txn, _, _ in rows
-        if txn.consumption_group_id
+        txn.consumption_group_id for txn, _, _ in issue_rows if txn.consumption_group_id
     }
     batches = (
         db.query(ConsumptionBatch)
-        .filter(ConsumptionBatch.consumption_group_id.in_(group_ids))
-        .all()
-        if group_ids
-        else []
+        .filter(ConsumptionBatch.consumption_group_id.in_(group_ids)).all()
+        if group_ids else []
     )
     batch_by_group = {batch.consumption_group_id: batch for batch in batches}
-
-    for txn, lot, material in rows:
-        results.append(
-            _issue_out(
-                txn,
-                lot,
-                material,
-                batch=batch_by_group.get(txn.consumption_group_id or ""),
-            )
+    issue_by_id = {
+        txn.id: _issue_out(
+            txn, lot, material,
+            batch=batch_by_group.get(txn.consumption_group_id or ""),
         )
+        for txn, lot, material in issue_rows
+    }
 
     cancelled_batches = (
-        db.query(ConsumptionBatch)
-        .filter(ConsumptionBatch.disposition == "CANCELLED")
-        .order_by(ConsumptionBatch.created_at.desc())
-        .limit(limit)
-        .all()
+        db.query(ConsumptionBatch).filter(ConsumptionBatch.id.in_(cancelled_ids)).all()
+        if cancelled_ids else []
     )
-    results.extend(_cancelled_issue_out(batch) for batch in cancelled_batches)
-    results.sort(key=lambda issue: issue.created_at, reverse=True)
+    cancelled_by_id = {
+        batch.id: _cancelled_issue_out(batch) for batch in cancelled_batches
+    }
 
-    return results[:limit]
-
+    return [
+        issue_by_id[row_id] if kind == "ISSUE" else cancelled_by_id[row_id]
+        for kind, row_id in page
+    ]
 
 @router.put("/{issue_id}", response_model=IssueOut)
 def update_issue(

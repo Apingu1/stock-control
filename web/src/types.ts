@@ -59,7 +59,8 @@ export type ProductMaterial = {
 };
 
 export type ProductFormulaLine = {
-  material_id: number;
+  material_id: number | null;
+  ingredient_code: "FLAVOUR_OPTIONAL" | "FLAVOUR_REQUIRED" | null;
   material_sequence: number;
   source_material_name: string;
   material_strength: string;

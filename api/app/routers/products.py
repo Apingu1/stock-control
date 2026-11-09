@@ -173,6 +173,8 @@ def list_products(
     storage_condition: str | None = Query(None),
     controlled_drug_status: str | None = Query(None),
     export_status: str | None = Query(None),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("products.view")),
 ) -> List[ProductOut]:
@@ -208,7 +210,8 @@ def list_products(
         if value and value.strip():
             query = query.filter(column == value.strip().upper())
 
-    return [_out(db, product) for product in query.order_by(Product.product_code.asc()).all()]
+    page = query.order_by(Product.product_code.asc(), Product.id.asc()).offset(offset).limit(limit).all()
+    return [_out(db, product) for product in page]
 
 
 @router.post("/", response_model=ProductOut, status_code=201)

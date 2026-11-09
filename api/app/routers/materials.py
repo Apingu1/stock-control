@@ -2,7 +2,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,31 @@ def _translate_integrity_error(e: IntegrityError):
         raise HTTPException(status_code=409, detail="Duplicate record (unique constraint hit)")
     raise HTTPException(status_code=400, detail="Database integrity error")
 
+def _next_material_code(db: Session) -> str:
+    """Find the next MAT identifier from the numeric maximum in the live catalogue.
+
+    Includes migrated records and ignores system markers such as Cancelled BMR.
+    """
+    highest = db.execute(
+        text(
+            """
+            SELECT COALESCE(MAX(SUBSTRING(material_code FROM 4)::BIGINT), 0)
+            FROM materials
+            WHERE material_code ~ '^MAT[0-9]+$'
+            """
+        )
+    ).scalar_one()
+    return f"MAT{int(highest) + 1:04d}"
+
+
+@router.get("/next-code")
+def preview_next_material_code(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("materials.create")),
+):
+    # Preview is advisory; POST determines the final code atomically.
+    return {"material_code": _next_material_code(db)}
+
 
 @router.post("/", response_model=MaterialOut, status_code=201)
 def create_material(
@@ -57,8 +82,13 @@ def create_material(
     _ensure_lookup_exists(db, MaterialType, body.type_code, "Type")
     _ensure_lookup_exists(db, Uom, body.base_uom_code, "UOM")
 
-    material_code = body.material_code.strip()
     material_name = body.name.strip()
+    material_code = (body.material_code or "").strip()
+    if not material_code:
+        # PostgreSQL transaction advisory lock: never issue the same automatic
+        # MAT code to two simultaneous material creation requests.
+        db.execute(text("SELECT pg_advisory_xact_lock(62534593)"))
+        material_code = _next_material_code(db)
     try:
         validate_material_classification(
             body.category_code, body.type_code, body.base_uom_code,

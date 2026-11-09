@@ -11,6 +11,7 @@ network share (such as N:). The package contains:
   03 - STOP SERVER.bat
   04 - SERVER STATUS.bat
   05 - PUBLISH CLIENT DEPLOYMENT.bat
+  06 - UPDATE SERVER.bat (existing installations, preserves data)
   CLIENT DEPLOYMENT
   Administration & Recovery
   HOST MANAGEMENT
@@ -49,6 +50,37 @@ On the Windows VM run 05 - PUBLISH CLIENT DEPLOYMENT.bat from the package root
 under an account with write access to the shared release folder. A READY
 marker must be present before distributing the client installer.
 Never distribute server private .key files.
+
+UPDATE AN EXISTING SERVER (NO REINSTALL)
+----------------------------------------
+From the newest approved StkFlo-Windows-Installation.zip, extract the
+complete release to the approved network share (N: or UNC).
+On the existing Windows VM, double-click:
+  06 - UPDATE SERVER.bat
+This updater stages files locally before administrator elevation, opens a
+visible administrator CMD window (same as the original StkFlo installer),
+verifies that the existing server and PostgreSQL container are running,
+and runs the
+existing verified StkFlo backup engine BEFORE any code is overwritten,
+saves a source rollback copy, then rebuilds API and web containers.
+
+The updater specifically DOES NOT run 01 - INSTALL SERVER.bat, uninstall,
+database reset, Docker volume removal, certificate regeneration or admin
+password bootstrap. Existing records, .env credentials, TLS keys and client
+deployment configuration remain on the installed VM. It will stop on a
+failed database backup, Docker validation, image build or health check.
+See deployment\\update-history for logs, and
+deployment\\update-source-rollback for pre-update source copies.
+
+Run updates in an approved maintenance window. Check backup location and
+successful recovery tests before go-live. If the update fails, the
+administrator CMD window stays open and prints the failure. Read the full
+transcript under deployment\update-history before retrying. The updater
+never runs the fresh-install routine as a fallback.
+After a successful update, verify
+the dashboard, all materials, new-material numbering, receipts, consumption,
+lots and Product BMR records on the same database. Client reinstall is NOT
+required for a standard server-only application update.
 
 CLIENT INSTALLATION
 -------------------

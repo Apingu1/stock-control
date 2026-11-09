@@ -1,0 +1,43 @@
+name: StkFlo materials catalogue regression
+
+on:
+  pull_request:
+    paths:
+      - "api/app/routers/materials.py"
+      - "api/app/schemas.py"
+      - "api/tests/test_material_auto_code.py"
+      - "api/tests/test_operational_pagination.py"
+      - "api/app/routers/receipts.py"
+      - "api/app/routers/issues.py"
+      - "api/app/routers/lot_balances.py"
+      - "api/app/routers/products.py"
+      - "api/app/routers/quarantine.py"
+      - "web/src/components/quarantine/QuarantineView.tsx"
+      - "web/src/utils/pagination.ts"
+      - "web/src/utils/materials.ts"
+      - "web/src/hooks/useStockData.ts"
+      - "web/src/App.tsx"
+      - ".github/workflows/stkflo-materials-catalogue-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  material-code-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install API dependencies
+        run: python -m pip install -r api/requirements.txt
+      - name: Check Python syntax
+        run: python -m compileall -q api/app api/tests
+      - name: Run materials migration and automatic-code regressions
+        working-directory: api
+        run: |
+          python -m unittest discover -s tests -p 'test_material_library_migration.py' -v
+          python -m unittest discover -s tests -p 'test_material_auto_code.py' -v
+          python -m unittest discover -s tests -p 'test_operational_pagination.py' -v

@@ -72,6 +72,9 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
 
   useEffect(() => {
     if (!open) return;
+    // A preview from a previously opened draft must never overwrite the
+    // current draft's code if requests complete out of order.
+    let cancelled = false;
 
     setMaterialCode(initial?.material_code ?? "");
     setName(initial?.name ?? "");
@@ -104,15 +107,19 @@ const MaterialModal: React.FC<MaterialFormProps> = ({
       setMaterialCode("Loading next code…");
       void (async () => {
         try {
-          const response = await apiFetch("/materials/next-code");
+          const response = await apiFetch("/materials/next-code", { cache: "no-store" });
           const preview = (await response.json()) as { material_code?: string };
-          setMaterialCode(preview.material_code || "Assigned automatically");
+          if (!cancelled) {
+            const valid = /^MAT\d{4,}$/.test(preview.material_code || "");
+            setMaterialCode(valid ? preview.material_code! : "Assigned automatically on save");
+          }
         } catch (previewError) {
           console.warn("Material code preview unavailable", previewError);
-          setMaterialCode("Assigned automatically");
+          if (!cancelled) setMaterialCode("Assigned automatically on save");
         }
       })();
     }
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial, mode]);
 

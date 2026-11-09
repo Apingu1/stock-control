@@ -260,6 +260,7 @@ def list_lot_balances(
     search: Optional[str] = Query(None, description="Search code/name/lot (ILIKE)"),
     include_zero: bool = Query(False, description="Include lots with zero balance"),
     limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ):
     # ✅ Best-effort only; never block the page if auto-quarantine fails
     try:
@@ -316,8 +317,9 @@ def list_lot_balances(
         """
         params["search"] = f"%{search}%"
 
-    sql += " ORDER BY v.material_code, v.lot_number, v.status LIMIT :limit"
+    sql += " ORDER BY v.material_code, v.lot_number, v.status, v.material_lot_id LIMIT :limit OFFSET :offset"
     params["limit"] = limit
+    params["offset"] = offset
 
     rows = db.execute(text(sql), params).mappings().all()
 

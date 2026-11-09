@@ -5,6 +5,7 @@ export const MATERIAL_CATEGORY_OPTIONS: string[] = [
   "CREAMS_OINTMENTS",
   "AMPOULES",
   "PACKAGING",
+  "FLAVOURING",
 ];
 
 export const MATERIAL_TYPE_OPTIONS: string[] = [
@@ -21,6 +22,7 @@ export const MATERIAL_CATEGORY_TYPES: Record<string, string[]> = {
   CREAMS_OINTMENTS: ["LICENSED FP", "EXCIPIENT"],
   AMPOULES: ["API", "LICENSED FP", "EXCIPIENT"],
   PACKAGING: ["NA"],
+  FLAVOURING: ["NA"],
 };
 
 export const BATCH_SIZE_UOM_OPTIONS = ["mL", "L", "g", "mg", "Tabs", "Caps"] as const;

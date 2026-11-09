@@ -1,0 +1,111 @@
+name: StkFlo Windows Safe Update Validation
+
+on:
+  push:
+    branches:
+      - fix/stkflo-materials-pagination-and-auto-code
+  pull_request:
+    paths:
+      - "packaging/windows-commercial/**"
+      - "windows/Build-CommercialPackage.ps1"
+      - "docs/windows/IT_INSTALLATION_GUIDE.txt"
+      - ".github/workflows/stkflo-windows-safe-update.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify-updater:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse updater PowerShell on Windows
+        shell: powershell
+        run: |
+          $files = @(
+            'packaging/windows-commercial/Update-Server.ps1',
+            'windows/Build-CommercialPackage.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count) { throw "$file : $($errors | Out-String)" }
+          }
+      - name: Set up Node for frontend validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Validate React production build
+        shell: pwsh
+        working-directory: web
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build complete commercial Windows ZIP
+        shell: powershell
+        run: |
+          & .\windows\Build-CommercialPackage.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify release updater and non-destructive safeguards
+        shell: powershell
+        run: |
+          $root = 'release\StkFlo'
+          foreach ($f in @(
+            '06 - UPDATE SERVER.bat',
+            'Support\Update-Server.ps1',
+            'System\api\app\routers\materials.py',
+            'System\web\src\utils\pagination.ts'
+            'System\db\init\131_flavouring_formula_slots.sql',
+            'System\web\src\components\products\ProductListView.tsx',
+            'System\web\src\components\modals\BatchIssueCreateModal.tsx'
+          )) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root $f))) {
+              throw "Commercial package missing: $f"
+            }
+          }
+          $launcher = Get-Content (Join-Path $root '06 - UPDATE SERVER.bat') -Raw
+          if ($launcher -notmatch 'Start-Process -FilePath .*06 - UPDATE SERVER\.bat' -or
+              $launcher -notmatch 'if /I "%~1"=="--staged"' -or
+              $launcher -notmatch 'pause') {
+            throw 'Server updater must use an elevated CMD batch window and remain open on errors.'
+          }
+          $updater = Get-Content (Join-Path $root 'Support\Update-Server.ps1') -Raw
+          if ($updater.IndexOf('Start-Transcript') -gt $updater.IndexOf('docker.exe info')) {
+            throw 'Preflight failures must be logged before the Docker check.'
+          }
+          if ($updater -match 'docker\.exe\s+@baseArgs\s+ps\s+-q\s+db\s*\|\s*Select-Object\s+-First') {
+            throw 'Native Docker database lookup must not be prematurely terminated by Select-Object -First.'
+          }
+          if ($updater -notmatch 'ps --status running -q db' -or
+              $updater -notmatch 'dbLookupExit' -or
+              $updater -notmatch 'Existing database container confirmed') {
+            throw 'Read-only database preflight must capture the complete Docker process output and exit status.'
+          }
+          if ($updater -notmatch 'Automatic-Backup.ps1' -or
+              $updater -notmatch 'update-source-rollback' -or
+              $updater -notmatch 'build api web' -or
+              $updater -notmatch 'up -d --no-build') {
+            throw 'Required backup-first, source rollback and rebuild safeguards missing.'
+          }
+          if ($updater -match '(?m)^\s*(&\s*)?docker(?:\.exe)?\s+.*\b(down|volume\s+rm|system\s+prune)\b') {
+            throw 'Updater must never execute destructive Docker operations.'
+          }
+          if (-not (Test-Path -LiteralPath 'release\StkFlo-Windows-Installation.zip')) {
+            throw 'No distributable Windows installer ZIP was produced.'
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StkFlo-Windows-Installation-With-Safe-Updater
+          path: release/StkFlo-Windows-Installation.zip
+          if-no-files-found: error

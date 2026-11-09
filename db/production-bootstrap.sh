@@ -9,7 +9,7 @@ DB_PORT="${DB_PORT:-5432}"
 
 export PGPASSWORD="$DB_PASSWORD"
 PSQL=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
-BOOTSTRAP_VERSION="production-schema-v7-bmr-formula-migration"
+BOOTSTRAP_VERSION="production-schema-v8-flavouring-formula-slots"
 
 marker_exists="$(${PSQL[@]} -tAc "SELECT CASE WHEN to_regclass('public.deployment_schema_bootstrap') IS NULL THEN 0 ELSE 1 END;")"
 if [[ "$marker_exists" == "1" ]]; then
@@ -19,12 +19,19 @@ if [[ "$marker_exists" == "1" ]]; then
     exit 0
   fi
 
-  # Upgrading a running v6 database to v7 is an additive BMR schema change.
-  # Do not rerun old installation scripts or drop/recreate operational views.
+  # Upgrade existing deployments additively: do not rerun historical schema.
+  previous_v7="$("${PSQL[@]}" -tAc "SELECT COUNT(*) FROM deployment_schema_bootstrap WHERE version='production-schema-v7-bmr-formula-migration';")"
+  if [[ "$previous_v7" == "1" ]]; then
+    echo "Existing production v7 detected; applying flavouring schema only..."
+    "${PSQL[@]}" --single-transaction -f /sql/131_flavouring_formula_slots.sql
+    "${PSQL[@]}" -c "INSERT INTO deployment_schema_bootstrap(version) VALUES ('${BOOTSTRAP_VERSION}') ON CONFLICT (version) DO NOTHING;"
+    exit 0
+  fi
   previous_v6="$("${PSQL[@]}" -tAc "SELECT COUNT(*) FROM deployment_schema_bootstrap WHERE version='production-schema-v6-stkflo-inventory-integrity';")"
   if [[ "$previous_v6" == "1" ]]; then
     echo "Existing production v6 schema detected; applying the BMR-only upgrade..."
     "${PSQL[@]}" --single-transaction -f /sql/130_product_formula_import.sql
+    "${PSQL[@]}" --single-transaction -f /sql/131_flavouring_formula_slots.sql
     "${PSQL[@]}" -c "INSERT INTO deployment_schema_bootstrap(version) VALUES ('${BOOTSTRAP_VERSION}') ON CONFLICT (version) DO NOTHING;"
     echo "Additive BMR migration completed; existing product and inventory records preserved."
     exit 0

@@ -129,6 +129,9 @@ class MaterialBase(ApiBaseModel):
 
 
 class MaterialCreate(MaterialBase):
+    # A new material is allocated its MAT code by the server. Explicit codes
+    # remain accepted for backwards compatibility with existing API clients.
+    material_code: Optional[str] = None
     created_by: Optional[str] = None
 
 
@@ -168,7 +171,8 @@ class MaterialOut(MaterialBase):
 # --- Product List ------------------------------------------------------------
 
 class ProductFormulaLineIn(ApiBaseModel):
-    material_id: int
+    material_id: Optional[int] = None
+    ingredient_code: Optional[Literal["FLAVOUR_OPTIONAL", "FLAVOUR_REQUIRED"]] = None
     material_sequence: int = Field(ge=1)
     source_material_name: str = ""
     material_strength: str = ""
@@ -179,6 +183,15 @@ class ProductFormulaLineIn(ApiBaseModel):
     qs_target_value: Optional[Decimal] = Field(default=None, ge=0)
     qs_target_unit: str = ""
     conditional_material: bool = False
+
+    @model_validator(mode="after")
+    def validate_ingredient_slot(self) -> "ProductFormulaLineIn":
+        is_slot = self.ingredient_code is not None
+        if is_slot == (self.material_id is not None):
+            raise ValueError("Specify exactly one of material_id or ingredient_code")
+        if is_slot and self.conditional_material != (self.ingredient_code == "FLAVOUR_OPTIONAL"):
+            raise ValueError("Generic flavour optionality must match its identifier")
+        return self
 
 
 class ProductFormulaLineOut(ProductFormulaLineIn):
