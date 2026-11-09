@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import type { Material, Product } from "../../types";
+import type { Material, Product, ProductFormulaLine } from "../../types";
 import OperationalResultBar from "../ui/OperationalResultBar";
 import { apiFetch } from "../../utils/api";
 import ProductModal from "./ProductModal";
@@ -18,6 +18,66 @@ type Props = {
 
 const label = (value: string) => value.replaceAll("_", " ").replace("N A", "N/A");
 
+type MasterFormulaDisplayRow = {
+  key: string;
+  sequence: number;
+  materialCode: string;
+  materialName: string;
+  formula?: ProductFormulaLine;
+  genericFlavour: boolean;
+};
+
+const masterFormulaDisplayRows = (product: Product): MasterFormulaDisplayRow[] => {
+  const fixedRows: MasterFormulaDisplayRow[] = product.materials.map((material, index) => {
+    const formula = product.formula_lines.find((line) => line.material_id === material.id);
+    return {
+      key: `material-${material.id}`,
+      sequence: formula?.material_sequence ?? 10000 + index,
+      materialCode: material.material_code,
+      materialName: material.material_name,
+      formula,
+      genericFlavour: false,
+    };
+  });
+  const genericRows: MasterFormulaDisplayRow[] = product.formula_lines
+    .filter((line) =>
+      line.ingredient_code === "FLAVOUR_OPTIONAL" || line.ingredient_code === "FLAVOUR_REQUIRED"
+    )
+    .map((formula) => ({
+      key: `slot-${formula.ingredient_code}`,
+      sequence: formula.material_sequence,
+      materialCode: "—",
+      materialName: "Flavouring (any)",
+      formula,
+      genericFlavour: true,
+    }));
+  // Generic ingredients are versioned BMR rows, not stock-linked material
+  // records. Merge both sources and display them in BMR formula order.
+  return [...fixedRows, ...genericRows].sort(
+    (a, b) => a.sequence - b.sequence || a.key.localeCompare(b.key)
+  );
+};
+
+const formulaQuantity = (formula?: ProductFormulaLine) => {
+  if (!formula) return "Not recorded";
+  if (formula.master_formula_raw?.trim()) return formula.master_formula_raw;
+  if (formula.quantity_type?.toLowerCase().startsWith("qs")) {
+    return `q.s. to ${formula.qs_target_value ?? "—"} ${formula.qs_target_unit || ""}`.trim();
+  }
+  if (formula.quantity_value !== null && formula.quantity_value !== undefined) {
+    return `${formula.quantity_value} ${formula.quantity_unit || ""}`.trim();
+  }
+  return "Not recorded";
+};
+
+const formulaBasisDetails = (formula?: ProductFormulaLine) => {
+  if (!formula) return "—";
+  if (formula.quantity_type?.toLowerCase().startsWith("qs")) {
+    return `q.s. to ${formula.qs_target_value ?? "—"} ${formula.qs_target_unit || ""}`.trim();
+  }
+  return formula.quantity_type || formula.quantity_unit || "—";
+};
+
 export default function ProductListView({ products, materials, loading, error, canCreate, onNewProduct, canEdit, canChangeStatus, reload }: Props) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
@@ -34,7 +94,7 @@ export default function ProductListView({ products, materials, loading, error, c
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return products.filter((product) => {
-      const matchesSearch = !query || [product.product_code, product.product_name, product.reference, product.version_number, ...product.materials.flatMap((m) => [m.material_code, m.material_name])].some((value) => value.toLowerCase().includes(query));
+      const matchesSearch = !query || [product.product_code, product.product_name, product.reference, product.version_number, ...product.materials.flatMap((m) => [m.material_code, m.material_name]), ...product.formula_lines.filter(f => f.ingredient_code).map(f => f.ingredient_code || "")].some((value) => value.toLowerCase().includes(query));
       return matchesSearch &&
         (status === "ALL" || product.status === status) &&
         (licence === "ALL" || product.licence_status === licence) &&
@@ -113,21 +173,29 @@ export default function ProductListView({ products, materials, loading, error, c
                               BMR storage instructions: {product.bmr_storage_instructions}
                             </small>}
                             <table className="sf-ops-table" style={{width:"100%",minWidth:690}}>
-                              <thead><tr><th>#</th><th>Material code</th><th>Material / ingredient</th><th>Strength</th><th>Master formula quantity</th><th>Unit / basis</th></tr></thead>
+                              <thead><tr><th>#</th><th>Material code</th><th>Material / ingredient</th><th>Strength</th><th>Master formula quantity</th><th>Unit / basis</th><th>Requirement</th></tr></thead>
                               <tbody>
-                                {product.materials.map((material, index) => {
-                                  const formula = product.formula_lines?.find(f => f.material_id === material.id);
-                                  return <tr key={material.id}>
-                                    <td>{formula?.material_sequence ?? index + 1}</td>
-                                    <td><strong>{material.material_code}</strong></td>
-                                    <td>{material.material_name}{formula?.conditional_material && <small> · Optional</small>}</td>
-                                    <td>{formula?.material_strength || "—"}</td>
-                                    <td>{formula?.master_formula_raw || "Not recorded"}</td>
-                                    <td>{formula?.quantity_type?.toLowerCase().startsWith("qs")
-                                      ? "q.s. to " + (formula.qs_target_value ?? "") + " " + (formula.qs_target_unit ?? "")
-                                      : (formula?.quantity_value ?? "—") + " " + (formula?.quantity_unit || "")}</td>
-                                  </tr>;
-                                })}
+                                {masterFormulaDisplayRows(product).map((row, index) => (
+                                  <tr key={row.key}>
+                                    <td>{row.sequence < 10000 ? row.sequence : index + 1}</td>
+                                    <td>
+                                      <strong>{row.genericFlavour ? "FLAVOURING" : row.materialCode}</strong>
+                                      {row.genericFlavour && <div className="muted">Generic ingredient</div>}
+                                    </td>
+                                    <td>
+                                      {row.materialName}
+                                      {row.genericFlavour && <div className="muted">Specific flavour and lot selected during consumption</div>}
+                                    </td>
+                                    <td>{row.formula?.material_strength || "—"}</td>
+                                    <td>{formulaQuantity(row.formula)}</td>
+                                    <td>{formulaBasisDetails(row.formula)}</td>
+                                    <td>
+                                      <span className="tag tag-muted">
+                                        {row.formula?.conditional_material ? "Optional" : "Mandatory"}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
                               </tbody>
                             </table>
                             {!(product.formula_lines?.length) && <small className="muted">Materials are linked for consumption verification; no master formula data has been recorded yet.</small>}
