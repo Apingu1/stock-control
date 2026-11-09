@@ -161,8 +161,11 @@ export default function BatchIssueCreateModal({
     [selectedProduct]
   );
   const actualLines = useMemo(
-    () => [...materialLines, ...(flavourSlot && flavourIncluded ? flavourLines : [])],
-    [materialLines, flavourSlot, flavourIncluded, flavourLines]
+    () => [...materialLines, ...(
+      (consumptionType === "USAGE" || consumptionType === "R_AND_D") &&
+      flavourSlot && flavourIncluded ? flavourLines : []
+    )],
+    [materialLines, consumptionType, flavourSlot, flavourIncluded, flavourLines]
   );
   const actualCodes = useMemo(
     () => new Set(actualLines.flatMap((line) =>
@@ -303,6 +306,11 @@ export default function BatchIssueCreateModal({
   };
 
   const blockedReason = (lot: LotBalance) => {
+    if (lot.category_code === "FLAVOURING" &&
+        lot.days_to_expiry !== null && lot.days_to_expiry !== undefined &&
+        lot.days_to_expiry <= Math.max(1, lot.expiry_threshold_days ?? 1)) {
+      return "Flavour lot is within the automatic quarantine window";
+    }
     const status = (lot.status || "").toUpperCase();
     if (status === "REJECTED") return "Rejected lots cannot be issued";
     if (status === "QUARANTINE" && allowQuarantine === null) {

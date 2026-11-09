@@ -5,7 +5,7 @@ from typing import List, Optional, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, literal, or_, select, union_all
+from sqlalchemy import func, literal, or_, select, text, union_all
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -157,7 +157,9 @@ def _enforce_issue_status_policy(
         return
     if lot.expiry_date and lot.expiry_date < date.today():
         raise HTTPException(status_code=400, detail=f"Lot {lot.lot_number} is expired")
-    if (lot.status or "").upper() == "AVAILABLE" and lot.expiry_date:
+    if lot.expiry_date and (
+        (lot.status or "").upper() == "AVAILABLE" or material.category_code == "FLAVOURING"
+    ):
         threshold = (
             db.query(ExpiryThresholdSetting)
             .filter(
@@ -170,6 +172,10 @@ def _enforce_issue_status_policy(
         days = (material.auto_quarantine_override_days
                 if material.auto_quarantine_override_days is not None
                 else threshold.threshold_days if threshold is not None else 0)
+        if material.category_code == "FLAVOURING":
+            # Flavouring is never eligible in the final day, even when general
+            # quarantine stock issuing is enabled. Extensions may be stricter.
+            days = max(1, days)
         if lot.expiry_date <= date.today() + timedelta(days=days):
             raise HTTPException(status_code=400, detail=(
                 f"Lot {lot.lot_number} is within the automatic quarantine window. "

@@ -152,11 +152,16 @@ export default function ProductModal({ open, product, materials, onClose, onSave
       source_material_name: flavourSlot,
       material_strength: previousSlot?.material_strength || "",
       master_formula_raw: flavourFormulaRaw,
-      quantity_type: previousSlot?.quantity_type || "",
-      quantity_value: previousSlot?.quantity_value || null,
-      quantity_unit: previousSlot?.quantity_unit || "",
-      qs_target_value: previousSlot?.qs_target_value || null,
-      qs_target_unit: previousSlot?.qs_target_unit || "",
+      quantity_type: previousSlot?.master_formula_raw === flavourFormulaRaw
+        ? previousSlot.quantity_type : (flavourFormulaRaw ? "Unparsed" : ""),
+      quantity_value: previousSlot?.master_formula_raw === flavourFormulaRaw
+        ? previousSlot.quantity_value : null,
+      quantity_unit: previousSlot?.master_formula_raw === flavourFormulaRaw
+        ? previousSlot.quantity_unit : "",
+      qs_target_value: previousSlot?.master_formula_raw === flavourFormulaRaw
+        ? previousSlot.qs_target_value : null,
+      qs_target_unit: previousSlot?.master_formula_raw === flavourFormulaRaw
+        ? previousSlot.qs_target_unit : "",
       conditional_material: flavourSlot === "FLAVOUR_OPTIONAL",
     }] : [];
     const payload = {

@@ -108,6 +108,8 @@ def create_receipt(
             status_code=400,
             detail="Cancelled BMR is a non-stock marker and cannot receive goods, quantity or value",
         )
+    if material.category_code == "FLAVOURING" and payload.expiry_date is None:
+        raise HTTPException(status_code=400, detail="Flavouring goods receipts require an expiry date")
     try:
         validate_base_uom(payload.uom_code, material.base_uom_code)
     except ValueError as exc:
