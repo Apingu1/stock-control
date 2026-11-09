@@ -51,11 +51,13 @@ const masterFormulaDisplayRows = (product: Product): MasterFormulaDisplayRow[] =
       formula,
       genericFlavour: true,
     }));
-  // Generic ingredients are versioned BMR rows, not stock-linked material
-  // records. Merge both sources and display them in BMR formula order.
-  return [...fixedRows, ...genericRows].sort(
+  // Display generic flavour second-to-last, immediately before the final
+  // fixed ingredient. Keep the original BMR data and other material order.
+  const orderedFixed = [...fixedRows].sort(
     (a, b) => a.sequence - b.sequence || a.key.localeCompare(b.key)
   );
+  orderedFixed.splice(Math.max(orderedFixed.length - 1, 0), 0, ...genericRows);
+  return orderedFixed;
 };
 
 const formulaQuantity = (formula?: ProductFormulaLine) => {
@@ -177,7 +179,7 @@ export default function ProductListView({ products, materials, loading, error, c
                               <tbody>
                                 {masterFormulaDisplayRows(product).map((row, index) => (
                                   <tr key={row.key}>
-                                    <td>{row.sequence < 10000 ? row.sequence : index + 1}</td>
+                                    <td>{index + 1}</td>
                                     <td>
                                       <strong>{row.genericFlavour ? "FLAVOURING" : row.materialCode}</strong>
                                       {row.genericFlavour && <div className="muted">Generic ingredient</div>}

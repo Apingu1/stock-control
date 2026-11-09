@@ -1,6 +1,9 @@
 name: StkFlo Windows Safe Update Validation
 
 on:
+  push:
+    branches:
+      - fix/stkflo-materials-pagination-and-auto-code
   pull_request:
     paths:
       - "packaging/windows-commercial/**"
@@ -33,6 +36,22 @@ jobs:
             ) | Out-Null
             if ($errors.Count) { throw "$file : $($errors | Out-String)" }
           }
+      - name: Set up Node for frontend validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Validate React production build
+        shell: pwsh
+        working-directory: web
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build complete commercial Windows ZIP
         shell: powershell
         run: |
@@ -47,6 +66,9 @@ jobs:
             'Support\Update-Server.ps1',
             'System\api\app\routers\materials.py',
             'System\web\src\utils\pagination.ts'
+            'System\db\init\131_flavouring_formula_slots.sql',
+            'System\web\src\components\products\ProductListView.tsx',
+            'System\web\src\components\modals\BatchIssueCreateModal.tsx'
           )) {
             if (-not (Test-Path -LiteralPath (Join-Path $root $f))) {
               throw "Commercial package missing: $f"
