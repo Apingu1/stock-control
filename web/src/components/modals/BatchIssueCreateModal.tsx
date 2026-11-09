@@ -146,7 +146,7 @@ export default function BatchIssueCreateModal({
   const expectedCodes = useMemo(() => {
     if (!selectedProduct) return new Set<string>();
     const fixedLines = selectedProduct.formula_lines.filter((line) => line.material_id !== null);
-    const hasFormula = fixedLines.length > 0;
+    const hasFormula = selectedProduct.formula_lines.length > 0;
     return new Set(selectedProduct.materials
       .filter((material) => !isPackagingStock(material))
       .filter((material) => !hasFormula || fixedLines.some(

@@ -261,6 +261,28 @@ def _formula_requirements(db: Session, product: Product) -> tuple[set[str], set[
     return required, configured, flavour_slot
 
 
+def _assess_formula_compliance(
+    required: set[str], permitted: set[str], flavour_slot: str | None,
+    actual_codes: set[str], materials_by_code: dict[str, Material],
+) -> tuple[list[str], list[str], bool]:
+    """Assess current-version product membership using real stock identities.
+
+    A generic flavour slot accepts exactly one distinct FLAVOURING material,
+    which may be issued across more than one explicitly selected stock lot.
+    """
+    flavour_codes = {
+        code for code in actual_codes
+        if materials_by_code[code].category_code == "FLAVOURING"
+    }
+    missing = sorted(required - actual_codes)
+    if flavour_slot == "FLAVOUR_REQUIRED" and not flavour_codes:
+        missing.append("FLAVOUR_REQUIRED")
+    unexpected = sorted(actual_codes - permitted -
+                        (flavour_codes if flavour_slot else set()))
+    multiple = bool(flavour_slot and len(flavour_codes) > 1)
+    return missing, unexpected, multiple
+
+
 def _batch_snapshot(batch: ConsumptionBatch) -> dict:
     return {
         "consumption_group_id": batch.consumption_group_id,
@@ -735,17 +757,11 @@ def create_issue_batch(
         _formula_requirements(db, product) if product else (set(), set(), None)
     )
     actual_codes = {item.material_code for item in payload.items}
-    flavour_codes = {
-        code for code in actual_codes
-        if materials_by_code[code].category_code == "FLAVOURING"
-    }
-    missing_codes = sorted(required_codes - actual_codes) if product else []
-    if flavour_slot == "FLAVOUR_REQUIRED" and not flavour_codes:
-        missing_codes.append("FLAVOUR_REQUIRED")
-    unexpected_codes = sorted(actual_codes - permitted_codes -
-                              (flavour_codes if flavour_slot else set())) if product else []
+    missing_codes, unexpected_codes, multiple_flavours = _assess_formula_compliance(
+        required_codes, permitted_codes, flavour_slot, actual_codes, materials_by_code
+    ) if product else ([], [], False)
     compliance_triggers: list[str] = []
-    if flavour_slot and len(flavour_codes) > 1:
+    if multiple_flavours:
         compliance_triggers.append("MULTIPLE_FLAVOURS")
     if product and product.status != "ACTIVE":
         compliance_triggers.append("PRODUCT_INACTIVE")

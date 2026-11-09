@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from app.material_classification import validate_material_classification
 from app.schemas import ProductFormulaLineIn
+from app.routers.issues import _assess_formula_compliance
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -37,6 +38,26 @@ class FlavouringFormulaTests(unittest.TestCase):
                 self.line(**bad)
         self.assertEqual(self.line(material_id=11).material_id, 11)
 
+    def test_optional_and_mandatory_flavour_consumption(self):
+        materials = {
+            "API1": SimpleNamespace(category_code="SOLID_RAW_MAT"),
+            "STRAWBERRY": SimpleNamespace(category_code="FLAVOURING"),
+            "CHERRY": SimpleNamespace(category_code="FLAVOURING"),
+            "EXTRA": SimpleNamespace(category_code="SOLID_RAW_MAT"),
+        }
+        def assess(slot, actual):
+            return _assess_formula_compliance(
+                {"API1"}, {"API1"}, slot, set(actual), materials
+            )
+        self.assertEqual(assess("FLAVOUR_OPTIONAL", {"API1"}), ([], [], False))
+        self.assertEqual(assess("FLAVOUR_REQUIRED", {"API1"}), (["FLAVOUR_REQUIRED"], [], False))
+        self.assertEqual(assess("FLAVOUR_REQUIRED", {"API1", "STRAWBERRY"}), ([], [], False))
+        self.assertEqual(assess("FLAVOUR_OPTIONAL", {"API1", "STRAWBERRY"}), ([], [], False))
+        self.assertEqual(assess(None, {"API1", "STRAWBERRY"}), ([], ["STRAWBERRY"], False))
+        self.assertEqual(assess("FLAVOUR_REQUIRED", {"API1", "STRAWBERRY", "CHERRY"}), ([], [], True))
+        self.assertEqual(assess("FLAVOUR_REQUIRED", {"API1", "EXTRA"}),
+                         (["FLAVOUR_REQUIRED"], ["EXTRA"], False))
+
     def test_migration_is_additive_and_does_not_change_packaging_ledger(self):
         sql = (ROOT / "db/init/131_flavouring_formula_slots.sql").read_text()
         self.assertIn("FLAVOURING', 'NA', 1", sql)
@@ -48,7 +69,7 @@ class FlavouringFormulaTests(unittest.TestCase):
     def test_flavour_consumption_remains_exact_lot(self):
         backend = (ROOT / "api/app/routers/issues.py").read_text()
         frontend = (ROOT / "web/src/components/modals/BatchIssueCreateModal.tsx").read_text()
-        self.assertIn('lot.id == item.material_lot_id', backend)
+        self.assertIn('MaterialLot.id == item.material_lot_id', backend)
         self.assertIn('lot.lot_number != item.lot_number', backend)
         self.assertIn('material.category_code == "FLAVOURING"', backend)
         self.assertIn("Type flavour name to see available lots", frontend)
